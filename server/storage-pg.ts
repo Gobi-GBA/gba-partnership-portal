@@ -4,10 +4,10 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests } from "../shared/schema-pg";
-import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema";
-import { SEED_PARTNERS } from "./seed-data";
-import { hashPassword, getSeedPassword, type IStorage } from "./storage-common";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema.js";
+import { SEED_PARTNERS } from "./seed-data.js";
+import { hashPassword, getSeedPassword, type IStorage } from "./storage-common.js";
 
 const BOOTSTRAP: string[] = [
   `CREATE TABLE IF NOT EXISTS users (

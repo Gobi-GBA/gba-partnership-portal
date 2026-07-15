@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest } from "../shared/schema";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.

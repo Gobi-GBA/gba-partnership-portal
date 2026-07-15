@@ -1,11 +1,11 @@
-import { users, sessions, partnerships, attachments, changeRequests } from "../shared/schema";
-import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema";
+import { users, sessions, partnerships, attachments, changeRequests } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { SEED_PARTNERS } from "./seed-data";
-import { hashPassword, getSeedPassword, type IStorage } from "./storage-common";
+import { SEED_PARTNERS } from "./seed-data.js";
+import { hashPassword, getSeedPassword, type IStorage } from "./storage-common.js";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS users (

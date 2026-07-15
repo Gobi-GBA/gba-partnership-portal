@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
-import { storage, hashPassword, verifyPassword } from "./storage";
+import { storage, hashPassword, verifyPassword } from "./storage.js";
 import {
   insertUserSchema,
   insertPartnershipSchema,
@@ -11,8 +11,8 @@ import {
   REGIONS,
   ROLES,
   GOBI_STAFF,
-} from "../shared/schema";
-import type { SafeUser, User } from "../shared/schema";
+} from "../shared/schema.js";
+import type { SafeUser, User } from "../shared/schema.js";
 import Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
 import { z } from "zod";

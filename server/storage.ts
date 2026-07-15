@@ -3,14 +3,14 @@
 //   - otherwise         → local SQLite file (sandbox / self-hosted)
 // The SQLite driver is loaded lazily so serverless deployments never touch
 // the native better-sqlite3 module at runtime.
-import type { IStorage } from "./storage-common";
+import type { IStorage } from "./storage-common.js";
 
-export { hashPassword, verifyPassword } from "./storage-common";
-export type { IStorage } from "./storage-common";
+export { hashPassword, verifyPassword } from "./storage-common.js";
+export type { IStorage } from "./storage-common.js";
 
 const implPromise: Promise<IStorage> = process.env.DATABASE_URL
-  ? import("./storage-pg").then((m) => m.createPgStorage())
-  : import("./storage-sqlite").then((m) => m.createSqliteStorage());
+  ? import("./storage-pg.js").then((m) => m.createPgStorage())
+  : import("./storage-sqlite.js").then((m) => m.createSqliteStorage());
 
 // Every IStorage method returns a Promise, so a thin async proxy keeps the
 // public `storage` object synchronous to import while the driver loads lazily.
