@@ -2,6 +2,7 @@
 export const SEED_PARTNERS: any[] = [
   {
     "nameEn": "The University of Hong Kong",
+    "lpStatus": "lp",
     "nameCn": "香港大学",
     "category": "university",
     "region": "hongkong",
@@ -48,6 +49,7 @@ export const SEED_PARTNERS: any[] = [
   },
   {
     "nameEn": "HKUST",
+    "lpStatus": "lp",
     "nameCn": "香港科技大学",
     "category": "university",
     "region": "hongkong",
@@ -186,6 +188,7 @@ export const SEED_PARTNERS: any[] = [
   },
   {
     "nameEn": "HKIC",
+    "lpStatus": "lp",
     "nameCn": "香港投资管理有限公司",
     "category": "investor",
     "region": "hongkong",

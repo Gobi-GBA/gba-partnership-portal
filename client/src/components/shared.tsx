@@ -202,10 +202,11 @@ export function Layout({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const links: { href: string; label: string; show: boolean }[] = [
+  const links: { href: string; label: string; show: boolean; soon?: boolean }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/network", label: t("navNetwork"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
+    { href: "/advisors", label: t("navAdvisors"), show: true, soon: true },
     { href: "/updates", label: t("navUpdates"), show: true },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
@@ -232,13 +233,18 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link key={l.href} href={l.href} data-testid={`link-nav-${l.href.replace(/\//g, "") || "home"}`}>
                 <span
                   className={cn(
-                    "px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
+                    "whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
                     location === l.href
                       ? "bg-secondary text-secondary-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {l.label}
+                  {l.soon && (
+                    <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))] align-middle">
+                      {t("soonTag")}
+                    </span>
+                  )}
                 </span>
               </Link>
             ))}
@@ -305,6 +311,11 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 >
                   {l.label}
+                  {l.soon && (
+                    <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">
+                      {t("soonTag")}
+                    </span>
+                  )}
                 </span>
               </Link>
             ))}
@@ -398,6 +409,9 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="text-center md:text-left text-xs text-muted-foreground/80 border-t border-border/60 pt-3" data-testid="text-dev-note">
             {t("devNote")}
           </div>
+          <div className="text-center md:text-left text-[11px] leading-relaxed text-muted-foreground/70" data-testid="text-disclaimer">
+            {t("disclaimer")}
+          </div>
         </div>
       </footer>
     </div>
@@ -429,6 +443,27 @@ export function PartnerLogo({ p, size = "md" }: { p: Partnership; size?: "sm" | 
         data-testid={`img-logo-${p.id}`}
       />
     </div>
+  );
+}
+
+// ---------------- LP badge (IR team only — server redacts lpStatus to 'na' for everyone else) ----------------
+export function LpBadge({ p }: { p: Pick<Partnership, "lpStatus"> }) {
+  const { t } = useLang();
+  if (p.lpStatus !== "lp" && p.lpStatus !== "target") return null;
+  const isLp = p.lpStatus === "lp";
+  return (
+    <span
+      title={t("lpBadgeHint")}
+      data-testid={isLp ? "badge-lp" : "badge-lp-target"}
+      className={
+        isLp
+          ? "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--gold))] bg-[hsl(var(--gold))]/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[hsl(40,55%,32%)] dark:text-[hsl(var(--gold))] shrink-0"
+          : "inline-flex items-center gap-1 rounded-full border border-dashed border-[hsl(var(--gold))] px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[hsl(40,55%,32%)] dark:text-[hsl(var(--gold))] shrink-0"
+      }
+    >
+      <Star className={isLp ? "h-2.5 w-2.5 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" : "h-2.5 w-2.5 text-[hsl(var(--gold))]"} />
+      {isLp ? t("lpStatusLp") : t("lpStatusTarget")}
+    </span>
   );
 }
 
@@ -629,6 +664,7 @@ export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () =>
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-base truncate">{name}</h3>
             {p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
+            <LpBadge p={p} />
             <NewBadge p={p} />
           </div>
           {altName && <p className="text-xs text-muted-foreground truncate">{altName}</p>}
@@ -688,6 +724,7 @@ export function PartnershipDetailDialog({
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <span className="truncate">{name}</span>
                 {p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
+                <LpBadge p={p} />
                 <NewBadge p={p} />
               </DialogTitle>
               {altName && <DialogDescription>{altName}</DialogDescription>}

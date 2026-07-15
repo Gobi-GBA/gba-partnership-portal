@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
-import { Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X, RefreshCw } from "lucide-react";
 import type { SafeUser } from "@shared/schema";
 
 // ---------------- Version log dialog ----------------
@@ -61,9 +61,28 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [title, setTitle] = useState(user?.title ?? "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
+
+  const syncFromGobi = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiRequest("POST", "/api/profile/sync-gobi");
+      const data: { user: SafeUser; matched: { name: string; title: string } } = await res.json();
+      updateUser(data.user);
+      setTitle(data.user.title ?? "");
+      setAvatarUrl(data.user.avatarUrl ?? "");
+      toast({ title: t("syncGobiDone"), description: `${data.matched.name} — ${data.matched.title}` });
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      if (msg.includes("not_found_on_gobi")) toast({ title: t("syncGobiNotFound"), variant: "destructive" });
+      else toast({ title: t("syncGobiFailed"), variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const onFile = (f: File | undefined) => {
     if (!f) return;
@@ -119,6 +138,18 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} data-testid="input-photo-file" />
             </div>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-[hsl(var(--aqua))]/50 text-[hsl(193,52%,32%)] dark:text-[hsl(193,60%,70%)]"
+            onClick={syncFromGobi}
+            disabled={syncing}
+            data-testid="button-sync-gobi"
+          >
+            {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {t("syncFromGobi")}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t("syncGobiHint")}</p>
           <p className="text-xs text-muted-foreground">{t("profilePhotoHint")}</p>
           <Input
             placeholder="https://…"

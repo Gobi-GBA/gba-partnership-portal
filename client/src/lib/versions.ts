@@ -8,9 +8,31 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.2";
+export const CURRENT_VERSION = "4.3";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.3",
+    date: "2026-07-15",
+    titleEn: "LP status, smarter AI intake & data upgrade",
+    titleCn: "LP 状态、更智能的 AI 录入与数据升级",
+    itemsEn: [
+      "Remember me — stay signed in on this device between visits",
+      "One-click profile sync from gobi.vc (photo and title) after registering",
+      "Smarter AI intake — detects documents, links or plain text, fetches linked pages, summarises the relationship and suggests the PIC automatically",
+      "LP status per partner (N/A / Target LP / LP) — visible only to the IR team, with a new IR-team toggle in admin accounts",
+      "Full partnership info upgrade — researched descriptions, PICs, start dates and LP flags across the directory, sourced from gobi.vc and public news",
+      "New Advisors section (coming soon) and a portal-wide disclaimer in the footer",
+    ],
+    itemsCn: [
+      "记住我 — 在本设备上保持登录状态",
+      "注册后可一键从 gobi.vc 同步个人资料（照片与职位）",
+      "更智能的 AI 录入 — 自动识别文档、链接或纯文本，拓展链接内容，总结合作关系并自动建议负责人",
+      "合作伙伴 LP 状态（无 / 目标 LP / LP）— 仅 IR 团队可见，管理后台新增 IR 团队开关",
+      "合作信息全面升级 — 基于 gobi.vc 与公开报道补充描述、负责人、起始日期与 LP 标识",
+      "新增顾问板块（即将上线），并在页脚添加免责声明",
+    ],
+  },
   {
     version: "4.2",
     date: "2026-07-15",

@@ -16,6 +16,7 @@ import {
   CATEGORIES,
   REGIONS,
   ROLES,
+  LP_STATUSES,
   GOBI_STAFF,
 } from "../shared/schema.js";
 import type { SafeUser, User, AuditAction } from "../shared/schema.js";
@@ -30,6 +31,15 @@ const STAGE_LEVEL: Record<string, number> = {
   s4_progressive: 4,
   s5_strategic: 5,
 };
+
+// LP status is IR-team-only information. Everyone else sees 'na'.
+function canSeeLp(user: User | undefined): boolean {
+  return !!user && (user.role === "admin" || user.isIr === 1);
+}
+
+function redactLp<T extends { lpStatus?: string }>(p: T, user: User | undefined): T {
+  return canSeeLp(user) ? p : { ...p, lpStatus: "na" };
+}
 
 function safe(user: User): SafeUser {
   const { passwordHash, secretA1Hash, secretA2Hash, resetTokenHash, resetExpires, ...rest } = user;
@@ -46,6 +56,97 @@ function sha256(s: string): string {
 }
 
 const AUTO_APPROVE_DOMAIN = "@gobi.vc"; // registrations from this domain are approved instantly as viewers
+
+// ---------- gobi.vc team page (profile sync) ----------
+
+interface GobiTeamMember {
+  name: string;
+  title: string;
+  photoUrl: string;
+  location: string;
+  linkedinUrl: string;
+}
+
+function normalizeName(n: string): string {
+  return n.trim().toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ");
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+let gobiTeamCache: { at: number; members: GobiTeamMember[] } | null = null;
+
+async function fetchGobiTeam(): Promise<GobiTeamMember[]> {
+  if (gobiTeamCache && Date.now() - gobiTeamCache.at < 10 * 60 * 1000) return gobiTeamCache.members;
+  const resp = await fetch("https://gobi.vc/team", {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`gobi.vc responded ${resp.status}`);
+  const html = await resp.text();
+  const blocks = html.split('class="team_team-members_team-member-item');
+  const members: GobiTeamMember[] = [];
+  for (const block of blocks.slice(1)) {
+    const name = block.match(/heading-style-h5[^>]*>([^<]+)</)?.[1];
+    if (!name) continue;
+    const title = block.match(/text-size-regular[^>]*>([^<]+)</)?.[1] ?? "";
+    const photo = block.match(/<img src="(https:\/\/cdn\.prod\.website-files\.com[^"]+)"/)?.[1] ?? "";
+    const location = block.match(/text-size-tiny">([^<]+)</)?.[1] ?? "";
+    const linkedin = block.match(/href="(https:\/\/(?:www\.)?linkedin\.com[^"]+)"/)?.[1] ?? "";
+    members.push({
+      name: decodeEntities(name),
+      title: decodeEntities(title),
+      photoUrl: photo,
+      location: decodeEntities(location),
+      linkedinUrl: linkedin,
+    });
+  }
+  if (!members.length) throw new Error("no members parsed from gobi.vc/team");
+  gobiTeamCache = { at: Date.now(), members };
+  return members;
+}
+
+// ---------- Web page fetching (AI quick-fill link support) ----------
+
+const URL_RE = /https?:\/\/[^\s"'<>)\]]+/g;
+
+function htmlToText(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<\/(p|div|li|h[1-6]|tr|br)>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n\s*\n+/g, "\n"),
+  );
+}
+
+async function fetchPageText(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!resp.ok) return null;
+    const type = resp.headers.get("content-type") ?? "";
+    if (!type.includes("html") && !type.includes("text")) return null;
+    const html = await resp.text();
+    return htmlToText(html).slice(0, 10_000);
+  } catch {
+    return null;
+  }
+}
 
 function appBaseUrl(req: Request): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
@@ -268,11 +369,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safe(updated) });
   });
 
+  // Profile sync from gobi.vc: pull photo, title (and LinkedIn) from the
+  // public team page by matching the user's name.
+  app.post("/api/profile/sync-gobi", requireAuth(), async (req: AuthedRequest, res) => {
+    try {
+      const members = await fetchGobiTeam();
+      const me = normalizeName(req.user!.name);
+      const match =
+        members.find((m) => normalizeName(m.name) === me) ??
+        members.find((m) => {
+          const a = normalizeName(m.name).split(" ");
+          const b = me.split(" ");
+          return a.length > 1 && b.length > 1 && a.every((tok) => b.includes(tok));
+        });
+      if (!match) return res.status(404).json({ message: "not_found_on_gobi" });
+      const data: Partial<Pick<User, "title" | "avatarUrl">> = {};
+      if (match.title) data.title = match.title;
+      if (match.photoUrl) data.avatarUrl = match.photoUrl;
+      const updated = await storage.updateUser(req.user!.id, data);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json({ user: safe(updated), matched: match });
+    } catch (err) {
+      console.error("gobi.vc sync failed:", err);
+      res.status(502).json({ message: "gobi_fetch_failed" });
+    }
+  });
+
   // ---------- Partnerships ----------
   // Signed-in users only: approved partnerships
-  app.get("/api/partnerships", requireAuth(), async (_req, res) => {
+  app.get("/api/partnerships", requireAuth(), async (req: AuthedRequest, res) => {
     const all = await storage.listPartnerships();
-    res.json(all.filter((p) => p.status === "approved"));
+    res.json(all.filter((p) => p.status === "approved").map((p) => redactLp(p, req.user)));
   });
 
   // Audit trail for one partnership — any signed-in user can view
@@ -318,6 +445,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       photos: parsed.data.photos ?? null,
       parentId: parsed.data.parentId ?? null,
       hallOfFame: isAdmin ? (parsed.data.hallOfFame ?? 0) : 0,
+      lpStatus:
+        canSeeLp(req.user) && (LP_STATUSES as readonly string[]).includes(parsed.data.lpStatus ?? "")
+          ? parsed.data.lpStatus!
+          : "na",
       status: isAdmin ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
@@ -339,7 +470,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
     await audit(req.user!, created.id, "create", { nameEn: created.nameEn, stage: created.stage });
-    res.status(201).json(created);
+    res.status(201).json(redactLp(created, req.user));
   });
 
   // Direct edit — admin only (staff must use change requests; owner may edit own pending submission)
@@ -357,6 +488,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       delete body.status;
       delete body.hallOfFame;
     }
+    // LP status: only the IR team (or admins) may view or change it
+    if (!canSeeLp(req.user) || !(LP_STATUSES as readonly string[]).includes(body.lpStatus)) {
+      delete body.lpStatus;
+    }
     if ("picNames" in body) body.picNames = sanitizePics(body.picNames);
     if ("startDate" in body && !body.startDate) {
       return res.status(400).json({ message: "Start date is required" });
@@ -368,9 +503,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       delete body.collabLevel;
     }
     const changed = diffFields(existing as any, body);
+    delete (changed as any).lpStatus; // never expose LP status in the shared audit trail
     const updated = await storage.updatePartnership(id, body);
     if (Object.keys(changed).length) await audit(req.user!, id, "update", changed);
-    res.json(updated);
+    res.json(updated ? redactLp(updated, req.user) : updated);
   });
 
   app.delete("/api/partnerships/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
@@ -433,6 +569,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const target = await storage.getPartnership(parsed.data.partnershipId);
     if (!target) return res.status(404).json({ message: "Partnership not found" });
+    // LP status can only be proposed by IR team members
+    if (!canSeeLp(req.user) && parsed.data.changes && typeof parsed.data.changes === "object") {
+      delete (parsed.data.changes as Record<string, unknown>).lpStatus;
+    }
     const cr = await storage.createChangeRequest({
       partnershipId: parsed.data.partnershipId,
       proposedBy: req.user!.id,
@@ -493,12 +633,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.patch("/api/admin/users/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
-    const data: { status?: string; role?: string } = {};
+    const data: { status?: string; role?: string; isIr?: number } = {};
     if (req.body?.status !== undefined) {
       if (!["approved", "rejected", "pending"].includes(req.body.status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
       data.status = req.body.status;
+    }
+    if (req.body?.isIr !== undefined) {
+      if (![0, 1].includes(req.body.isIr)) {
+        return res.status(400).json({ message: "Invalid isIr value" });
+      }
+      data.isIr = req.body.isIr;
     }
     if (req.body?.role !== undefined) {
       if (!(ROLES as readonly string[]).includes(req.body.role)) {
@@ -607,10 +753,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     try {
       let docText = "";
+      const sources: { kind: "pdf" | "docx" | "link" | "text"; label: string; fetched?: boolean }[] = [];
+
+      // Detect links in the pasted text and fetch their content server-side.
+      const urls = Array.from(new Set(text.match(URL_RE) ?? [])).slice(0, 3);
+      let webText = "";
+      for (const url of urls) {
+        const pageText = await fetchPageText(url);
+        sources.push({ kind: "link", label: url, fetched: pageText !== null });
+        if (pageText) webText += `\n\n--- WEB PAGE: ${url} ---\n${pageText}`;
+      }
+      const plainText = text.replace(URL_RE, " ").trim();
+      if (plainText.length >= 20) sources.push({ kind: "text", label: "pasted text" });
 
       for (const f of files) {
         if (attachmentTooLarge(f.data)) continue;
         if (f.mime === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+          sources.push({ kind: "pdf", label: f.name });
           const { extractText, getDocumentProxy } = await import("unpdf");
           const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(f.data, "base64")));
           const { text: pdfText } = await extractText(pdf, { mergePages: true });
@@ -619,20 +778,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           f.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
           f.name.toLowerCase().endsWith(".docx")
         ) {
+          sources.push({ kind: "docx", label: f.name });
           const result = await mammoth.extractRawText({ buffer: Buffer.from(f.data, "base64") });
           docText += `\n\n--- ${f.name} ---\n${result.value.slice(0, 12000)}`;
         }
       }
 
-      const instruction = `You are a data-entry assistant for the partnership CRM of Gobi Partners, a venture capital firm. Analyse the material below (email, notes, PDF or Word document text — may be English, Chinese, or mixed).
+      const instruction = `You are a data-entry assistant for the partnership CRM of Gobi Partners, a venture capital firm. Analyse the material below (pasted text, fetched web pages, PDF or Word document text — may be English, Chinese, or mixed).
 
-STEP 1 — UNDERSTAND: First show you understood the material: what kind of document it is, who the partner organisation is, and what collaboration it describes.
-STEP 2 — EXTRACT: Then fill the CRM fields.
+STEP 1 — CLASSIFY: Determine what the material is (email thread, meeting notes, press release, news article, MOU or agreement, company webpage, event brochure, etc.).
+STEP 2 — UNDERSTAND: Show you understood it: who the partner organisation is and what collaboration it describes.
+STEP 3 — RELATIONSHIP: Describe the relationship between Gobi Partners and the partner: how they are connected, its history and depth, and the key people on both sides.
+STEP 4 — EXTRACT: Then fill the CRM fields.
 
 Return ONLY a JSON object with these keys (use empty string "" when unknown):
 {
+  "materialType": "very short label for what the material is, e.g. 'Email thread', 'Press release', 'MOU document', 'News article', 'Meeting notes'",
+  "materialTypeCn": "the same label in Chinese",
   "understandingEn": "2-3 sentences in English: what this material is and what it says about the partnership",
   "understandingCn": "the same understanding in Chinese",
+  "relationshipEn": "2-3 sentences in English on the Gobi-partner relationship: how it started or was introduced, its nature and depth, key people involved on both sides",
+  "relationshipCn": "the same relationship summary in Chinese",
   "nameEn": "partner organisation name in English",
   "nameCn": "partner organisation name in Chinese",
   "category": one of ${JSON.stringify(CATEGORIES)},
@@ -642,17 +808,21 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
   "descriptionCn": "1-2 sentence Chinese summary of the partnership/collaboration",
   "contactName": "main contact person at the partner org",
   "contactEmail": "contact email",
-  "picNames": ["array of Gobi Partners people in charge, if identifiable. Known Gobi staff: ${GOBI_STAFF.map((s) => s.name).join(", ")}"],
+  "picNames": ["array of Gobi Partners people in charge (PIC), identified automatically. Use EXACT names from the staff list below. Look for: explicit mentions of Gobi staff; @gobi.vc email addresses (map the local part to the closest staff name, e.g. fred@gobi.vc → Fred Li); email signatures; meeting attendee lists. Only include people with clear evidence — do not guess from topic alone."],
   "context": "fuller background paragraph capturing the narrative of the material",
   "partnershipType": "short label e.g. 'Joint fund', 'Deal flow MOU', 'Co-incubation'",
   "startDate": "YYYY-MM-DD — REQUIRED, never leave empty. If no explicit date appears, give your best estimate from the material's context or your own knowledge of this partnership (announcements, news). If only a year or month is known, use the first day, e.g. 2024-01-01",
   "stage": one of ${JSON.stringify(STAGES)} (s1_new=identified target only, s2_engaged=in contact / meetings held, s3_agreement=MOU or agreement signed, s4_progressive=active deepening collaboration, s5_strategic=flagship strategic partnership),
   "notes": "any other useful details (dates, follow-ups, people)"
-}`;
+}
+
+GOBI PARTNERS STAFF LIST (name — title — office):
+${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`;
 
       const textBlock = [
         instruction,
         text.trim() ? `\nPASTED TEXT:\n"""\n${text.slice(0, 12000)}\n"""` : "",
+        webText ? `\nFETCHED WEB PAGE CONTENT (from links in the pasted text):\n"""\n${webText.slice(0, 20000)}\n"""` : "",
         docText ? `\nDOCUMENT CONTENT:\n"""\n${docText}\n"""` : "",
       ].join("\n");
 
@@ -666,7 +836,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
           model: "deepseek-chat",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
-          max_tokens: 1600,
+          max_tokens: 2200,
         }),
       });
       if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
@@ -677,8 +847,13 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
       const data = JSON.parse(jsonMatch[0]);
       const stage = (STAGES as readonly string[]).includes(data.stage) ? data.stage : "s2_engaged";
       const cleaned = {
+        materialType: String(data.materialType ?? ""),
+        materialTypeCn: String(data.materialTypeCn ?? ""),
         understandingEn: String(data.understandingEn ?? ""),
         understandingCn: String(data.understandingCn ?? ""),
+        relationshipEn: String(data.relationshipEn ?? ""),
+        relationshipCn: String(data.relationshipCn ?? ""),
+        sources,
         nameEn: String(data.nameEn ?? ""),
         nameCn: String(data.nameCn ?? ""),
         category: (CATEGORIES as readonly string[]).includes(data.category) ? data.category : "other",

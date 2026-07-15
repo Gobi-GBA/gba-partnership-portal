@@ -6,6 +6,9 @@ import { z } from "zod";
 export const ROLES = ["admin", "staff", "viewer"] as const;
 export type Role = (typeof ROLES)[number];
 
+export const LP_STATUSES = ["na", "target", "lp"] as const;
+export type LpStatus = (typeof LP_STATUSES)[number];
+
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -15,6 +18,7 @@ export const users = sqliteTable("users", {
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
   title: text("title"), // job title, editable by the user
   avatarUrl: text("avatar_url"), // profile photo (URL or data URI)
+  isIr: integer("is_ir").notNull().default(0), // 0 | 1 — IR team member (can see LP status)
   secretQ1: text("secret_q1"), // secret question id (see SECRET_QUESTIONS)
   secretA1Hash: text("secret_a1_hash"),
   secretQ2: text("secret_q2"),
@@ -121,6 +125,7 @@ export const partnerships = sqliteTable("partnerships", {
   stage: text("stage").notNull().default("s1_new"),
   collabLevel: integer("collab_level").notNull().default(1), // 1-5
   hallOfFame: integer("hall_of_fame").notNull().default(0), // 0 | 1
+  lpStatus: text("lp_status").notNull().default("na"), // 'na' | 'target' | 'lp' — visible to IR team only
   notes: text("notes"),
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
   submittedBy: integer("submitted_by"),
@@ -252,65 +257,78 @@ export interface GobiStaff {
 export const GOBI_OFFICES = ["Hong Kong (SAR)", "Mainland China", "Malaysia", "Singapore", "Philippines", "Vietnam", "Indonesia", "Pakistan", "Other"] as const;
 
 export const GOBI_STAFF: GobiStaff[] = [
-  // Hong Kong (SAR)
-  { name: "Chibo Tang", title: "Managing Partner", office: "Hong Kong (SAR)" },
-  { name: "Jason Chen", title: "COO, Group / Managing Director", office: "Hong Kong (SAR)" },
-  { name: "Angel Chau", title: "Chief Financial Officer", office: "Hong Kong (SAR)" },
-  { name: "Fred Li", title: "Managing Director / Head of University Ventures", office: "Hong Kong (SAR)" },
-  { name: "Wai Kit Lau", title: "Advisor", office: "Hong Kong (SAR)" },
-  { name: "Bowie Tan", title: "Manager, Finance", office: "Hong Kong (SAR)" },
-  { name: "Carol Tang", title: "Director, Finance", office: "Hong Kong (SAR)" },
-  { name: "Charlie Tsui", title: "Administrative Assistant", office: "Hong Kong (SAR)" },
-  { name: "Eunice Lam", title: "Senior Manager, Corporate Development", office: "Hong Kong (SAR)" },
-  { name: "Hazel Wong", title: "Director, Public Relations", office: "Hong Kong (SAR)" },
-  { name: "Hing Cheng", title: "Senior Executive Director, Corporate Development", office: "Hong Kong (SAR)" },
-  { name: "Jackson Chung", title: "Senior Manager, Investment", office: "Hong Kong (SAR)" },
-  { name: "Jimmy Ng", title: "Senior Director, Group Strategy", office: "Hong Kong (SAR)" },
-  { name: "Kennith So", title: "Director, Programme", office: "Hong Kong (SAR)" },
-  { name: "Miranda Cheng", title: "Senior Director, Compliance", office: "Hong Kong (SAR)" },
-  { name: "Rosa Dai", title: "Manager, Investment", office: "Hong Kong (SAR)" },
-  { name: "Sandy Chong", title: "Senior Director, Administration / Head of Treasury", office: "Hong Kong (SAR)" },
-  { name: "Sarah Jin", title: "General Counsel", office: "Hong Kong (SAR)" },
-  { name: "Shirley Gong", title: "Executive, Finance", office: "Hong Kong (SAR)" },
-  // Mainland China
-  { name: "Renee Pan", title: "Managing Director", office: "Mainland China" },
-  { name: "Berlin Chen", title: "Senior Manager, Ecosystem", office: "Mainland China" },
-  { name: "Bohan Zheng", title: "Senior Director, Investment", office: "Mainland China" },
-  { name: "Elena Chen", title: "Senior Manager, Office", office: "Mainland China" },
-  { name: "Lain Yao", title: "Director, Investment", office: "Mainland China" },
-  { name: "Leo Chen", title: "Manager, Investment and Research", office: "Mainland China" },
-  { name: "Mon Liang", title: "Assistant Manager, Project", office: "Mainland China" },
-  { name: "Shaohu Zhou", title: "Manager, Investment and Research", office: "Mainland China" },
-  // Malaysia
   { name: "Thomas G. Tsao", title: "Co-founder and Chair", office: "Malaysia" },
-  { name: "Jamaludin Bujang", title: "Managing Partner", office: "Malaysia" },
-  { name: "Hisham Ibrahim", title: "Managing Director", office: "Malaysia" },
-  { name: "Jong Eon Lee", title: "Partner", office: "Malaysia" },
-  { name: "Gerald Ko", title: "Senior Manager, Investment", office: "Malaysia" },
-  { name: "Imran Hafiz", title: "Director, Investment", office: "Malaysia" },
-  { name: "Jasdeep Maan", title: "Senior Manager, Investment", office: "Malaysia" },
-  { name: "Navvin Kumar", title: "Senior Director, Investment", office: "Malaysia" },
-  { name: "Syafiq Aqmar", title: "Director, Investment", office: "Malaysia" },
-  { name: "Zayd Azman", title: "Senior Manager, Investment", office: "Malaysia" },
-  // Singapore
+  { name: "Chibo Tang", title: "Managing Partner", office: "Hong Kong (SAR)" },
   { name: "Dan Chong", title: "Managing Partner", office: "Singapore" },
+  { name: "Jamaludin Bujang", title: "Managing Partner", office: "Malaysia" },
   { name: "Soo Wei Shaw", title: "Partner", office: "Singapore" },
-  { name: "Kay-Mok Ku", title: "Senior Partner", office: "Singapore" },
-  { name: "Kean Zen Liew", title: "Director, Investment", office: "Singapore" },
-  // Philippines
+  { name: "Ali Mukhtar", title: "Partner, General", office: "Pakistan" },
+  { name: "Naiel Ikram", title: "Partner", office: "Pakistan" },
   { name: "Jason Gaisano", title: "Managing Partner", office: "Philippines" },
   { name: "Carlo Chen-Delantar", title: "Partner, ESG and Circular Economy", office: "Philippines" },
   { name: "Ken Ngo", title: "Partner", office: "Philippines" },
-  { name: "Phoebe Fontanilla", title: "Senior Manager, Investment", office: "Philippines" },
-  // Vietnam
+  { name: "Jong Eon Lee", title: "Partner", office: "Malaysia" },
   { name: "Nhat Minh Phan", title: "Partner", office: "Vietnam" },
-  { name: "Hung Cao", title: "Analyst, Investment", office: "Vietnam" },
-  // Indonesia
+  { name: "Jason Chen", title: "Chief Operating Officer, Group / Managing Director", office: "Hong Kong (SAR)" },
+  { name: "Hisham Ibrahim", title: "Managing Director", office: "Malaysia" },
+  { name: "Suryono Darnor", title: "Advisor", office: "Malaysia" },
+  { name: "Angel Chau", title: "Chief Financial Officer", office: "Hong Kong (SAR)" },
+  { name: "Fred Li", title: "Managing Director / Head of University Ventures", office: "Hong Kong (SAR)" },
+  { name: "Renee Pan", title: "Managing Director", office: "Mainland China" },
+  { name: "Khairil Abdullah", title: "Advisor", office: "Malaysia" },
+  { name: "Wai Kit Lau", title: "Advisor", office: "Hong Kong (SAR)" },
+  { name: "Kay-Mok Ku", title: "Senior Partner", office: "Singapore" },
+  { name: "Erdem Dereli", title: "Venture Partner", office: "Türkiye" },
+  { name: "Juliet Zhu", title: "Venture Partner", office: "United Arab Emirates" },
+  { name: "Kengo Suzuki", title: "Venture Partner", office: "Japan" },
+  { name: "Arya Masagung", title: "Venture Partner", office: "Singapore" },
+  { name: "Abraiz Abdullah", title: "Analyst, Investment", office: "Pakistan" },
+  { name: "Adlil Zulaikha", title: "Manager, Marketing", office: "Malaysia" },
   { name: "Adrian Kurnia", title: "Director, Investment", office: "Indonesia" },
+  { name: "Ameen Iskandar", title: "Executive, IT Operations and Development", office: "Malaysia" },
+  { name: "Angie Lam", title: "Director, Fund Administration and Compliance", office: "Malaysia" },
+  { name: "Berlin Chen", title: "Senior Manager, Ecosystem", office: "Mainland China" },
+  { name: "Bohan Zheng", title: "Senior Director, Investment", office: "Mainland China" },
+  { name: "Bowie Tan", title: "Manager, Finance", office: "Hong Kong (SAR)" },
+  { name: "Carol Tang", title: "Director, Finance", office: "Hong Kong (SAR)" },
+  { name: "Catherine Shu", title: "Head, Content", office: "Taiwan" },
+  { name: "Charlie Tsui", title: "Administrative Assistant", office: "Hong Kong (SAR)" },
+  { name: "Dora Goh", title: "Director, Finance", office: "Malaysia" },
+  { name: "Elena Chen", title: "Senior Manager, Office", office: "Mainland China" },
+  { name: "Eunice Lam", title: "Senior Manager, Corporate Development", office: "Hong Kong (SAR)" },
+  { name: "Faiez Akmal", title: "Manager, Investment", office: "Pakistan" },
+  { name: "Gerald Ko", title: "Senior Manager, Investment", office: "Malaysia" },
+  { name: "Hazel Wong", title: "Director, Public Relations", office: "Hong Kong (SAR)" },
+  { name: "Hing Cheng", title: "Senior Executive Director, Corporate Development", office: "Hong Kong (SAR)" },
+  { name: "Hung Cao", title: "Analyst, Investment", office: "Vietnam" },
+  { name: "Imran Hafiz", title: "Director, Investment", office: "Malaysia" },
   { name: "Ivy Callista", title: "Manager, Investment", office: "Indonesia" },
-  // Pakistan
-  { name: "Ali Mukhtar", title: "Partner, General", office: "Pakistan" },
-  { name: "Naiel Ikram", title: "Partner", office: "Pakistan" },
+  { name: "Jackson Chung", title: "Senior Manager, Investment", office: "Hong Kong (SAR)" },
+  { name: "Jasdeep Maan", title: "Senior Manager, Investment", office: "Malaysia" },
+  { name: "Jia Shern Neoh", title: "Manager, Legal", office: "Malaysia" },
+  { name: "Jimmy Ng", title: "Senior Director, Group Strategy", office: "Hong Kong (SAR)" },
+  { name: "Justine Ngo", title: "Associate, Value Creation", office: "Philippines" },
+  { name: "Kelly Wong", title: "Manager, Finance", office: "Malaysia" },
   { name: "Kashaf Jamal", title: "Vice President, Investment", office: "Pakistan" },
+  { name: "Katie Gan", title: "Lead, People and Admin", office: "Malaysia" },
+  { name: "Kean Zen Liew", title: "Director, Investment", office: "Singapore" },
+  { name: "Kennith So", title: "Director, Programme", office: "Hong Kong (SAR)" },
+  { name: "Lain Yao", title: "Director, Investment", office: "Mainland China" },
+  { name: "Lee Boon Ng", title: "", office: "Malaysia" },
+  { name: "Leo Chen", title: "Manager, Investment and Research", office: "Mainland China" },
+  { name: "Miranda Cheng", title: "Senior Director, Compliance", office: "Hong Kong (SAR)" },
+  { name: "Mon Liang", title: "Assistant Manager, Project", office: "Mainland China" },
   { name: "Muhammad Ali Taufiq", title: "Vice President, Investment", office: "Pakistan" },
+  { name: "Navvin Kumar", title: "Senior Director, Investment", office: "Malaysia" },
+  { name: "Niccolo “Nuki” Almario", title: "Associate, Value Creation", office: "Philippines" },
+  { name: "Phoebe Fontanilla", title: "Senior Manager, Investment", office: "Philippines" },
+  { name: "Raof Zainuddin", title: "Director, Marketing and Communications", office: "Malaysia" },
+  { name: "Rosa Dai", title: "Manager, Investment", office: "Hong Kong (SAR)" },
+  { name: "Sandy Chong", title: "Senior Director, Administration / Head of Treasury", office: "Hong Kong (SAR)" },
+  { name: "Sarah Jin", title: "General Counsel", office: "Hong Kong (SAR)" },
+  { name: "Shaohu Zhou", title: "Manager, Investment and Research", office: "Mainland China" },
+  { name: "Shirley Gong", title: "Executive, Finance", office: "Hong Kong (SAR)" },
+  { name: "Syafiq Aqmar", title: "Director, Investment", office: "Malaysia" },
+  { name: "Zayd Azman", title: "Senior Manager, Investment", office: "Malaysia" },
+  { name: "Zuain Mohd Azni", title: "Senior Manager, Value Creation", office: "Malaysia" },
 ];

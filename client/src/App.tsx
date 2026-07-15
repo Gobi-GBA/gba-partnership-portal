@@ -15,11 +15,21 @@ import Login from "@/pages/login";
 import Reset from "@/pages/reset";
 import Admin from "@/pages/admin";
 import Updates from "@/pages/updates";
+import Advisors from "@/pages/advisors";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
-  const { user } = useAuth();
+  const { user, restoring } = useAuth();
   const [location] = useLocation();
+  // Remember me: while a saved session is being restored, show a quiet
+  // splash instead of flashing the login page.
+  if (!user && restoring) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background" data-testid="screen-restoring">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[hsl(193,52%,38%)] border-t-transparent" />
+      </div>
+    );
+  }
   // Login-first flow: nothing is visible until the user signs in.
   // Exception: the emailed password-reset link must work while signed out.
   if (!user) return location.startsWith("/reset") ? <Reset /> : <Login />;
@@ -32,6 +42,7 @@ function AppRouter() {
       <Route path="/login" component={Login} />
       <Route path="/reset" component={Reset} />
       <Route path="/updates" component={Updates} />
+      <Route path="/advisors" component={Advisors} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>

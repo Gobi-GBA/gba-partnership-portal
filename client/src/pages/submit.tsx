@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye } from "lucide-react";
+import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye, Link as LinkIcon, Type, FileText } from "lucide-react";
 import type { Partnership, Stage, AttachmentInput } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf, levelOfStage } from "@/lib/constants";
 
@@ -104,7 +104,16 @@ export default function Submit() {
   const [note, setNote] = useState("");
   const [aiText, setAiText] = useState("");
   const [aiFiles, setAiFiles] = useState<File[]>([]);
-  const [understanding, setUnderstanding] = useState<{ en: string; cn: string } | null>(null);
+  const [understanding, setUnderstanding] = useState<{
+    en: string;
+    cn: string;
+    typeEn: string;
+    typeCn: string;
+    relEn: string;
+    relCn: string;
+    sources: { kind: string; label: string; fetched?: boolean }[];
+    pics: string[];
+  } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentInput[]>([]);
   const aiFileRef = useRef<HTMLInputElement>(null);
   const attachRef = useRef<HTMLInputElement>(null);
@@ -164,10 +173,24 @@ export default function Submit() {
       return res.json();
     },
     onSuccess: (data) => {
-      setUnderstanding({ en: data.understandingEn ?? "", cn: data.understandingCn ?? "" });
+      setUnderstanding({
+        en: data.understandingEn ?? "",
+        cn: data.understandingCn ?? "",
+        typeEn: data.materialType ?? "",
+        typeCn: data.materialTypeCn ?? "",
+        relEn: data.relationshipEn ?? "",
+        relCn: data.relationshipCn ?? "",
+        sources: Array.isArray(data.sources) ? data.sources : [],
+        pics: Array.isArray(data.picNames) ? data.picNames : [],
+      });
       const fields = { ...data };
       delete fields.understandingEn;
       delete fields.understandingCn;
+      delete fields.materialType;
+      delete fields.materialTypeCn;
+      delete fields.relationshipEn;
+      delete fields.relationshipCn;
+      delete fields.sources;
       setForm((f) => ({
         ...f,
         ...Object.fromEntries(
@@ -360,12 +383,46 @@ export default function Submit() {
               </Button>
 
               {understanding && (understanding.en || understanding.cn) && (
-                <div className="rounded-lg bg-muted p-3" data-testid="panel-ai-understanding">
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("aiUnderstanding")}</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {lang === "cn" ? understanding.cn || understanding.en : understanding.en || understanding.cn}
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground">{t("aiUnderstandingHint")}</p>
+                <div className="space-y-3 rounded-lg bg-muted p-3" data-testid="panel-ai-understanding">
+                  {(understanding.sources.length > 0 || understanding.typeEn) && (
+                    <div className="flex flex-wrap items-center gap-1.5" data-testid="row-ai-sources">
+                      {understanding.typeEn && (
+                        <Badge className="bg-[hsl(var(--aqua))] text-white hover:bg-[hsl(var(--aqua))]" data-testid="badge-ai-material-type">
+                          {lang === "cn" ? understanding.typeCn || understanding.typeEn : understanding.typeEn}
+                        </Badge>
+                      )}
+                      {understanding.sources.map((s, i) => (
+                        <Badge key={i} variant="secondary" className="gap-1 max-w-[240px] font-normal" data-testid={`badge-ai-source-${i}`}>
+                          {s.kind === "link" ? <LinkIcon className="h-3 w-3 shrink-0" /> : s.kind === "text" ? <Type className="h-3 w-3 shrink-0" /> : <FileText className="h-3 w-3 shrink-0" />}
+                          <span className="truncate">{s.kind === "text" ? t("aiSourceText") : s.label.replace(/^https?:\/\//, "")}</span>
+                          {s.kind === "link" && s.fetched === false && <span className="text-destructive">({t("aiLinkFailed")})</span>}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">{t("aiUnderstanding")}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {lang === "cn" ? understanding.cn || understanding.en : understanding.en || understanding.cn}
+                    </p>
+                  </div>
+                  {(understanding.relEn || understanding.relCn) && (
+                    <div data-testid="panel-ai-relationship">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">{t("aiRelationship")}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {lang === "cn" ? understanding.relCn || understanding.relEn : understanding.relEn || understanding.relCn}
+                      </p>
+                    </div>
+                  )}
+                  {understanding.pics.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5" data-testid="row-ai-pics">
+                      <p className="text-xs font-semibold text-muted-foreground">{t("aiPicFound")}</p>
+                      {understanding.pics.map((p) => (
+                        <Badge key={p} variant="outline" className="border-[hsl(var(--gold))] text-foreground">{p}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">{t("aiUnderstandingHint")}</p>
                 </div>
               )}
             </CardContent>

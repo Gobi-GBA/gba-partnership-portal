@@ -50,6 +50,7 @@ export function EditPartnershipDialog({
       startDate: p.startDate ?? "", stage: p.stage,
       notes: p.notes ?? "",
       photosText: (p.photos ?? []).join("\n"),
+      lpStatus: p.lpStatus ?? "na",
     });
   }
 
@@ -83,6 +84,7 @@ export function EditPartnershipDialog({
         context: p.context ?? "", partnershipType: p.partnershipType ?? "",
         startDate: p.startDate ?? "", stage: p.stage, notes: p.notes ?? "",
         photos: p.photos ?? [],
+        lpStatus: p.lpStatus ?? "na",
       };
       const changes: Record<string, any> = {};
       for (const k of Object.keys(orig)) {
@@ -183,6 +185,18 @@ export function EditPartnershipDialog({
                 </SelectContent>
               </Select>
             </EField>
+            {(user?.role === "admin" || user?.isIr === 1) && (
+              <EField label={t("lpStatus")}>
+                <Select value={form.lpStatus ?? "na"} onValueChange={(v) => set("lpStatus", v)}>
+                  <SelectTrigger data-testid="edit-lp-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="na">{t("lpStatusNa")}</SelectItem>
+                    <SelectItem value="target">{t("lpStatusTarget")}</SelectItem>
+                    <SelectItem value="lp">{t("lpStatusLp")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </EField>
+            )}
           </div>
           <EField label={t("descriptionEn")}><Textarea rows={2} value={form.descriptionEn ?? ""} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="edit-desc-en" /></EField>
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>

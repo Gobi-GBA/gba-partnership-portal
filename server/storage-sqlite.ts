@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
+import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS partnerships (
   stage TEXT NOT NULL DEFAULT 's1_new',
   collab_level INTEGER NOT NULL DEFAULT 1,
   hall_of_fame INTEGER NOT NULL DEFAULT 0,
+  lp_status TEXT NOT NULL DEFAULT 'na',
   notes TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   submitted_by INTEGER,
@@ -111,6 +113,10 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
+  ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");
+  ensureColumn("users", "is_ir", "is_ir INTEGER NOT NULL DEFAULT 0");
+  // Grant IR membership to the seed admin (idempotent)
+  sqlite.prepare(`UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`).run();
   // Backfill example gallery photos for flagship partners (idempotent)
   for (const seed of PHOTO_SEED) {
     sqlite
@@ -301,6 +307,35 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
         .values({ ...p, photos: photosFor((p as any).nameEn), status: "approved", submittedBy: 1, createdAt: now } as any)
         .run();
     }
+  }
+
+  // v4.3 one-time info upgrade (researched descriptions, PICs, dates, LP statuses)
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const v43Done = sqlite.prepare(`SELECT value FROM meta WHERE key = 'migration_v43_info_upgrade'`).get();
+  if (!v43Done) {
+    for (const u of V43_UPGRADES) {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (u.lpStatus) { sets.push("lp_status = ?"); vals.push(u.lpStatus); }
+      if (u.partnershipType) { sets.push("partnership_type = ?"); vals.push(u.partnershipType); }
+      if (u.startDate) { sets.push("start_date = ?"); vals.push(u.startDate); }
+      if (u.picNames) { sets.push("pic_names = ?"); vals.push(JSON.stringify(u.picNames)); }
+      if (u.descriptionEn) { sets.push("description_en = ?"); vals.push(u.descriptionEn); }
+      if (u.descriptionCn) { sets.push("description_cn = ?"); vals.push(u.descriptionCn); }
+      if (sets.length === 0) continue;
+      sqlite.prepare(`UPDATE partnerships SET ${sets.join(", ")} WHERE name_en = ?`).run(...vals, u.nameEn);
+    }
+    for (const p of V43_NEW_PARTNERS) {
+      const exists = sqlite.prepare(`SELECT id FROM partnerships WHERE name_en = ?`).get(p.nameEn);
+      if (!exists) {
+        db.insert(partnerships)
+          .values({ ...p, status: "approved", submittedBy: 1, createdAt: new Date().toISOString() } as any)
+          .run();
+      }
+    }
+    sqlite
+      .prepare(`INSERT INTO meta (key, value) VALUES ('migration_v43_info_upgrade', ?)`)
+      .run(new Date().toISOString());
   }
 
   return new SqliteStorage();

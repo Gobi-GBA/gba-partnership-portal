@@ -8,6 +8,7 @@ import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnership
 import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
+import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
 
 const BOOTSTRAP: string[] = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -43,6 +44,7 @@ const BOOTSTRAP: string[] = [
     stage TEXT NOT NULL DEFAULT 's1_new',
     collab_level INTEGER NOT NULL DEFAULT 1,
     hall_of_fame INTEGER NOT NULL DEFAULT 0,
+    lp_status TEXT NOT NULL DEFAULT 'na',
     notes TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     submitted_by INTEGER,
@@ -85,6 +87,10 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires TEXT`,
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS photos JSONB`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS lp_status TEXT NOT NULL DEFAULT 'na'`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_ir INTEGER NOT NULL DEFAULT 0`,
+  `UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`,
+  `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
   `CREATE TABLE IF NOT EXISTS feedback (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,
@@ -134,6 +140,39 @@ export function createPgStorage(): IStorage {
           for (const p of SEED_PARTNERS) {
             await db.insert(partnerships).values({ ...p, photos: photosFor((p as any).nameEn), status: "approved", submittedBy: 1, createdAt: now } as any);
           }
+        }
+        // v4.3 one-time info upgrade (researched descriptions, PICs, dates, LP statuses)
+        const v43Res = await sql.query(`SELECT value FROM meta WHERE key = 'migration_v43_info_upgrade'`);
+        const v43Rows: unknown[] = Array.isArray(v43Res) ? v43Res : ((v43Res as any)?.rows ?? []);
+        if (v43Rows.length === 0) {
+          for (const u of V43_UPGRADES) {
+            const sets: string[] = [];
+            const vals: unknown[] = [];
+            const add = (expr: string, v: unknown) => {
+              vals.push(v);
+              sets.push(expr.replace("$?", `$${vals.length}`));
+            };
+            if (u.lpStatus) add("lp_status = $?", u.lpStatus);
+            if (u.partnershipType) add("partnership_type = $?", u.partnershipType);
+            if (u.startDate) add("start_date = $?", u.startDate);
+            if (u.picNames) add("pic_names = $?::jsonb", JSON.stringify(u.picNames));
+            if (u.descriptionEn) add("description_en = $?", u.descriptionEn);
+            if (u.descriptionCn) add("description_cn = $?", u.descriptionCn);
+            if (sets.length === 0) continue;
+            vals.push(u.nameEn);
+            await sql.query(`UPDATE partnerships SET ${sets.join(", ")} WHERE name_en = $${vals.length}`, vals);
+          }
+          for (const p of V43_NEW_PARTNERS) {
+            const existRes = await sql.query(`SELECT id FROM partnerships WHERE name_en = $1`, [p.nameEn]);
+            const existRows: unknown[] = Array.isArray(existRes) ? existRes : ((existRes as any)?.rows ?? []);
+            if (existRows.length === 0) {
+              await db.insert(partnerships).values({ ...p, status: "approved", submittedBy: 1, createdAt: new Date().toISOString() } as any);
+            }
+          }
+          await sql.query(
+            `INSERT INTO meta (key, value) VALUES ('migration_v43_info_upgrade', $1) ON CONFLICT (key) DO NOTHING`,
+            [new Date().toISOString()],
+          );
         }
       })().catch((err) => {
         ready = null; // allow retry on next request

@@ -20,7 +20,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark } from "lucide-react";
 import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus } from "@shared/schema";
 import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
@@ -238,8 +238,8 @@ function UserAdmin() {
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
 
   const mutation = useMutation({
-    mutationFn: async ({ id, status, role }: { id: number; status?: string; role?: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${id}`, { status, role });
+    mutationFn: async ({ id, status, role, isIr }: { id: number; status?: string; role?: string; isIr?: number }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}`, { status, role, isIr });
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
@@ -275,6 +275,21 @@ function UserAdmin() {
           ))}
         </SelectContent>
       </Select>
+      {/* IR team toggle — members can see LP status */}
+      <button
+        type="button"
+        title={t("irToggleHint")}
+        onClick={() => mutation.mutate({ id: u.id, isIr: u.isIr === 1 ? 0 : 1 })}
+        data-testid={`button-toggle-ir-${u.id}`}
+        className={
+          u.isIr === 1
+            ? "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--gold))] bg-[hsl(var(--gold))]/15 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[hsl(40,55%,32%)] dark:text-[hsl(var(--gold))]"
+            : "inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground transition-colors hover:border-[hsl(var(--gold))] hover:text-[hsl(40,55%,32%)] dark:hover:text-[hsl(var(--gold))]"
+        }
+      >
+        <Landmark className="h-3 w-3" />
+        {t("irTeam")}
+      </button>
       <Badge variant={u.status === "approved" ? "default" : u.status === "rejected" ? "destructive" : "secondary"}>
         {t(`status_${u.status}` as any)}
       </Badge>

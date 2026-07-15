@@ -32,6 +32,7 @@ export default function Login() {
   const [regQ2, setRegQ2] = useState("");
   const [regA2, setRegA2] = useState("");
   const [busy, setBusy] = useState(false);
+  const [remember, setRemember] = useState(false);
   const [tab, setTab] = useState("login");
 
   // Forgot-password flow state
@@ -48,7 +49,7 @@ export default function Login() {
     e.preventDefault();
     setBusy(true);
     try {
-      await login(loginEmail, loginPassword);
+      await login(loginEmail, loginPassword, remember);
       navigate("/");
     } catch (err: any) {
       const msg = String(err?.message ?? "");
@@ -299,6 +300,16 @@ export default function Login() {
                         data-testid="input-login-password"
                       />
                     </div>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={remember}
+                        onChange={(e) => setRemember(e.target.checked)}
+                        className="h-4 w-4 rounded border-input accent-[hsl(193,52%,38%)]"
+                        data-testid="checkbox-remember-me"
+                      />
+                      {t("rememberMe")}
+                    </label>
                     <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
                       {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                       {t("signIn")}

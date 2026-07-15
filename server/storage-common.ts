@@ -23,6 +23,9 @@ export function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(candidate, Buffer.from(hash, "hex"));
 }
 
+// LP statuses are set by the one-time v4.3 info-upgrade migration (see upgrade-v43.ts)
+// so later IR-team edits are never overwritten at boot.
+
 // Example gallery photos (Wikimedia Commons) seeded for flagship partners
 export const PHOTO_SEED: { nameEn: string; photos: string[] }[] = [
   { nameEn: "The University of Hong Kong", photos: ["/partners/hku-1.jpg", "/partners/hku-2.jpg", "/partners/hku-3.jpg"] },
@@ -50,7 +53,7 @@ export interface IStorage {
     data: Partial<
       Pick<
         User,
-        | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
+        | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
         | "resetTokenHash" | "resetExpires"
       >
