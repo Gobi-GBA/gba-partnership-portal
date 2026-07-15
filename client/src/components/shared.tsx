@@ -377,16 +377,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      <div
-        aria-hidden="true"
-        data-testid="watermark-internal-testing"
-        className="pointer-events-none fixed bottom-3 right-3 z-50 select-none"
-      >
-        <span className="inline-block rounded-full border border-border/60 bg-background/55 backdrop-blur-sm px-3 py-1 text-[10px] tracking-wide text-muted-foreground/80 shadow-sm">
-          {t("testWatermark")}
-        </span>
-      </div>
-
       {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
       {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
 

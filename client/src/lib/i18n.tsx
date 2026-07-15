@@ -89,7 +89,6 @@ const dict = {
   testBannerTitle: { en: "Internal test version", cn: "内部测试版本" },
   testBannerBody: { en: "For team evaluation only — data may be reset without notice. Please do not share externally. — Fred Li & Elaine Zhang", cn: "仅供团队评估使用 — 数据可能随时重置，恕不另行通知。请勿对外分享。 — Fred Li 与 Elaine Zhang" },
   testBannerDismiss: { en: "Got it", cn: "知道了" },
-  testWatermark: { en: "Internal testing only · note from developers Fred Li & Elaine Zhang", cn: "仅供内部测试 · 开发者 Fred Li 与 Elaine Zhang 备注" },
   viewTimeline: { en: "Timeline", cn: "时间线" },
   timelineFrom: { en: "From", cn: "从" },
   timelineTo: { en: "To", cn: "至" },
