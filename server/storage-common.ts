@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -22,6 +22,13 @@ export function verifyPassword(password: string, stored: string): boolean {
   const candidate = scryptSync(password, salt, 64);
   return timingSafeEqual(candidate, Buffer.from(hash, "hex"));
 }
+
+// Example gallery photos (Wikimedia Commons) seeded for flagship partners
+export const PHOTO_SEED: { nameEn: string; photos: string[] }[] = [
+  { nameEn: "The University of Hong Kong", photos: ["/partners/hku-1.jpg", "/partners/hku-2.jpg", "/partners/hku-3.jpg"] },
+  { nameEn: "HKUST", photos: ["/partners/hkust-1.jpg", "/partners/hkust-2.jpg", "/partners/hkust-3.jpg"] },
+  { nameEn: "HKIC", photos: ["/partners/hkic-1.jpg", "/partners/hkic-2.jpg", "/partners/hkic-3.jpg"] },
+];
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -74,4 +81,9 @@ export interface IStorage {
   getChangeRequest(id: number): Promise<ChangeRequest | undefined>;
   createChangeRequest(data: Omit<ChangeRequest, "id">): Promise<ChangeRequest>;
   updateChangeRequestStatus(id: number, status: string): Promise<ChangeRequest | undefined>;
+
+  listFeedback(): Promise<Feedback[]>;
+  listFeedbackByUser(userId: number): Promise<Feedback[]>;
+  createFeedback(data: Omit<Feedback, "id">): Promise<Feedback>;
+  updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>): Promise<Feedback | undefined>;
 }

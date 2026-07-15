@@ -4,10 +4,10 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
-import { hashPassword, getSeedPassword, type IStorage } from "./storage-common.js";
+import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
 
 const BOOTSTRAP: string[] = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -84,6 +84,21 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_a2_hash TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires TEXT`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS photos JSONB`,
+  `CREATE TABLE IF NOT EXISTS feedback (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    user_name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    admin_note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`,
+  // v4.2: backfill example gallery photos for flagship partners (idempotent)
+  ...PHOTO_SEED.map(
+    (s) => `UPDATE partnerships SET photos = '${JSON.stringify(s.photos)}'::jsonb WHERE name_en = '${s.nameEn.replace(/'/g, "''")}' AND photos IS NULL`,
+  ),
   // v4: collaboration level is derived from the stage (single source of truth) — keep legacy rows aligned
   `UPDATE partnerships SET collab_level = CAST(SUBSTR(stage, 2, 1) AS INT) WHERE stage ~ '^s[1-5]_' AND collab_level <> CAST(SUBSTR(stage, 2, 1) AS INT)`,
 ];
@@ -115,8 +130,9 @@ export function createPgStorage(): IStorage {
         const anyPartnership = await db.select({ id: partnerships.id }).from(partnerships).limit(1);
         if (anyPartnership.length === 0) {
           const now = new Date().toISOString();
+          const photosFor = (nameEn: string) => PHOTO_SEED.find((s) => s.nameEn === nameEn)?.photos ?? null;
           for (const p of SEED_PARTNERS) {
-            await db.insert(partnerships).values({ ...p, status: "approved", submittedBy: 1, createdAt: now } as any);
+            await db.insert(partnerships).values({ ...p, photos: photosFor((p as any).nameEn), status: "approved", submittedBy: 1, createdAt: now } as any);
           }
         }
       })().catch((err) => {
@@ -290,6 +306,25 @@ export function createPgStorage(): IStorage {
       await init();
       const rows = await db.update(changeRequests).set({ status }).where(eq(changeRequests.id, id)).returning();
       return rows[0] as ChangeRequest | undefined;
+    }
+
+    async listFeedback() {
+      await init();
+      return (await db.select().from(feedback)) as Feedback[];
+    }
+    async listFeedbackByUser(userId: number) {
+      await init();
+      return (await db.select().from(feedback).where(eq(feedback.userId, userId))) as Feedback[];
+    }
+    async createFeedback(data: Omit<Feedback, "id">) {
+      await init();
+      const rows = await db.insert(feedback).values(data as any).returning();
+      return rows[0] as Feedback;
+    }
+    async updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>) {
+      await init();
+      const rows = await db.update(feedback).set(data).where(eq(feedback.id, id)).returning();
+      return rows[0] as Feedback | undefined;
     }
   }
 

@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { useLang } from "@/lib/i18n";
-import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge } from "@/components/shared";
+import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter } from "@/components/shared";
 import { EditPartnershipDialog } from "@/components/edit-partnership";
 import { NetworkGraph, NetworkLegend } from "@/components/network-graph";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, LayoutGrid, Share2, CalendarRange, Download, Star } from "lucide-react";
 import type { Partnership } from "@shared/schema";
@@ -25,10 +24,10 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   });
 
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
-  const [stage, setStage] = useState("all");
-  const [region, setRegion] = useState("all");
-  const [year, setYear] = useState("all");
+  const [category, setCategory] = useState<string[]>([]);
+  const [stage, setStage] = useState<string[]>([]);
+  const [region, setRegion] = useState<string[]>([]);
+  const [year, setYear] = useState<string[]>([]);
   const [selected, setSelected] = useState<Partnership | null>(null);
   const [editTarget, setEditTarget] = useState<Partnership | null>(null);
   const [view, setView] = useState<ViewMode>(initialView);
@@ -44,12 +43,15 @@ export default function Home({ initialView = "network", initialHof = false }: { 
     const q = search.trim().toLowerCase();
     return sortPartnerships(
       partnerships.filter((p) => {
-        if (category !== "all" && p.category !== category) return false;
-        if (stage === "active") {
-          if (p.stage !== "s4_progressive" && p.stage !== "s5_strategic") return false;
-        } else if (stage !== "all" && p.stage !== stage) return false;
-        if (region !== "all" && p.region !== region) return false;
-        if (year !== "all" && !(p.startDate ?? "").startsWith(year)) return false;
+        if (category.length > 0 && !category.includes(p.category)) return false;
+        if (stage.length > 0) {
+          const hit = stage.some((s) =>
+            s === "active" ? p.stage === "s4_progressive" || p.stage === "s5_strategic" : p.stage === s,
+          );
+          if (!hit) return false;
+        }
+        if (region.length > 0 && !region.includes(p.region)) return false;
+        if (year.length > 0 && !year.some((y) => (p.startDate ?? "").startsWith(y))) return false;
         if (view === "network" && hof && p.hallOfFame !== 1) return false;
         if (!q) return true;
         return [p.nameEn, p.nameCn, p.descriptionEn, p.descriptionCn, p.partnershipType, p.contactName, picsOf(p).join(" "), p.context]
@@ -82,10 +84,10 @@ export default function Home({ initialView = "network", initialHof = false }: { 
 
   const goDirectory = (opts?: { category?: string; stage?: string }) => {
     setView("cards");
-    setCategory(opts?.category ?? "all");
-    setStage(opts?.stage ?? "all");
-    setRegion("all");
-    setYear("all");
+    setCategory(opts?.category ? [opts.category] : []);
+    setStage(opts?.stage ? [opts.stage] : []);
+    setRegion([]);
+    setYear([]);
     setSearch("");
     setTimeout(() => document.getElementById("directory")?.scrollIntoView({ behavior: "smooth" }), 60);
   };
@@ -149,51 +151,41 @@ export default function Home({ initialView = "network", initialHof = false }: { 
               data-testid="input-search"
             />
           </div>
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-full md:w-44" data-testid="select-category">
-              <SelectValue placeholder={t("filterCategory")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("filterCategory")}: {t("filterAll")}</SelectItem>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>{t(`cat_${c}` as any)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={stage} onValueChange={setStage}>
-            <SelectTrigger className="w-full md:w-44" data-testid="select-stage">
-              <SelectValue placeholder={t("filterStage")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("filterStage")}: {t("filterAll")}</SelectItem>
-              <SelectItem value="active">{t("filterActive")}</SelectItem>
-              {STAGES.map((s) => (
-                <SelectItem key={s} value={s}>{STAGE_NUM[s]} · {t(`stage_${s}` as any)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={region} onValueChange={setRegion}>
-            <SelectTrigger className="w-full md:w-40" data-testid="select-region">
-              <SelectValue placeholder={t("filterRegion")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("filterRegion")}: {t("filterAll")}</SelectItem>
-              {REGIONS.map((r) => (
-                <SelectItem key={r} value={r}>{t(`region_${r}` as any)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={year} onValueChange={setYear}>
-            <SelectTrigger className="w-full md:w-36" data-testid="select-year">
-              <SelectValue placeholder={t("yearFilter")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("yearFilter")}: {t("allYears")}</SelectItem>
-              {allYears.map((y) => (
-                <SelectItem key={y} value={y}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            label={t("filterCategory")}
+            options={CATEGORIES.map((c) => ({ value: c, label: t(`cat_${c}` as any) }))}
+            selected={category}
+            onChange={setCategory}
+            className="w-full md:w-44"
+            testid="select-category"
+          />
+          <MultiSelectFilter
+            label={t("filterStage")}
+            options={[
+              { value: "active", label: t("filterActive") },
+              ...STAGES.map((s) => ({ value: s, label: `${STAGE_NUM[s]} · ${t(`stage_${s}` as any)}` })),
+            ]}
+            selected={stage}
+            onChange={setStage}
+            className="w-full md:w-44"
+            testid="select-stage"
+          />
+          <MultiSelectFilter
+            label={t("filterRegion")}
+            options={REGIONS.map((r) => ({ value: r, label: t(`region_${r}` as any) }))}
+            selected={region}
+            onChange={setRegion}
+            className="w-full md:w-40"
+            testid="select-region"
+          />
+          <MultiSelectFilter
+            label={t("yearFilter")}
+            options={allYears.map((y) => ({ value: y, label: y }))}
+            selected={year}
+            onChange={setYear}
+            className="w-full md:w-36"
+            testid="select-year"
+          />
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mb-8">

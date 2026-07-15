@@ -49,6 +49,7 @@ export function EditPartnershipDialog({
       context: p.context ?? "", partnershipType: p.partnershipType ?? "",
       startDate: p.startDate ?? "", stage: p.stage,
       notes: p.notes ?? "",
+      photosText: (p.photos ?? []).join("\n"),
     });
   }
 
@@ -62,6 +63,12 @@ export function EditPartnershipDialog({
         ...form,
         parentId: form.parentId === "none" ? null : Number(form.parentId),
       };
+      delete payload.photosText;
+      payload.photos = String(form.photosText ?? "")
+        .split("\n")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+        .slice(0, 12);
       if (mode === "direct") {
         const res = await apiRequest("PATCH", `/api/partnerships/${p.id}`, payload);
         return res.json();
@@ -75,6 +82,7 @@ export function EditPartnershipDialog({
         picNames: picsOf(p), parentId: p.parentId ?? null,
         context: p.context ?? "", partnershipType: p.partnershipType ?? "",
         startDate: p.startDate ?? "", stage: p.stage, notes: p.notes ?? "",
+        photos: p.photos ?? [],
       };
       const changes: Record<string, any> = {};
       for (const k of Object.keys(orig)) {
@@ -180,6 +188,15 @@ export function EditPartnershipDialog({
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>
           <EField label={t("contextLabel")}><Textarea rows={3} value={form.context ?? ""} onChange={(e) => set("context", e.target.value)} data-testid="edit-context" /></EField>
           <EField label={t("notes")}><Textarea rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} data-testid="edit-notes" /></EField>
+          <EField label={`${t("photosLabel")} · ${t("photosHint")}`}>
+            <Textarea
+              rows={3}
+              value={form.photosText ?? ""}
+              onChange={(e) => set("photosText", e.target.value)}
+              placeholder={"https://…/photo-1.jpg\nhttps://…/photo-2.jpg"}
+              data-testid="edit-photos"
+            />
+          </EField>
 
           {attachments && attachments.length > 0 && (
             <div className="space-y-1.5">

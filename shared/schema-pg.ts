@@ -43,6 +43,7 @@ export const partnershipsPg = pgTable("partnerships", {
   context: text("context"),
   partnershipType: text("partnership_type"),
   startDate: text("start_date"),
+  photos: jsonb("photos").$type<string[]>(),
   stage: text("stage").notNull().default("s1_new"),
   collabLevel: integer("collab_level").notNull().default(1),
   hallOfFame: integer("hall_of_fame").notNull().default(0),
@@ -81,4 +82,15 @@ export const changeRequestsPg = pgTable("change_requests", {
   note: text("note"),
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull(),
+});
+
+export const feedbackPg = pgTable("feedback", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"),
+  userName: text("user_name").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("open"),
+  adminNote: text("admin_note"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
 });

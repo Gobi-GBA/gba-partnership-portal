@@ -114,6 +114,42 @@ const dict = {
   changeSubmitted: { en: "Change request submitted — an admin will review it.", cn: "修改申请已提交 — 管理员将进行审核。" },
   versionLogTitle: { en: "System version log", cn: "系统版本日志" },
   versionLogSub: { en: "Upgrade report since the first version of the portal.", cn: "自门户首个版本以来的升级报告。" },
+
+  // Updates & feedback (v4.2)
+  navUpdates: { en: "Updates", cn: "系统动态" },
+  updatesTitle: { en: "System update log", cn: "系统更新日志" },
+  updatesSub: { en: "Every release of the portal, newest first.", cn: "门户的每次发布，最新在前。" },
+  requestsTitle: { en: "System requests & feedback", cn: "系统需求与反馈" },
+  requestsSub: {
+    en: "Report an issue or suggest an improvement. The team reviews every request and tracks its status here.",
+    cn: "报告问题或提出改进建议。团队会审阅每条请求，并在此跟踪处理状态。",
+  },
+  newRequest: { en: "Submit a request", cn: "提交需求" },
+  requestPlaceholder: { en: "Describe the issue or the feature you need…", cn: "请描述遇到的问题或需要的功能…" },
+  requestSubmitted: { en: "Request submitted", cn: "需求已提交" },
+  myRequests: { en: "My requests", cn: "我的请求" },
+  noRequests: { en: "No requests yet.", cn: "暂无请求。" },
+  fbStatus_open: { en: "Open", cn: "待处理" },
+  fbStatus_in_progress: { en: "In progress", cn: "处理中" },
+  fbStatus_solved: { en: "Solved", cn: "已解决" },
+  fbStatus_declined: { en: "Declined", cn: "已拒绝" },
+  adminResponse: { en: "Team response", cn: "团队回复" },
+  adminFeedback: { en: "System requests", cn: "系统需求" },
+  fbNotePlaceholder: { en: "Reply / internal note shown to the requester…", cn: "回复或备注（提交者可见）…" },
+  fbFrom: { en: "From", cn: "来自" },
+
+  // Admin: add account (v4.2)
+  addAccount: { en: "Add account", cn: "新增账户" },
+  addAccountSub: { en: "Create a pre-approved account for a colleague. Share the password with them directly.", cn: "为同事创建已批准的账户，请直接告知对方密码。" },
+  accountCreated: { en: "Account created", cn: "账户已创建" },
+  emailTaken: { en: "This email is already registered", cn: "该邮箱已注册" },
+  adminSearchUsers: { en: "Search accounts…", cn: "搜索账户…" },
+  adminSearchRecords: { en: "Search records…", cn: "搜索记录…" },
+
+  // Photo gallery (v4.2)
+  photosLabel: { en: "Photos", cn: "照片" },
+  photosHint: { en: "Image URLs, one per line", cn: "图片链接，每行一个" },
+  photoOf: { en: "of", cn: "/" },
   whatsNew: { en: "What's new", cn: "更新内容" },
   currentVersion: { en: "Current", cn: "当前版本" },
   profileTitle: { en: "Edit profile", cn: "编辑个人资料" },

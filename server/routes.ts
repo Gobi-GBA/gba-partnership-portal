@@ -9,6 +9,9 @@ import {
   attachmentInputSchema,
   changeRequestInputSchema,
   profileUpdateSchema,
+  feedbackInputSchema,
+  feedbackUpdateSchema,
+  adminCreateUserSchema,
   STAGES,
   CATEGORIES,
   REGIONS,
@@ -312,6 +315,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       partnershipType: parsed.data.partnershipType ?? null,
       startDate: parsed.data.startDate ?? null,
       notes: parsed.data.notes ?? null,
+      photos: parsed.data.photos ?? null,
       parentId: parsed.data.parentId ?? null,
       hallOfFame: isAdmin ? (parsed.data.hallOfFame ?? 0) : 0,
       status: isAdmin ? "approved" : "pending",
@@ -514,6 +518,58 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/partnerships", requireAuth("admin"), async (_req, res) => {
     res.json(await storage.listPartnerships());
+  });
+
+  // Admin: create an account directly (pre-approved, no email verification needed)
+  app.post("/api/admin/users", requireAuth("admin"), async (req, res) => {
+    const parsed = adminCreateUserSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    const { name, email, password, role } = parsed.data;
+    const existing = await storage.getUserByEmail(email);
+    if (existing) return res.status(409).json({ message: "email_taken" });
+    const user = await storage.createUser({
+      name,
+      email: email.toLowerCase(),
+      passwordHash: hashPassword(password),
+      role,
+      status: "approved",
+    });
+    res.status(201).json(safe(user));
+  });
+
+  // ---------- Feedback / system requests ----------
+  app.post("/api/feedback", requireAuth(), async (req: AuthedRequest, res) => {
+    const parsed = feedbackInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid input" });
+    const fb = await storage.createFeedback({
+      userId: req.user!.id,
+      userName: req.user!.name,
+      message: parsed.data.message.trim(),
+      status: "open",
+      adminNote: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+    });
+    res.status(201).json(fb);
+  });
+
+  app.get("/api/feedback", requireAuth(), async (req: AuthedRequest, res) => {
+    const rows = req.user!.role === "admin"
+      ? await storage.listFeedback()
+      : await storage.listFeedbackByUser(req.user!.id);
+    rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(rows);
+  });
+
+  app.patch("/api/feedback/:id", requireAuth("admin"), async (req, res) => {
+    const parsed = feedbackUpdateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid input" });
+    const updated = await storage.updateFeedback(Number(req.params.id), {
+      ...parsed.data,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json(updated);
   });
 
   // ---------- AI: extract partnership from pasted text, PDF, or DOCX (DeepSeek, text-only) ----------

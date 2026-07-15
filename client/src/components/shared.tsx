@@ -7,7 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History } from "lucide-react";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Partnership, Stage, Category, Region, AttachmentMeta, AuditLog } from "@shared/schema";
 import { GOBI_OFFICES } from "@shared/schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +24,129 @@ import { CURRENT_VERSION } from "@/lib/versions";
 
 // Auto-open the version log once per browser session after login (memory only — no storage APIs).
 let versionLogShown = false;
+
+// ---------------- Multi-select filter (dropdown with checkboxes) ----------------
+export function MultiSelectFilter({
+  label, options, selected, onChange, className, testid,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  className?: string;
+  testid: string;
+}) {
+  const { t } = useLang();
+  const toggle = (value: string) => {
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  };
+  const display =
+    selected.length === 0
+      ? `${label}: ${t("filterAll")}`
+      : selected.length === 1
+        ? options.find((o) => o.value === selected[0])?.label ?? label
+        : `${label} (${selected.length})`;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid={testid}
+          className={cn(
+            "flex h-10 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+            selected.length > 0 && "border-[hsl(var(--aqua))]/60 text-foreground",
+            className,
+          )}
+        >
+          <span className="truncate">{display}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto min-w-[12rem]">
+        <DropdownMenuItem
+          onSelect={(e) => { e.preventDefault(); onChange([]); }}
+          className={cn("text-sm", selected.length === 0 && "font-semibold")}
+          data-testid={`${testid}-all`}
+        >
+          {label}: {t("filterAll")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {options.map((o) => (
+          <DropdownMenuCheckboxItem
+            key={o.value}
+            checked={selected.includes(o.value)}
+            onSelect={(e) => e.preventDefault()}
+            onCheckedChange={() => toggle(o.value)}
+            data-testid={`${testid}-${o.value}`}
+          >
+            {o.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ---------------- Photo carousel (partner gallery) ----------------
+export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }) {
+  const [idx, setIdx] = useState(0);
+  const { t } = useLang();
+  if (photos.length === 0) return null;
+  const go = (d: number) => setIdx((i) => (i + d + photos.length) % photos.length);
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-border bg-muted" data-testid="carousel-photos">
+      <div className="flex transition-transform duration-300 ease-out" style={{ transform: `translateX(-${idx * 100}%)` }}>
+        {photos.map((src, i) => (
+          <img
+            key={src}
+            src={src}
+            alt={`${alt} — ${i + 1}`}
+            loading={i === 0 ? "eager" : "lazy"}
+            className="h-52 sm:h-60 w-full shrink-0 object-cover"
+            data-testid={`img-photo-${i}`}
+          />
+        ))}
+      </div>
+      {photos.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            aria-label="Previous photo"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+            data-testid="button-photo-prev"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="Next photo"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+            data-testid="button-photo-next"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <div className="absolute bottom-2 right-2 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm tabular-nums">
+            {idx + 1} {t("photoOf")} {photos.length}
+          </div>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {photos.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Photo ${i + 1}`}
+                onClick={() => setIdx(i)}
+                className={cn("h-1.5 rounded-full transition-all", i === idx ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80")}
+                data-testid={`button-photo-dot-${i}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ---------------- Theme ----------------
 const ThemeContext = createContext<{ dark: boolean; toggle: () => void }>({
@@ -80,6 +206,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/network", label: t("navNetwork"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
+    { href: "/updates", label: t("navUpdates"), show: true },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
 
@@ -258,14 +385,14 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>李佛创投笔记 · Li Fo Venture Notes</span>
-              <button
-                onClick={() => setShowVersions(true)}
-                className="rounded-full border border-border px-2 py-0.5 font-semibold tabular-nums hover:bg-secondary hover:text-foreground transition-colors"
-                title={t("versionLogTitle")}
-                data-testid="button-version-log"
-              >
-                v{CURRENT_VERSION}
-              </button>
+              <Link href="/updates" data-testid="button-version-log">
+                <span
+                  className="inline-block cursor-pointer rounded-full border border-border px-2 py-0.5 font-semibold tabular-nums hover:bg-secondary hover:text-foreground transition-colors"
+                  title={t("updatesTitle")}
+                >
+                  v{CURRENT_VERSION}
+                </span>
+              </Link>
             </div>
           </div>
           <div className="text-center md:text-left text-xs text-muted-foreground/80 border-t border-border/60 pt-3" data-testid="text-dev-note">
@@ -579,6 +706,8 @@ export function PartnershipDetailDialog({
         </DialogHeader>
 
         <div className="space-y-5 pt-2">
+          {(p.photos ?? []).length > 0 && <PhotoCarousel photos={p.photos!} alt={name} />}
+
           <div className="flex flex-wrap gap-2">
             <StageBadge stage={p.stage as Stage} />
             <CategoryBadge category={p.category as Category} />

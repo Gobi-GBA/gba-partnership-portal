@@ -1,11 +1,11 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
-import { hashPassword, getSeedPassword, type IStorage } from "./storage-common.js";
+import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -73,6 +73,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   changes TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  user_name TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  admin_note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
 `;
 
 export function createSqliteStorage(): IStorage {
@@ -100,6 +110,13 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "secret_a2_hash", "secret_a2_hash TEXT");
   ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
+  ensureColumn("partnerships", "photos", "photos TEXT");
+  // Backfill example gallery photos for flagship partners (idempotent)
+  for (const seed of PHOTO_SEED) {
+    sqlite
+      .prepare(`UPDATE partnerships SET photos = ? WHERE name_en = ? AND photos IS NULL`)
+      .run(JSON.stringify(seed.photos), seed.nameEn);
+  }
   // Migrate legacy single PIC into multi-PIC list
   sqlite.exec(`UPDATE partnerships SET pic_names = json_array(pic_name) WHERE pic_names IS NULL AND pic_name IS NOT NULL AND pic_name != ''`);
   // Migrate old stage values → 01-05 pipeline
@@ -245,6 +262,19 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async updateChangeRequestStatus(id: number, status: string) {
       return db.update(changeRequests).set({ status }).where(eq(changeRequests.id, id)).returning().get();
     }
+
+    async listFeedback() {
+      return db.select().from(feedback).all();
+    }
+    async listFeedbackByUser(userId: number) {
+      return db.select().from(feedback).where(eq(feedback.userId, userId)).all();
+    }
+    async createFeedback(data: Omit<Feedback, "id">) {
+      return db.insert(feedback).values(data).returning().get();
+    }
+    async updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>) {
+      return db.update(feedback).set(data).where(eq(feedback.id, id)).returning().get();
+    }
   }
 
   // ---------- Seed ----------
@@ -265,9 +295,10 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
 
   const anyPartnership = db.select().from(partnerships).all();
   if (anyPartnership.length === 0) {
+    const photosFor = (nameEn: string) => PHOTO_SEED.find((s) => s.nameEn === nameEn)?.photos ?? null;
     for (const p of SEED_PARTNERS) {
       db.insert(partnerships)
-        .values({ ...p, status: "approved", submittedBy: 1, createdAt: now } as any)
+        .values({ ...p, photos: photosFor((p as any).nameEn), status: "approved", submittedBy: 1, createdAt: now } as any)
         .run();
     }
   }

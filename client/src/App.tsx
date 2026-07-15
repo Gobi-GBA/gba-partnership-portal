@@ -14,6 +14,7 @@ import Submit from "@/pages/submit";
 import Login from "@/pages/login";
 import Reset from "@/pages/reset";
 import Admin from "@/pages/admin";
+import Updates from "@/pages/updates";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -30,6 +31,7 @@ function AppRouter() {
       <Route path="/submit" component={Submit} />
       <Route path="/login" component={Login} />
       <Route path="/reset" component={Reset} />
+      <Route path="/updates" component={Updates} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>

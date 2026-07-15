@@ -20,10 +20,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays } from "lucide-react";
-import type { Partnership, SafeUser, Stage, ChangeRequest } from "@shared/schema";
-import { ROLES } from "@shared/schema";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save } from "lucide-react";
+import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus } from "@shared/schema";
+import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
+import { FeedbackStatusBadge } from "@/pages/updates";
 
 export default function Admin() {
   const { t } = useLang();
@@ -51,21 +52,189 @@ export default function Admin() {
             <TabsTrigger value="partnerships" data-testid="tab-admin-partnerships">{t("adminPartnerships")}</TabsTrigger>
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
+            <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
           </TabsList>
           <TabsContent value="partnerships"><PartnershipAdmin /></TabsContent>
           <TabsContent value="changes"><ChangeRequestAdmin /></TabsContent>
           <TabsContent value="users"><UserAdmin /></TabsContent>
+          <TabsContent value="feedback"><FeedbackAdmin /></TabsContent>
         </Tabs>
       </div>
     </Layout>
   );
 }
 
+// ---------------- Feedback / system requests ----------------
+function FeedbackCard({ fb }: { fb: Feedback }) {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const [note, setNote] = useState(fb.adminNote ?? "");
+
+  const mutation = useMutation({
+    mutationFn: async (data: { status?: FeedbackStatus; adminNote?: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/feedback/${fb.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }),
+    onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={`card-admin-feedback-${fb.id}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm">{fb.userName}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {new Date(fb.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}
+          </p>
+        </div>
+        <FeedbackStatusBadge status={fb.status as FeedbackStatus} />
+        <Select value={fb.status} onValueChange={(v) => mutation.mutate({ status: v as FeedbackStatus })}>
+          <SelectTrigger className="w-36 h-8 text-xs" data-testid={`select-fb-status-${fb.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FEEDBACK_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>{t(`fbStatus_${s}` as any)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-sm whitespace-pre-wrap" data-testid={`text-admin-feedback-${fb.id}`}>{fb.message}</p>
+      <div className="flex items-start gap-2">
+        <Textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t("fbNotePlaceholder")}
+          rows={2}
+          maxLength={2000}
+          className="text-sm"
+          data-testid={`input-fb-note-${fb.id}`}
+        />
+        <Button
+          size="icon"
+          variant="outline"
+          title={t("save")}
+          disabled={mutation.isPending || note === (fb.adminNote ?? "")}
+          onClick={() => mutation.mutate({ adminNote: note.trim() ? note.trim() : null })}
+          data-testid={`button-save-fb-note-${fb.id}`}
+        >
+          <Save className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackAdmin() {
+  const { t } = useLang();
+  const { data: list, isLoading } = useQuery<Feedback[]>({ queryKey: ["/api/feedback"] });
+
+  if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
+  const items = list ?? [];
+  const open = items.filter((f) => f.status === "open" || f.status === "in_progress");
+  const closed = items.filter((f) => f.status === "solved" || f.status === "declined");
+
+  return (
+    <div className="space-y-6">
+      {open.length > 0 ? (
+        <div>
+          <h3 className="text-sm font-bold mb-3">{t("fbStatus_open")} ({open.length})</h3>
+          <div className="space-y-3">{open.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid="text-no-feedback">{t("noRequests")}</p>
+      )}
+      {closed.length > 0 && <div className="space-y-3">{closed.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>}
+    </div>
+  );
+}
+
 // ---------------- Users ----------------
+function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("viewer");
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/users", { name: name.trim(), email: email.trim(), password, role });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: t("accountCreated") });
+      setName(""); setEmail(""); setPassword(""); setRole("viewer");
+      onClose();
+    },
+    onError: (e: any) => {
+      const msg = String(e?.message ?? "");
+      toast({ title: msg.includes("email_taken") ? t("emailTaken") : msg || "Failed", variant: "destructive" });
+    },
+  });
+
+  const valid = name.trim().length > 0 && /.+@.+\..+/.test(email.trim()) && password.length >= 8;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("addAccount")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-2">{t("addAccountSub")}</p>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="acct-name">{t("name")}</Label>
+            <Input id="acct-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} data-testid="input-account-name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="acct-email">{t("email")}</Label>
+            <Input id="acct-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-account-email" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="acct-password">{t("password")}</Label>
+            <Input id="acct-password" type="text" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={100} data-testid="input-account-password" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t("roleLabel")}</Label>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger data-testid="select-account-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => (
+                  <SelectItem key={r} value={r}>{t(`role_${r}` as any)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose} data-testid="button-cancel-account">{t("cancel")}</Button>
+            <Button
+              disabled={!valid || create.isPending}
+              onClick={() => create.mutate()}
+              className="bg-[hsl(193,52%,38%)] hover:bg-[hsl(193,52%,30%)] text-white"
+              data-testid="button-create-account"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              {t("addAccount")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UserAdmin() {
   const { t } = useLang();
   const { toast } = useToast();
   const { user: me } = useAuth();
+  const [query, setQuery] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
 
   const mutation = useMutation({
@@ -78,8 +247,12 @@ function UserAdmin() {
   });
 
   if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
-  const pending = (users ?? []).filter((u) => u.status === "pending");
-  const others = (users ?? []).filter((u) => u.status !== "pending");
+  const q = query.trim().toLowerCase();
+  const visible = (users ?? []).filter(
+    (u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+  );
+  const pending = visible.filter((u) => u.status === "pending");
+  const others = visible.filter((u) => u.status !== "pending");
 
   const row = (u: SafeUser) => (
     <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-card-border bg-card px-4 py-3" data-testid={`row-user-${u.id}`}>
@@ -125,6 +298,26 @@ function UserAdmin() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("adminSearchUsers")}
+            className="pl-9"
+            data-testid="input-search-users"
+          />
+        </div>
+        <Button
+          onClick={() => setShowAdd(true)}
+          className="bg-[hsl(193,52%,38%)] hover:bg-[hsl(193,52%,30%)] text-white"
+          data-testid="button-add-account"
+        >
+          <UserPlus className="h-4 w-4 mr-2" />
+          {t("addAccount")}
+        </Button>
+      </div>
       {pending.length > 0 && (
         <div>
           <h3 className="text-sm font-bold mb-3">{t("status_pending")} ({pending.length})</h3>
@@ -132,7 +325,8 @@ function UserAdmin() {
         </div>
       )}
       <div className="space-y-2">{others.map(row)}</div>
-      {(users ?? []).length === 0 && <p className="text-muted-foreground">{t("noPending")}</p>}
+      {visible.length === 0 && <p className="text-muted-foreground">{t("noPending")}</p>}
+      <AddAccountDialog open={showAdd} onClose={() => setShowAdd(false)} />
     </div>
   );
 }
@@ -143,7 +337,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
   website: "website", logoUrl: "logoUrl", descriptionEn: "descriptionEn", descriptionCn: "descriptionCn",
   contactName: "contactName", contactEmail: "contactEmail", picName: "picLabel", picNames: "picsLabel", parentId: "parentLabel",
   context: "contextLabel", partnershipType: "partnershipType", startDate: "startDate",
-  stage: "filterStage", collabLevel: "collabLevel", notes: "notes",
+  stage: "filterStage", collabLevel: "collabLevel", notes: "notes", photos: "photosLabel",
 };
 
 function ChangeRequestAdmin() {
@@ -259,6 +453,7 @@ function PartnershipAdmin() {
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<Partnership | null>(null);
   const [editTarget, setEditTarget] = useState<Partnership | null>(null);
+  const [query, setQuery] = useState("");
   const { data: all, isLoading } = useQuery<Partnership[]>({ queryKey: ["/api/admin/partnerships"] });
 
   const invalidate = () => {
@@ -286,8 +481,16 @@ function PartnershipAdmin() {
   });
 
   if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
-  const pending = (all ?? []).filter((p) => p.status === "pending");
-  const others = (all ?? []).filter((p) => p.status !== "pending");
+  const q = query.trim().toLowerCase();
+  const visible = (all ?? []).filter(
+    (p) =>
+      !q ||
+      [p.nameEn, p.nameCn, p.partnershipType, p.contactName, picsOf(p).join(" ")]
+        .filter(Boolean)
+        .some((s) => String(s).toLowerCase().includes(q)),
+  );
+  const pending = visible.filter((p) => p.status === "pending");
+  const others = visible.filter((p) => p.status !== "pending");
 
   const row = (p: Partnership) => {
     const name = lang === "cn" && p.nameCn ? p.nameCn : p.nameEn;
@@ -363,6 +566,16 @@ function PartnershipAdmin() {
 
   return (
     <div className="space-y-6">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("adminSearchRecords")}
+          className="pl-9"
+          data-testid="input-search-records"
+        />
+      </div>
       {pending.length > 0 ? (
         <div>
           <h3 className="text-sm font-bold mb-3">{t("status_pending")} ({pending.length})</h3>

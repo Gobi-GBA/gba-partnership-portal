@@ -117,6 +117,7 @@ export const partnerships = sqliteTable("partnerships", {
   context: text("context"), // narrative background, e.g. from reports / docs
   partnershipType: text("partnership_type"), // free text, e.g. "Joint fund", "Deal flow MOU"
   startDate: text("start_date"), // ISO date string
+  photos: text("photos", { mode: "json" }).$type<string[]>(), // gallery photo URLs (carousel)
   stage: text("stage").notNull().default("s1_new"),
   collabLevel: integer("collab_level").notNull().default(1), // 1-5
   hallOfFame: integer("hall_of_fame").notNull().default(0), // 0 | 1
@@ -139,6 +140,7 @@ export const insertPartnershipSchema = createInsertSchema(partnerships).omit({
   collabLevel: z.number().int().min(1).max(5),
   parentId: z.number().int().nullable().optional(),
   picNames: z.array(z.string()).max(8).nullable().optional(),
+  photos: z.array(z.string()).max(12).nullable().optional(),
 });
 
 export type InsertPartnership = z.infer<typeof insertPartnershipSchema>;
@@ -203,6 +205,42 @@ export const auditLogs = sqliteTable("audit_logs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type AuditAction = "create" | "update" | "approve" | "reject" | "delete" | "change_request" | "change_approved" | "change_rejected";
+
+// ---------- Feedback / system requests ----------
+export const FEEDBACK_STATUSES = ["open", "in_progress", "solved", "declined"] as const;
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+
+export const feedback = sqliteTable("feedback", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
+  userName: text("user_name").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("open"), // FEEDBACK_STATUSES
+  adminNote: text("admin_note"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export type Feedback = typeof feedback.$inferSelect;
+
+export const feedbackInputSchema = z.object({
+  message: z.string().min(3).max(2000),
+});
+export type FeedbackInput = z.infer<typeof feedbackInputSchema>;
+
+export const feedbackUpdateSchema = z.object({
+  status: z.enum(FEEDBACK_STATUSES).optional(),
+  adminNote: z.string().max(2000).nullable().optional(),
+});
+
+// ---------- Admin: create account directly ----------
+export const adminCreateUserSchema = z.object({
+  name: z.string().min(1).max(80),
+  email: z.string().email(),
+  password: z.string().min(8).max(100),
+  role: z.enum(["viewer", "staff", "admin"]),
+});
+export type AdminCreateUser = z.infer<typeof adminCreateUserSchema>;
 
 // ---------- Gobi staff (relationship PIC directory, from gobi.vc/team) ----------
 export interface GobiStaff {

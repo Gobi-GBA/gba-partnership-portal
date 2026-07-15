@@ -8,9 +8,31 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.1";
+export const CURRENT_VERSION = "4.2";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.2",
+    date: "2026-07-15",
+    titleEn: "Filters, feedback & photo galleries",
+    titleCn: "筛选、反馈与照片展示",
+    itemsEn: [
+      "Filters now support selecting multiple options at once (category, stage, region, year)",
+      "New Updates page — full system update log plus system requests & feedback",
+      "Submit a system request from the portal and track its status (open / in progress / solved / declined)",
+      "Admins can reply to requests, manage them in a new admin tab, and add team accounts directly",
+      "Search boxes added to the admin console (partnership records and team accounts)",
+      "Partner photo carousels — example galleries added for HKU, HKUST and HKIC",
+    ],
+    itemsCn: [
+      "筛选器支持多选（类别、阶段、地区、年份）",
+      "新增系统动态页面 — 完整更新日志与系统需求反馈",
+      "可在门户内提交系统需求并跟踪处理状态（待处理 / 处理中 / 已解决 / 已拒绝）",
+      "管理员可回复需求、在新的管理页签中处理，并可直接新增团队账户",
+      "管理后台新增搜索框（合作记录与团队账户）",
+      "合作伙伴照片轮播 — 已为港大、科大与港投公司添加示例图库",
+    ],
+  },
   {
     version: "4.1",
     date: "2026-07-15",
