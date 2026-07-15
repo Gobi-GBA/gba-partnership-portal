@@ -129,3 +129,13 @@ export function yearsOf(list: Pick<Partnership, "startDate">[]): string[] {
   }
   return Array.from(ys).sort().reverse();
 }
+
+// Secret question ids — rendered bilingually via i18n keys of the same name
+export const SECRET_QUESTIONS = [
+  "sq_birth_city",
+  "sq_first_school",
+  "sq_first_pet",
+  "sq_mother_name",
+  "sq_favorite_book",
+  "sq_childhood_friend",
+] as const;

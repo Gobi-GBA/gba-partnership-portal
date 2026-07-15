@@ -15,6 +15,12 @@ export const users = sqliteTable("users", {
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
   title: text("title"), // job title, editable by the user
   avatarUrl: text("avatar_url"), // profile photo (URL or data URI)
+  secretQ1: text("secret_q1"), // secret question id (see SECRET_QUESTIONS)
+  secretA1Hash: text("secret_a1_hash"),
+  secretQ2: text("secret_q2"),
+  secretA2Hash: text("secret_a2_hash"),
+  resetTokenHash: text("reset_token_hash"), // sha256 of the emailed reset token
+  resetExpires: text("reset_expires"), // ISO timestamp
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -22,13 +28,26 @@ export const insertUserSchema = createInsertSchema(users).omit({
   passwordHash: true,
   role: true,
   status: true,
+  secretQ1: true,
+  secretA1Hash: true,
+  secretQ2: true,
+  secretA2Hash: true,
+  resetTokenHash: true,
+  resetExpires: true,
 }).extend({
   password: z.string().min(6),
+  secretQ1: z.string().min(1).max(40),
+  secretA1: z.string().min(1).max(120),
+  secretQ2: z.string().min(1).max(40),
+  secretA2: z.string().min(1).max(120),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type SafeUser = Omit<User, "passwordHash">;
+export type SafeUser = Omit<
+  User,
+  "passwordHash" | "secretA1Hash" | "secretA2Hash" | "resetTokenHash" | "resetExpires"
+>;
 
 // Profile fields a user may edit about themselves
 export const profileUpdateSchema = z.object({

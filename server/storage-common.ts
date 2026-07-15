@@ -26,9 +26,30 @@ export function verifyPassword(password: string, stored: string): boolean {
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(data: { name: string; email: string; passwordHash: string; role?: string; status?: string }): Promise<User>;
+  createUser(data: {
+    name: string;
+    email: string;
+    passwordHash: string;
+    role?: string;
+    status?: string;
+    secretQ1?: string | null;
+    secretA1Hash?: string | null;
+    secretQ2?: string | null;
+    secretA2Hash?: string | null;
+  }): Promise<User>;
   listUsers(): Promise<User[]>;
-  updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>): Promise<User | undefined>;
+  updateUser(
+    id: number,
+    data: Partial<
+      Pick<
+        User,
+        | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
+        | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
+        | "resetTokenHash" | "resetExpires"
+      >
+    >
+  ): Promise<User | undefined>;
+  getUserByResetToken(tokenHash: string): Promise<User | undefined>;
 
   createSession(userId: number): Promise<Session>;
   getSession(token: string): Promise<Session | undefined>;

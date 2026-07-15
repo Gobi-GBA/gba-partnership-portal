@@ -12,6 +12,12 @@ export const usersPg = pgTable("users", {
   status: text("status").notNull().default("pending"),
   title: text("title"),
   avatarUrl: text("avatar_url"),
+  secretQ1: text("secret_q1"),
+  secretA1Hash: text("secret_a1_hash"),
+  secretQ2: text("secret_q2"),
+  secretA2Hash: text("secret_a2_hash"),
+  resetTokenHash: text("reset_token_hash"),
+  resetExpires: text("reset_expires"),
 });
 
 export const sessionsPg = pgTable("sessions", {

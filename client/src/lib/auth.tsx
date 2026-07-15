@@ -5,7 +5,12 @@ import type { SafeUser } from "@shared/schema";
 interface AuthContextValue {
   user: SafeUser | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    secrets: { secretQ1: string; secretA1: string; secretQ2: string; secretA2: string }
+  ) => Promise<{ autoApproved: boolean; emailSent: boolean }>;
   logout: () => void;
   updateUser: (u: SafeUser) => void;
 }
@@ -13,7 +18,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   login: async () => {},
-  register: async () => {},
+  register: async () => ({ autoApproved: false, emailSent: false }),
   logout: () => {},
   updateUser: () => {},
 });
@@ -29,8 +34,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries();
   };
 
-  const register = async (name: string, email: string, password: string) => {
-    await apiRequest("POST", "/api/auth/register", { name, email, password });
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    secrets: { secretQ1: string; secretA1: string; secretQ2: string; secretA2: string }
+  ) => {
+    const res = await apiRequest("POST", "/api/auth/register", { name, email, password, ...secrets });
+    const data = await res.json();
+    return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent) };
   };
 
   const logout = () => {

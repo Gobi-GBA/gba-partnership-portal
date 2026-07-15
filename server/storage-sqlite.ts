@@ -94,6 +94,12 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("partnerships", "context", "context TEXT");
   ensureColumn("users", "title", "title TEXT");
   ensureColumn("users", "avatar_url", "avatar_url TEXT");
+  ensureColumn("users", "secret_q1", "secret_q1 TEXT");
+  ensureColumn("users", "secret_a1_hash", "secret_a1_hash TEXT");
+  ensureColumn("users", "secret_q2", "secret_q2 TEXT");
+  ensureColumn("users", "secret_a2_hash", "secret_a2_hash TEXT");
+  ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
+  ensureColumn("users", "reset_expires", "reset_expires TEXT");
   // Migrate legacy single PIC into multi-PIC list
   sqlite.exec(`UPDATE partnerships SET pic_names = json_array(pic_name) WHERE pic_names IS NULL AND pic_name IS NOT NULL AND pic_name != ''`);
   // Migrate old stage values → 01-05 pipeline
@@ -119,7 +125,10 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async getUserByEmail(email: string) {
       return db.select().from(users).where(eq(users.email, email.toLowerCase())).get();
     }
-    async createUser(data: { name: string; email: string; passwordHash: string; role?: string; status?: string }) {
+    async createUser(data: {
+      name: string; email: string; passwordHash: string; role?: string; status?: string;
+      secretQ1?: string | null; secretA1Hash?: string | null; secretQ2?: string | null; secretA2Hash?: string | null;
+    }) {
       return db
         .insert(users)
         .values({
@@ -128,6 +137,10 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
           passwordHash: data.passwordHash,
           role: data.role ?? "staff",
           status: data.status ?? "pending",
+          secretQ1: data.secretQ1 ?? null,
+          secretA1Hash: data.secretA1Hash ?? null,
+          secretQ2: data.secretQ2 ?? null,
+          secretA2Hash: data.secretA2Hash ?? null,
         })
         .returning()
         .get();
@@ -135,8 +148,21 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async listUsers() {
       return db.select().from(users).all();
     }
-    async updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>) {
+    async updateUser(
+      id: number,
+      data: Partial<
+        Pick<
+          User,
+          | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
+          | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
+          | "resetTokenHash" | "resetExpires"
+        >
+      >
+    ) {
       return db.update(users).set(data).where(eq(users.id, id)).returning().get();
+    }
+    async getUserByResetToken(tokenHash: string) {
+      return db.select().from(users).where(eq(users.resetTokenHash, tokenHash)).get();
     }
 
     async createSession(userId: number) {

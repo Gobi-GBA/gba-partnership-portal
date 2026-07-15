@@ -1,6 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword } from "./storage.js";
+import { mailEnabled, sendMail, registrationEmail, resetEmail } from "./mailer.js";
+import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
   insertPartnershipSchema,
@@ -27,8 +29,28 @@ const STAGE_LEVEL: Record<string, number> = {
 };
 
 function safe(user: User): SafeUser {
-  const { passwordHash, ...rest } = user;
+  const { passwordHash, secretA1Hash, secretA2Hash, resetTokenHash, resetExpires, ...rest } = user;
   return rest;
+}
+
+// Secret answers are case/whitespace-insensitive, hashed with the same scrypt scheme as passwords.
+function normalizeAnswer(a: string): string {
+  return a.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+const AUTO_APPROVE_DOMAIN = "@gobi.vc"; // registrations from this domain are approved instantly as viewers
+
+function appBaseUrl(req: Request): string {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin.startsWith("http")) return origin;
+  const proto = (req.headers["x-forwarded-proto"] as string) ?? req.protocol ?? "https";
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+  return `${proto}://${host}`;
 }
 
 interface AuthedRequest extends Request {
@@ -118,12 +140,86 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) return res.status(400).json({ message: "Invalid registration data" });
     const existing = await storage.getUserByEmail(parsed.data.email);
     if (existing) return res.status(409).json({ message: "Email already registered" });
+    const email = parsed.data.email.toLowerCase();
+    const autoApproved = email.endsWith(AUTO_APPROVE_DOMAIN);
     const user = await storage.createUser({
       name: parsed.data.name,
-      email: parsed.data.email,
+      email,
       passwordHash: hashPassword(parsed.data.password),
+      // @gobi.vc colleagues get instant viewer access; everyone else awaits admin approval
+      ...(autoApproved ? { status: "approved", role: "viewer" } : {}),
+      secretQ1: parsed.data.secretQ1,
+      secretA1Hash: hashPassword(normalizeAnswer(parsed.data.secretA1)),
+      secretQ2: parsed.data.secretQ2,
+      secretA2Hash: hashPassword(normalizeAnswer(parsed.data.secretA2)),
     });
-    res.status(201).json({ user: safe(user) });
+    // Confirmation email (fire-and-forget; registration succeeds even if mail fails)
+    const tpl = registrationEmail(user.name, autoApproved);
+    const emailSent = await sendMail(user.email, tpl.subject, tpl.html);
+    res.status(201).json({ user: safe(user), autoApproved, emailSent });
+  });
+
+  // ---------- Password reset ----------
+  // Step 1a: request a reset link by email
+  app.post("/api/auth/forgot", async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email) return res.status(400).json({ message: "Email required" });
+    const user = await storage.getUserByEmail(email);
+    let emailSent = false;
+    if (user && mailEnabled) {
+      const token = randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+      await storage.updateUser(user.id, { resetTokenHash: sha256(token), resetExpires: expires });
+      const link = `${appBaseUrl(req)}/#/reset?token=${token}`;
+      const tpl = resetEmail(user.name, link);
+      emailSent = await sendMail(user.email, tpl.subject, tpl.html);
+    }
+    // Generic response — do not reveal whether the account exists
+    res.json({ ok: true, emailConfigured: mailEnabled, emailSent });
+  });
+
+  // Step 1b: fetch a user's secret questions (internal tool — enumeration accepted)
+  app.post("/api/auth/forgot/questions", async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email) return res.status(400).json({ message: "Email required" });
+    const user = await storage.getUserByEmail(email);
+    if (!user || !user.secretQ1 || !user.secretQ2 || !user.secretA1Hash || !user.secretA2Hash) {
+      return res.status(404).json({ message: "no_secret_questions" });
+    }
+    res.json({ questions: [user.secretQ1, user.secretQ2] });
+  });
+
+  // Step 2: set a new password via token OR secret answers
+  app.post("/api/auth/reset", async (req, res) => {
+    const { token, email, answers, password } = req.body ?? {};
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    let user: User | undefined;
+    if (typeof token === "string" && token.length > 0) {
+      user = await storage.getUserByResetToken(sha256(token));
+      if (!user || !user.resetExpires || new Date(user.resetExpires).getTime() < Date.now()) {
+        return res.status(400).json({ message: "invalid_or_expired_token" });
+      }
+    } else if (typeof email === "string" && Array.isArray(answers) && answers.length === 2) {
+      const candidate = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!candidate || !candidate.secretA1Hash || !candidate.secretA2Hash) {
+        return res.status(400).json({ message: "wrong_answers" });
+      }
+      const ok =
+        verifyPassword(normalizeAnswer(String(answers[0] ?? "")), candidate.secretA1Hash) &&
+        verifyPassword(normalizeAnswer(String(answers[1] ?? "")), candidate.secretA2Hash);
+      if (!ok) return res.status(400).json({ message: "wrong_answers" });
+      user = candidate;
+    } else {
+      return res.status(400).json({ message: "Token or secret answers required" });
+    }
+    await storage.updateUser(user.id, {
+      passwordHash: hashPassword(password),
+      resetTokenHash: null,
+      resetExpires: null,
+    });
+    res.json({ ok: true });
   });
 
   app.post("/api/auth/login", async (req, res) => {

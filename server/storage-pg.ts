@@ -78,6 +78,12 @@ const BOOTSTRAP: string[] = [
   )`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_q1 TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_a1_hash TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_q2 TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_a2_hash TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires TEXT`,
   // v4: collaboration level is derived from the stage (single source of truth) — keep legacy rows aligned
   `UPDATE partnerships SET collab_level = CAST(SUBSTR(stage, 2, 1) AS INT) WHERE stage ~ '^s[1-5]_' AND collab_level <> CAST(SUBSTR(stage, 2, 1) AS INT)`,
 ];
@@ -132,7 +138,10 @@ export function createPgStorage(): IStorage {
       const rows = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
       return rows[0] as User | undefined;
     }
-    async createUser(data: { name: string; email: string; passwordHash: string; role?: string; status?: string }) {
+    async createUser(data: {
+      name: string; email: string; passwordHash: string; role?: string; status?: string;
+      secretQ1?: string | null; secretA1Hash?: string | null; secretQ2?: string | null; secretA2Hash?: string | null;
+    }) {
       await init();
       const rows = await db
         .insert(users)
@@ -140,6 +149,10 @@ export function createPgStorage(): IStorage {
           name: data.name,
           email: data.email.toLowerCase(),
           passwordHash: data.passwordHash,
+          secretQ1: data.secretQ1 ?? null,
+          secretA1Hash: data.secretA1Hash ?? null,
+          secretQ2: data.secretQ2 ?? null,
+          secretA2Hash: data.secretA2Hash ?? null,
           role: data.role ?? "staff",
           status: data.status ?? "pending",
         })
@@ -150,9 +163,24 @@ export function createPgStorage(): IStorage {
       await init();
       return (await db.select().from(users)) as User[];
     }
-    async updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>) {
+    async updateUser(
+      id: number,
+      data: Partial<
+        Pick<
+          User,
+          | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
+          | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
+          | "resetTokenHash" | "resetExpires"
+        >
+      >
+    ) {
       await init();
       const rows = await db.update(users).set(data).where(eq(users.id, id)).returning();
+      return rows[0] as User | undefined;
+    }
+    async getUserByResetToken(tokenHash: string) {
+      await init();
+      const rows = await db.select().from(users).where(eq(users.resetTokenHash, tokenHash)).limit(1);
       return rows[0] as User | undefined;
     }
 

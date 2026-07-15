@@ -8,9 +8,27 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.0";
+export const CURRENT_VERSION = "4.1";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.1",
+    date: "2026-07-15",
+    titleEn: "Account security & email",
+    titleCn: "账户安全与邮件",
+    itemsEn: [
+      "Forgot password — reset via an emailed link or by answering secret questions",
+      "Secret questions are set during registration (bilingual, answers stored hashed)",
+      "Confirmation email sent when registration completes",
+      "@gobi.vc registrations are approved automatically as viewers — sign in right away",
+    ],
+    itemsCn: [
+      "忘记密码 — 可通过邮箱重置链接或回答密保问题重置",
+      "注册时设置密保问题（中英双语，答案加密存储）",
+      "注册完成后自动发送确认邮件",
+      "@gobi.vc 邮箱注册自动获批为查看者，无需等待审批",
+    ],
+  },
   {
     version: "4.0",
     date: "2026-07-15",
