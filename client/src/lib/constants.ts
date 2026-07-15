@@ -1,0 +1,114 @@
+import type { Stage, Category, Region, Partnership } from "@shared/schema";
+import { STAGES, CATEGORIES, REGIONS, GOBI_STAFF } from "@shared/schema";
+
+export { STAGES, CATEGORIES, REGIONS, GOBI_STAFF };
+
+// Stage ordering for pipeline progress (index = progress)
+export const STAGE_ORDER: Record<Stage, number> = {
+  s1_new: 0,
+  s2_engaged: 1,
+  s3_agreement: 2,
+  s4_progressive: 3,
+  s5_strategic: 4,
+};
+
+// Numeric prefix shown on badges: 01-05
+export const STAGE_NUM: Record<Stage, string> = {
+  s1_new: "01",
+  s2_engaged: "02",
+  s3_agreement: "03",
+  s4_progressive: "04",
+  s5_strategic: "05",
+};
+
+// Badge styling per stage (Tailwind classes, light+dark)
+export const STAGE_STYLES: Record<Stage, string> = {
+  s1_new: "bg-muted text-muted-foreground border-transparent",
+  s2_engaged: "bg-[hsl(193,45%,88%)] text-[hsl(214,68%,20%)] dark:bg-[hsl(214,55%,20%)] dark:text-[hsl(193,52%,70%)] border-transparent",
+  s3_agreement: "bg-[hsl(193,52%,43%)] text-white dark:bg-[hsl(193,52%,35%)] border-transparent",
+  s4_progressive: "bg-[hsl(214,68%,25%)] text-white dark:bg-[hsl(214,60%,35%)] border-transparent",
+  s5_strategic: "bg-[hsl(42,63%,50%)] text-[hsl(214,68%,12%)] dark:bg-[hsl(42,63%,55%)] border-transparent",
+};
+
+// Region ordering — Gobi office regions first
+export const REGION_ORDER: Record<Region, number> = Object.fromEntries(
+  REGIONS.map((r, i) => [r, i]),
+) as Record<Region, number>;
+
+// Hub colors per region (network diagram)
+export const REGION_COLORS: Record<Region, string> = {
+  hongkong: "#48A9C5",
+  mainland: "#C4716C",
+  malaysia: "#7FB069",
+  singapore: "#3E8E7E",
+  philippines: "#D4A843",
+  vietnam: "#6B93C4",
+  indonesia: "#B08968",
+  pakistan: "#5E8C61",
+  japan: "#C48BB8",
+  korea: "#8E7CC3",
+  taiwan: "#C99A5B",
+  macau: "#9B8CC4",
+  sea: "#7FB069",
+  international: "#5B84B1",
+};
+
+// Category colors (used in network diagram + badges)
+export const CATEGORY_COLORS: Record<Category, string> = {
+  university: "#48A9C5", // aqua
+  corporate: "#0C2340", // navy
+  government: "#7A6FBE", // muted violet
+  investor: "#D4A843", // gold
+  accelerator: "#3E8E7E", // teal-green
+  research: "#A8D8E8", // aqua light
+  media: "#C4716C", // warm coral
+  ecosystem: "#7FB069", // leaf green
+  other: "#8FA5BB", // gray-blue
+};
+
+export const CATEGORY_COLORS_DARK: Record<Category, string> = {
+  ...CATEGORY_COLORS,
+  corporate: "#6B93C4",
+};
+
+export function logoFor(p: Pick<Partnership, "logoUrl" | "website">): string | null {
+  if (p.logoUrl) return p.logoUrl;
+  if (p.website) {
+    try {
+      const domain = new URL(p.website).hostname;
+      return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+// Merge multi-PIC list with legacy single picName
+export function picsOf(p: Pick<Partnership, "picNames" | "picName">): string[] {
+  const list = Array.isArray(p.picNames) ? p.picNames.filter(Boolean) : [];
+  if (list.length > 0) return list;
+  return p.picName ? [p.picName] : [];
+}
+
+export function initialsFor(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// Region-first sort (Gobi offices first), then category, then stage (most advanced first)
+export function sortPartnerships<T extends Pick<Partnership, "region" | "category" | "stage" | "hallOfFame" | "nameEn">>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const hof = (b.hallOfFame ?? 0) - (a.hallOfFame ?? 0);
+    if (hof !== 0) return hof;
+    const r = (REGION_ORDER[a.region as Region] ?? 9) - (REGION_ORDER[b.region as Region] ?? 9);
+    if (r !== 0) return r;
+    const c = CATEGORIES.indexOf(a.category as Category) - CATEGORIES.indexOf(b.category as Category);
+    if (c !== 0) return c;
+    const s = (STAGE_ORDER[b.stage as Stage] ?? 0) - (STAGE_ORDER[a.stage as Stage] ?? 0);
+    if (s !== 0) return s;
+    return a.nameEn.localeCompare(b.nameEn);
+  });
+}
