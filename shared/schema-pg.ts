@@ -10,6 +10,8 @@ export const usersPg = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("staff"),
   status: text("status").notNull().default("pending"),
+  title: text("title"),
+  avatarUrl: text("avatar_url"),
 });
 
 export const sessionsPg = pgTable("sessions", {
@@ -52,6 +54,16 @@ export const attachmentsPg = pgTable("attachments", {
   size: integer("size").notNull(),
   data: text("data").notNull(),
   uploadedBy: integer("uploaded_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const auditLogsPg = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  partnershipId: integer("partnership_id").notNull(),
+  userId: integer("user_id"),
+  userName: text("user_name").notNull(),
+  action: text("action").notNull(),
+  changes: text("changes"),
   createdAt: text("created_at").notNull(),
 });
 

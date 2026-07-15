@@ -4,6 +4,9 @@ export const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
 // Auth token kept in memory (cookies/localStorage are blocked in the sandboxed iframe)
 let authToken: string | null = null;
+export function getAuthToken() {
+  return authToken;
+}
 export function setAuthToken(token: string | null) {
   authToken = token;
 }

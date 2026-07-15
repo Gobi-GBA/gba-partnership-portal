@@ -6,16 +6,25 @@ import {
   insertPartnershipSchema,
   attachmentInputSchema,
   changeRequestInputSchema,
+  profileUpdateSchema,
   STAGES,
   CATEGORIES,
   REGIONS,
   ROLES,
   GOBI_STAFF,
 } from "../shared/schema.js";
-import type { SafeUser, User } from "../shared/schema.js";
-import Anthropic from "@anthropic-ai/sdk";
+import type { SafeUser, User, AuditAction } from "../shared/schema.js";
 import mammoth from "mammoth";
 import { z } from "zod";
+
+// Single source of truth: collaboration level is always derived from the stage.
+const STAGE_LEVEL: Record<string, number> = {
+  s1_new: 1,
+  s2_engaged: 2,
+  s3_agreement: 3,
+  s4_progressive: 4,
+  s5_strategic: 5,
+};
 
 function safe(user: User): SafeUser {
   const { passwordHash, ...rest } = user;
@@ -28,10 +37,47 @@ interface AuthedRequest extends Request {
 
 async function resolveUser(req: AuthedRequest): Promise<User | undefined> {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) return undefined;
-  const session = await storage.getSession(header.slice(7));
+  let token: string | undefined;
+  if (header?.startsWith("Bearer ")) token = header.slice(7);
+  // <a href> links (attachment downloads) cannot send headers — accept ?token= too
+  if (!token && typeof req.query?.token === "string") token = req.query.token;
+  if (!token) return undefined;
+  const session = await storage.getSession(token);
   if (!session) return undefined;
   return storage.getUser(session.userId);
+}
+
+// Fire-and-forget audit trail writer — never blocks the main response.
+async function audit(
+  user: User,
+  partnershipId: number,
+  action: AuditAction,
+  changes?: Record<string, unknown>,
+) {
+  try {
+    await storage.createAuditLog({
+      partnershipId,
+      userId: user.id,
+      userName: user.name,
+      action,
+      changes: changes && Object.keys(changes).length ? JSON.stringify(changes) : null,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("audit log failed:", err);
+  }
+}
+
+// Which fields of a partial update actually differ from the stored record
+function diffFields(existing: Record<string, any>, patch: Record<string, any>): Record<string, unknown> {
+  const changed: Record<string, unknown> = {};
+  for (const key of Object.keys(patch)) {
+    if (key === "id") continue;
+    if (JSON.stringify(patch[key] ?? null) !== JSON.stringify(existing[key] ?? null)) {
+      changed[key] = patch[key] ?? null;
+    }
+  }
+  return changed;
 }
 
 // Role gate: "admin" = admin only; "submit" = admin or staff (viewer excluded); undefined = any approved user
@@ -109,11 +155,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safe(req.user!) });
   });
 
+  // Profile self-service: name, title, photo
+  app.patch("/api/me", requireAuth(), async (req: AuthedRequest, res) => {
+    const parsed = profileUpdateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid profile data" });
+    const data: Partial<Pick<User, "name" | "title" | "avatarUrl">> = {};
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.title !== undefined) data.title = parsed.data.title ?? null;
+    if (parsed.data.avatarUrl !== undefined) data.avatarUrl = parsed.data.avatarUrl ?? null;
+    if (!Object.keys(data).length) return res.status(400).json({ message: "Nothing to update" });
+    const updated = await storage.updateUser(req.user!.id, data);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json({ user: safe(updated) });
+  });
+
   // ---------- Partnerships ----------
-  // Public: approved partnerships only
-  app.get("/api/partnerships", async (_req, res) => {
+  // Signed-in users only: approved partnerships
+  app.get("/api/partnerships", requireAuth(), async (_req, res) => {
     const all = await storage.listPartnerships();
     res.json(all.filter((p) => p.status === "approved"));
+  });
+
+  // Audit trail for one partnership — any signed-in user can view
+  app.get("/api/partnerships/:id/audit", requireAuth(), async (req, res) => {
+    const logs = await storage.listAuditLogs(Number(req.params.id));
+    logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(logs);
   });
 
   // Authed: own submissions (any status)
@@ -129,9 +196,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid partnership data", errors: parsed.error.flatten() });
     }
+    if (!parsed.data.startDate) {
+      return res.status(400).json({ message: "Start date is required" });
+    }
     const isAdmin = req.user!.role === "admin";
     const created = await storage.createPartnership({
       ...parsed.data,
+      collabLevel: STAGE_LEVEL[parsed.data.stage] ?? 1,
       nameCn: parsed.data.nameCn ?? null,
       logoUrl: parsed.data.logoUrl ?? null,
       website: parsed.data.website ?? null,
@@ -167,6 +238,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
     }
+    await audit(req.user!, created.id, "create", { nameEn: created.nameEn, stage: created.stage });
     res.status(201).json(created);
   });
 
@@ -186,23 +258,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       delete body.hallOfFame;
     }
     if ("picNames" in body) body.picNames = sanitizePics(body.picNames);
+    if ("startDate" in body && !body.startDate) {
+      return res.status(400).json({ message: "Start date is required" });
+    }
+    // collabLevel always mirrors the stage — never accepted from the client
+    if (typeof body.stage === "string" && STAGE_LEVEL[body.stage]) {
+      body.collabLevel = STAGE_LEVEL[body.stage];
+    } else {
+      delete body.collabLevel;
+    }
+    const changed = diffFields(existing as any, body);
     const updated = await storage.updatePartnership(id, body);
+    if (Object.keys(changed).length) await audit(req.user!, id, "update", changed);
     res.json(updated);
   });
 
-  app.delete("/api/partnerships/:id", requireAuth("admin"), async (req, res) => {
-    await storage.deletePartnership(Number(req.params.id));
+  app.delete("/api/partnerships/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getPartnership(id);
+    await storage.deletePartnership(id);
+    if (existing) await audit(req.user!, id, "delete", { nameEn: existing.nameEn });
     res.json({ ok: true });
   });
 
   // ---------- Attachments ----------
-  // Public: list metadata for a partnership (no file data)
-  app.get("/api/partnerships/:id/attachments", async (req, res) => {
+  // Signed-in users: list metadata for a partnership (no file data)
+  app.get("/api/partnerships/:id/attachments", requireAuth(), async (req, res) => {
     res.json(await storage.listAttachmentMeta(Number(req.params.id)));
   });
 
-  // Public: download/view a file
-  app.get("/api/attachments/:id", async (req, res) => {
+  // Signed-in users: download/view a file (?token= supported for <a> links)
+  app.get("/api/attachments/:id", requireAuth(), async (req, res) => {
     const att = await storage.getAttachment(Number(req.params.id));
     if (!att) return res.status(404).json({ message: "Not found" });
     const buf = Buffer.from(att.data, "base64");
@@ -255,6 +341,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       status: "pending",
       createdAt: new Date().toISOString(),
     });
+    await audit(req.user!, parsed.data.partnershipId, "change_request", parsed.data.changes as Record<string, unknown>);
     res.status(201).json(cr);
   });
 
@@ -268,7 +355,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Approve / reject — admin only; approval applies the proposed changes
-  app.patch("/api/change-requests/:id", requireAuth("admin"), async (req, res) => {
+  app.patch("/api/change-requests/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
     const id = Number(req.params.id);
     const action = req.body?.action;
     if (!["approve", "reject"].includes(action)) {
@@ -284,7 +371,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } catch {
         return res.status(422).json({ message: "Corrupt change payload" });
       }
+      // collabLevel always mirrors the stage
+      if (typeof changes.stage === "string" && STAGE_LEVEL[changes.stage]) {
+        changes.collabLevel = STAGE_LEVEL[changes.stage];
+      } else {
+        delete changes.collabLevel;
+      }
       await storage.updatePartnership(cr.partnershipId, changes);
+      await audit(req.user!, cr.partnershipId, "change_approved", changes);
+    } else {
+      await audit(req.user!, cr.partnershipId, "change_rejected");
     }
     const updated = await storage.updateChangeRequestStatus(id, action === "approve" ? "approved" : "rejected");
     res.json(updated);
@@ -324,7 +420,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.listPartnerships());
   });
 
-  // ---------- AI: extract partnership from pasted text, PDF, DOCX, or images ----------
+  // ---------- AI: extract partnership from pasted text, PDF, or DOCX (DeepSeek, text-only) ----------
   const aiFileSchema = z.object({
     name: z.string(),
     mime: z.string(),
@@ -340,43 +436,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .map((r: any) => r.data as z.infer<typeof aiFileSchema>);
 
     if (text.trim().length < 20 && files.length === 0) {
-      return res.status(400).json({ message: "Paste text or upload a PDF, DOCX, or image" });
+      return res.status(400).json({ message: "Paste text or upload a PDF or DOCX" });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    // The extraction model is text-only — images cannot be read
+    if (files.some((f: { mime: string }) => f.mime.startsWith("image/"))) {
+      return res.status(415).json({
+        message: "Images are not supported for AI quick-fill — please paste the text or upload a PDF/DOCX instead",
+      });
+    }
+
+    if (!process.env.DEEPSEEK_API_KEY) {
       return res.status(503).json({
         message:
-          "AI extraction is not configured on this deployment. Set the ANTHROPIC_API_KEY environment variable to enable it.",
+          "AI extraction is not configured on this deployment. Set the DEEPSEEK_API_KEY environment variable to enable it.",
       });
     }
 
     try {
-      const client = new Anthropic();
-      const content: any[] = [];
-      let docxText = "";
+      let docText = "";
 
       for (const f of files) {
         if (attachmentTooLarge(f.data)) continue;
-        if (f.mime.startsWith("image/")) {
-          content.push({
-            type: "image",
-            source: { type: "base64", media_type: f.mime, data: f.data },
-          });
-        } else if (f.mime === "application/pdf") {
-          content.push({
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: f.data },
-          });
+        if (f.mime === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+          const { extractText, getDocumentProxy } = await import("unpdf");
+          const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(f.data, "base64")));
+          const { text: pdfText } = await extractText(pdf, { mergePages: true });
+          docText += `\n\n--- ${f.name} ---\n${pdfText.slice(0, 12000)}`;
         } else if (
           f.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
           f.name.toLowerCase().endsWith(".docx")
         ) {
           const result = await mammoth.extractRawText({ buffer: Buffer.from(f.data, "base64") });
-          docxText += `\n\n--- ${f.name} ---\n${result.value.slice(0, 12000)}`;
+          docText += `\n\n--- ${f.name} ---\n${result.value.slice(0, 12000)}`;
         }
       }
 
-      const instruction = `You are a data-entry assistant for a Greater Bay Area VC fund's partnership CRM. Analyse the material below (email, notes, PDF, Word document, or images — may be English, Chinese, or mixed).
+      const instruction = `You are a data-entry assistant for the partnership CRM of Gobi Partners, a venture capital firm. Analyse the material below (email, notes, PDF or Word document text — may be English, Chinese, or mixed).
 
 STEP 1 — UNDERSTAND: First show you understood the material: what kind of document it is, who the partner organisation is, and what collaboration it describes.
 STEP 2 — EXTRACT: Then fill the CRM fields.
@@ -397,29 +493,37 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
   "picNames": ["array of Gobi Partners people in charge, if identifiable. Known Gobi staff: ${GOBI_STAFF.map((s) => s.name).join(", ")}"],
   "context": "fuller background paragraph capturing the narrative of the material",
   "partnershipType": "short label e.g. 'Joint fund', 'Deal flow MOU', 'Co-incubation'",
-  "startDate": "YYYY-MM-DD if a start/signing date is mentioned, else \\"\\"",
+  "startDate": "YYYY-MM-DD — REQUIRED, never leave empty. If no explicit date appears, give your best estimate from the material's context or your own knowledge of this partnership (announcements, news). If only a year or month is known, use the first day, e.g. 2024-01-01",
   "stage": one of ${JSON.stringify(STAGES)} (s1_new=identified target only, s2_engaged=in contact / meetings held, s3_agreement=MOU or agreement signed, s4_progressive=active deepening collaboration, s5_strategic=flagship strategic partnership),
-  "collabLevel": integer 1-5 estimating depth of collaboration,
   "notes": "any other useful details (dates, follow-ups, people)"
 }`;
 
       const textBlock = [
         instruction,
         text.trim() ? `\nPASTED TEXT:\n"""\n${text.slice(0, 12000)}\n"""` : "",
-        docxText ? `\nWORD DOCUMENT CONTENT:\n"""\n${docxText}\n"""` : "",
+        docText ? `\nDOCUMENT CONTENT:\n"""\n${docText}\n"""` : "",
       ].join("\n");
 
-      content.push({ type: "text", text: textBlock });
-
-      const msg = await client.messages.create({
-        model: "claude_sonnet_4_6",
-        max_tokens: 1600,
-        messages: [{ role: "user", content }],
+      const resp = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: textBlock }],
+          response_format: { type: "json_object" },
+          max_tokens: 1600,
+        }),
       });
-      const raw = msg.content[0].type === "text" ? msg.content[0].text : "";
+      if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
+      const completion: any = await resp.json();
+      const raw: string = completion.choices?.[0]?.message?.content ?? "";
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON in model output");
       const data = JSON.parse(jsonMatch[0]);
+      const stage = (STAGES as readonly string[]).includes(data.stage) ? data.stage : "s2_engaged";
       const cleaned = {
         understandingEn: String(data.understandingEn ?? ""),
         understandingCn: String(data.understandingCn ?? ""),
@@ -438,8 +542,8 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
         context: String(data.context ?? ""),
         partnershipType: String(data.partnershipType ?? ""),
         startDate: String(data.startDate ?? ""),
-        stage: (STAGES as readonly string[]).includes(data.stage) ? data.stage : "s2_engaged",
-        collabLevel: Math.min(5, Math.max(1, Number(data.collabLevel) || 1)),
+        stage,
+        collabLevel: STAGE_LEVEL[stage] ?? 2,
         notes: String(data.notes ?? ""),
       };
       res.json(cleaned);

@@ -4,8 +4,8 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, type IStorage } from "./storage-common.js";
 
@@ -67,6 +67,19 @@ const BOOTSTRAP: string[] = [
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    partnership_id INTEGER NOT NULL,
+    user_id INTEGER,
+    user_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    changes TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
+  // v4: collaboration level is derived from the stage (single source of truth) — keep legacy rows aligned
+  `UPDATE partnerships SET collab_level = CAST(SUBSTR(stage, 2, 1) AS INT) WHERE stage ~ '^s[1-5]_' AND collab_level <> CAST(SUBSTR(stage, 2, 1) AS INT)`,
 ];
 
 export function createPgStorage(): IStorage {
@@ -137,7 +150,7 @@ export function createPgStorage(): IStorage {
       await init();
       return (await db.select().from(users)) as User[];
     }
-    async updateUser(id: number, data: Partial<Pick<User, "status" | "role">>) {
+    async updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>) {
       await init();
       const rows = await db.update(users).set(data).where(eq(users.id, id)).returning();
       return rows[0] as User | undefined;
@@ -215,6 +228,16 @@ export function createPgStorage(): IStorage {
     async deleteAttachment(id: number) {
       await init();
       await db.delete(attachments).where(eq(attachments.id, id));
+    }
+
+    async createAuditLog(data: Omit<AuditLog, "id">) {
+      await init();
+      const rows = await db.insert(auditLogs).values(data as any).returning();
+      return rows[0] as AuditLog;
+    }
+    async listAuditLogs(partnershipId: number) {
+      await init();
+      return (await db.select().from(auditLogs).where(eq(auditLogs.partnershipId, partnershipId))) as AuditLog[];
     }
 
     async listChangeRequests() {

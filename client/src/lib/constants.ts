@@ -98,17 +98,34 @@ export function initialsFor(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
-// Region-first sort (Gobi offices first), then category, then stage (most advanced first)
+// Strategic-level sort: most advanced stage first, then alphabetical by English name
 export function sortPartnerships<T extends Pick<Partnership, "region" | "category" | "stage" | "hallOfFame" | "nameEn">>(list: T[]): T[] {
   return [...list].sort((a, b) => {
-    const hof = (b.hallOfFame ?? 0) - (a.hallOfFame ?? 0);
-    if (hof !== 0) return hof;
-    const r = (REGION_ORDER[a.region as Region] ?? 9) - (REGION_ORDER[b.region as Region] ?? 9);
-    if (r !== 0) return r;
-    const c = CATEGORIES.indexOf(a.category as Category) - CATEGORIES.indexOf(b.category as Category);
-    if (c !== 0) return c;
     const s = (STAGE_ORDER[b.stage as Stage] ?? 0) - (STAGE_ORDER[a.stage as Stage] ?? 0);
     if (s !== 0) return s;
     return a.nameEn.localeCompare(b.nameEn);
   });
+}
+
+// Collaboration level is derived 1:1 from the partnership stage (01-05)
+export function levelOfStage(stage: string): number {
+  return (STAGE_ORDER[stage as Stage] ?? 0) + 1;
+}
+
+// Entries created within the last 30 days get a NEW badge
+export function isNew(p: Pick<Partnership, "createdAt">): boolean {
+  if (!p.createdAt) return false;
+  const ts = Date.parse(p.createdAt);
+  if (Number.isNaN(ts)) return false;
+  return Date.now() - ts < 30 * 24 * 3600 * 1000;
+}
+
+// Years present in the data (from startDate), newest first
+export function yearsOf(list: Pick<Partnership, "startDate">[]): string[] {
+  const ys = new Set<string>();
+  for (const p of list) {
+    const y = (p.startDate ?? "").slice(0, 4);
+    if (/^\d{4}$/.test(y)) ys.add(y);
+  }
+  return Array.from(ys).sort().reverse();
 }

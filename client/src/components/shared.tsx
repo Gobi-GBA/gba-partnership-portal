@@ -7,15 +7,20 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical } from "lucide-react";
-import type { Partnership, Stage, Category, Region, AttachmentMeta } from "@shared/schema";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History } from "lucide-react";
+import type { Partnership, Stage, Category, Region, AttachmentMeta, AuditLog } from "@shared/schema";
 import { GOBI_OFFICES } from "@shared/schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STAFF, logoFor, initialsFor, picsOf } from "@/lib/constants";
+import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STAFF, logoFor, initialsFor, picsOf, levelOfStage, isNew } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE } from "@/lib/queryClient";
+import { API_BASE, getAuthToken } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { VersionLogDialog, ProfileDialog, UserAvatar } from "@/components/user-panels";
+import { CURRENT_VERSION } from "@/lib/versions";
+
+// Auto-open the version log once per browser session after login (memory only — no storage APIs).
+let versionLogShown = false;
 
 // ---------------- Theme ----------------
 const ThemeContext = createContext<{ dark: boolean; toggle: () => void }>({
@@ -41,7 +46,7 @@ export const useTheme = () => useContext(ThemeContext);
 // ---------------- Logo mark ----------------
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-label="GBA Partnership Portal" fill="none">
+    <svg viewBox="0 0 32 32" className={className} aria-label="Gobi Partnership Portal" fill="none">
       <rect width="32" height="32" rx="7" fill="#0C2340" />
       <path d="M16 16L7 9M16 16l9-7M16 16l-9 8M16 16l9 8" stroke="#48A9C5" strokeWidth="1.2" />
       <circle cx="16" cy="16" r="4" fill="#D4A843" />
@@ -61,11 +66,19 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [showTestBanner, setShowTestBanner] = useState(true);
+  const [showVersions, setShowVersions] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  useEffect(() => {
+    if (user && !versionLogShown) {
+      versionLogShown = true;
+      setShowVersions(true);
+    }
+  }, [user]);
 
   const links: { href: string; label: string; show: boolean }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/network", label: t("navNetwork"), show: true },
-    { href: "/hall-of-fame", label: t("navHallOfFame"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
@@ -74,9 +87,14 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
-          <Link href="/" data-testid="link-home" className="flex items-center gap-2.5 shrink-0">
-            <BrandMark className="h-8 w-8" />
-            <span className="leading-tight">
+          <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
+            <img
+              src={dark ? "/gobi-logo-white.png" : "/gobi-logo-navy.png"}
+              alt="Gobi Partners"
+              className="h-8 sm:h-9 w-auto"
+              data-testid="img-gobi-logo"
+            />
+            <span className="leading-tight border-l border-border pl-3 hidden sm:block">
               <span className="block text-sm font-bold tracking-tight">{t("brandTitle")}</span>
               <span className="block text-[11px] text-muted-foreground">{t("brandSub")}</span>
             </span>
@@ -115,9 +133,18 @@ export function Layout({ children }: { children: ReactNode }) {
             </Button>
             {user ? (
               <div className="hidden md:flex items-center gap-2">
-                <span className="text-xs text-muted-foreground max-w-[120px] truncate" data-testid="text-username">
-                  {user.name}
-                </span>
+                <button
+                  onClick={() => setShowProfile(true)}
+                  className="flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-2 hover:bg-secondary transition-colors"
+                  title={t("profileTitle")}
+                  data-testid="button-open-profile"
+                >
+                  <UserAvatar name={user.name} avatarUrl={user.avatarUrl} size="md" />
+                  <span className="text-left leading-tight max-w-[130px]">
+                    <span className="block truncate text-xs font-semibold" data-testid="text-username">{user.name}</span>
+                    {user.title && <span className="block truncate text-[10px] text-muted-foreground" data-testid="text-usertitle">{user.title}</span>}
+                  </span>
+                </button>
                 <Button variant="outline" size="sm" onClick={logout} data-testid="button-logout">
                   {t("navLogout")}
                 </Button>
@@ -155,13 +182,23 @@ export function Layout({ children }: { children: ReactNode }) {
               </Link>
             ))}
             {user ? (
-              <button
-                onClick={() => { logout(); setOpen(false); }}
-                className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-muted-foreground"
-                data-testid="button-logout-mobile"
-              >
-                {t("navLogout")} · {user.name}
-              </button>
+              <>
+                <button
+                  onClick={() => { setShowProfile(true); setOpen(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground"
+                  data-testid="button-open-profile-mobile"
+                >
+                  <UserAvatar name={user.name} avatarUrl={user.avatarUrl} size="sm" />
+                  {t("profileTitle")} · {user.name}
+                </button>
+                <button
+                  onClick={() => { logout(); setOpen(false); }}
+                  className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-muted-foreground"
+                  data-testid="button-logout-mobile"
+                >
+                  {t("navLogout")}
+                </button>
+              </>
             ) : (
               <Link href="/login">
                 <span onClick={() => setOpen(false)} className="block px-3 py-2 rounded-md text-sm font-medium text-muted-foreground cursor-pointer">
@@ -177,9 +214,10 @@ export function Layout({ children }: { children: ReactNode }) {
         <div
           role="status"
           data-testid="banner-internal-test"
-          className="border-b border-amber-500/30 bg-amber-500/10 text-foreground"
+          className="sticky top-16 z-30 border-b border-amber-500/30 bg-background text-foreground"
         >
-          <div className="mx-auto max-w-6xl px-4 py-2 flex items-start md:items-center gap-2.5 text-xs md:text-[13px]">
+          <div className="absolute inset-0 bg-amber-500/10 pointer-events-none" aria-hidden="true" />
+          <div className="relative mx-auto max-w-6xl px-4 py-2 flex items-start md:items-center gap-2.5 text-xs md:text-[13px]">
             <FlaskConical className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 md:mt-0" aria-hidden="true" />
             <p className="flex-1 leading-snug">
               <span className="font-semibold">{t("testBannerTitle")}</span>
@@ -208,6 +246,9 @@ export function Layout({ children }: { children: ReactNode }) {
         </span>
       </div>
 
+      {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
+      {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
+
       <footer className="border-t border-border py-8 mt-16">
         <div className="mx-auto max-w-6xl px-4 flex flex-col gap-3">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3">
@@ -215,8 +256,16 @@ export function Layout({ children }: { children: ReactNode }) {
               <BrandMark className="h-5 w-5" />
               {t("footerLine")}
             </div>
-            <div className="text-xs text-muted-foreground">
-              李佛创投笔记 · Li Fo Venture Notes
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>李佛创投笔记 · Li Fo Venture Notes</span>
+              <button
+                onClick={() => setShowVersions(true)}
+                className="rounded-full border border-border px-2 py-0.5 font-semibold tabular-nums hover:bg-secondary hover:text-foreground transition-colors"
+                title={t("versionLogTitle")}
+                data-testid="button-version-log"
+              >
+                v{CURRENT_VERSION}
+              </button>
             </div>
           </div>
           <div className="text-center md:text-left text-xs text-muted-foreground/80 border-t border-border/60 pt-3" data-testid="text-dev-note">
@@ -253,6 +302,20 @@ export function PartnerLogo({ p, size = "md" }: { p: Partnership; size?: "sm" | 
         data-testid={`img-logo-${p.id}`}
       />
     </div>
+  );
+}
+
+// ---------------- NEW badge (entries added within the last month) ----------------
+export function NewBadge({ p }: { p: Pick<Partnership, "createdAt"> }) {
+  const { t } = useLang();
+  if (!isNew(p)) return null;
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-[hsl(var(--gold))] px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[hsl(214,68%,12%)] shrink-0"
+      data-testid="badge-new"
+    >
+      {t("newBadge")}
+    </span>
   );
 }
 
@@ -439,6 +502,7 @@ export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () =>
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-base truncate">{name}</h3>
             {p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
+            <NewBadge p={p} />
           </div>
           {altName && <p className="text-xs text-muted-foreground truncate">{altName}</p>}
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -451,7 +515,7 @@ export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () =>
       {desc && <p className="mt-3 text-sm text-muted-foreground line-clamp-2">{desc}</p>}
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <LevelDots level={p.collabLevel} />
+          <LevelDots level={levelOfStage(p.stage)} />
           <PicAvatars names={picsOf(p)} />
         </div>
         <span className="text-xs text-[hsl(var(--aqua))] font-medium">{t("viewDetails")} →</span>
@@ -462,13 +526,16 @@ export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () =>
 
 // ---------------- Detail dialog ----------------
 export function PartnershipDetailDialog({
-  p, open, onOpenChange,
+  p, open, onOpenChange, onEdit,
 }: {
   p: Partnership | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  onEdit?: (p: Partnership) => void;
 }) {
   const { lang, t } = useLang();
+  const { user } = useAuth();
+  const canEdit = !!onEdit && (user?.role === "admin" || user?.role === "staff");
   const { data: attachments } = useQuery<AttachmentMeta[]>({
     queryKey: ["/api/partnerships", p?.id ?? 0, "attachments"],
     enabled: open && !!p,
@@ -494,9 +561,20 @@ export function PartnershipDetailDialog({
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <span className="truncate">{name}</span>
                 {p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
+                <NewBadge p={p} />
               </DialogTitle>
               {altName && <DialogDescription>{altName}</DialogDescription>}
             </div>
+            {canEdit && (
+              <Button
+                size="sm"
+                onClick={() => onEdit!(p)}
+                className="ml-auto mr-6 shrink-0 gap-1.5 bg-[hsl(193,52%,38%)] text-white shadow-sm transition-all hover:bg-[hsl(193,52%,30%)] hover:shadow-md"
+                data-testid={`button-edit-detail-${p.id}`}
+              >
+                <Pencil className="h-3.5 w-3.5" /> {t("editRecord")}
+              </Button>
+            )}
           </div>
         </DialogHeader>
 
@@ -571,7 +649,7 @@ export function PartnershipDetailDialog({
               {attachments.map((a) => (
                 <a
                   key={a.id}
-                  href={`${API_BASE}/api/attachments/${a.id}`}
+                  href={`${API_BASE}/api/attachments/${a.id}${getAuthToken() ? `?token=${encodeURIComponent(getAuthToken()!)}` : ""}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-[hsl(var(--aqua))]/60 transition-colors"
@@ -588,7 +666,7 @@ export function PartnershipDetailDialog({
           <div className="flex items-center justify-between border-t border-border pt-4">
             <div>
               <p className="text-xs text-muted-foreground mb-1">{t("collabLevel")}</p>
-              <LevelDots level={p.collabLevel} showLabel />
+              <LevelDots level={levelOfStage(p.stage)} showLabel />
             </div>
             {p.website && (
               <a
@@ -609,9 +687,67 @@ export function PartnershipDetailDialog({
               <p className="text-sm whitespace-pre-wrap">{p.notes}</p>
             </div>
           )}
+
+          <AuditSection partnershipId={p.id} open={open} />
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------- Per-partner change log (audit) ----------------
+function AuditSection({ partnershipId, open }: { partnershipId: number; open: boolean }) {
+  const { t, lang } = useLang();
+  const { data: logs } = useQuery<AuditLog[]>({
+    queryKey: ["/api/partnerships", partnershipId, "audit"],
+    enabled: open,
+  });
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(lang === "cn" ? "zh-CN" : "en-US", {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  };
+  const fieldNames = (changes: string | null) => {
+    if (!changes) return null;
+    try {
+      const keys = Object.keys(JSON.parse(changes));
+      return keys.length ? keys.join(", ") : null;
+    } catch {
+      return null;
+    }
+  };
+  return (
+    <div className="border-t border-border pt-4" data-testid="section-audit">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <History className="h-3.5 w-3.5" /> {t("changeLogTitle")}
+      </p>
+      {!logs || logs.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="text-audit-empty">{t("changeLogEmpty")}</p>
+      ) : (
+        <ul className="space-y-2">
+          {logs.map((l) => {
+            const fields = fieldNames(l.changes);
+            return (
+              <li key={l.id} className="flex items-start gap-2 text-sm" data-testid={`row-audit-${l.id}`}>
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--aqua))]" />
+                <div className="min-w-0">
+                  <p className="leading-snug">
+                    <span className="font-semibold">{t(`audit_${l.action}` as any)}</span>
+                    <span className="text-muted-foreground"> {t("auditBy")} {l.userName}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {fmt(l.createdAt)}
+                    {fields && <span> · {t("auditChangedFields")}: {fields}</span>}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

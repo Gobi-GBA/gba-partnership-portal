@@ -13,6 +13,8 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("staff"), // 'admin' | 'staff' | 'viewer'
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  title: text("title"), // job title, editable by the user
+  avatarUrl: text("avatar_url"), // profile photo (URL or data URI)
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -27,6 +29,14 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type SafeUser = Omit<User, "passwordHash">;
+
+// Profile fields a user may edit about themselves
+export const profileUpdateSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  title: z.string().max(120).nullable().optional(),
+  avatarUrl: z.string().max(400_000).nullable().optional(), // allows small data URIs
+});
+export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 
 // ---------- Sessions (bearer tokens; cookies are blocked in sandboxed iframes) ----------
 export const sessions = sqliteTable("sessions", {
@@ -160,6 +170,20 @@ export const changeRequestInputSchema = z.object({
   note: z.string().optional(),
 });
 export type ChangeRequestInput = z.infer<typeof changeRequestInputSchema>;
+
+// ---------- Audit log (who changed what, per partnership) ----------
+export const auditLogs = sqliteTable("audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  partnershipId: integer("partnership_id").notNull(),
+  userId: integer("user_id"),
+  userName: text("user_name").notNull(),
+  action: text("action").notNull(), // 'create' | 'update' | 'approve' | 'reject' | 'delete' | 'change_request' | 'change_approved' | 'change_rejected'
+  changes: text("changes"), // JSON: { field: newValue } summary of what changed
+  createdAt: text("created_at").notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type AuditAction = "create" | "update" | "approve" | "reject" | "delete" | "change_request" | "change_approved" | "change_rejected";
 
 // ---------- Gobi staff (relationship PIC directory, from gobi.vc/team) ----------
 export interface GobiStaff {

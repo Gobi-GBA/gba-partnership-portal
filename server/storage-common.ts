@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -28,7 +28,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(data: { name: string; email: string; passwordHash: string; role?: string; status?: string }): Promise<User>;
   listUsers(): Promise<User[]>;
-  updateUser(id: number, data: Partial<Pick<User, "status" | "role">>): Promise<User | undefined>;
+  updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>): Promise<User | undefined>;
 
   createSession(userId: number): Promise<Session>;
   getSession(token: string): Promise<Session | undefined>;
@@ -44,6 +44,9 @@ export interface IStorage {
   getAttachment(id: number): Promise<Attachment | undefined>;
   createAttachment(data: Omit<Attachment, "id">): Promise<AttachmentMeta>;
   deleteAttachment(id: number): Promise<void>;
+
+  createAuditLog(data: Omit<AuditLog, "id">): Promise<AuditLog>;
+  listAuditLogs(partnershipId: number): Promise<AuditLog[]>;
 
   listChangeRequests(): Promise<ChangeRequest[]>;
   listChangeRequestsByUser(userId: number): Promise<ChangeRequest[]>;

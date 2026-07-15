@@ -1,5 +1,5 @@
-import { users, sessions, partnerships, attachments, changeRequests } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, changeRequests, auditLogs } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS change_requests (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  partnership_id INTEGER NOT NULL,
+  user_id INTEGER,
+  user_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  changes TEXT,
+  created_at TEXT NOT NULL
+);
 `;
 
 export function createSqliteStorage(): IStorage {
@@ -83,6 +92,8 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("partnerships", "pic_name", "pic_name TEXT");
   ensureColumn("partnerships", "pic_names", "pic_names TEXT");
   ensureColumn("partnerships", "context", "context TEXT");
+  ensureColumn("users", "title", "title TEXT");
+  ensureColumn("users", "avatar_url", "avatar_url TEXT");
   // Migrate legacy single PIC into multi-PIC list
   sqlite.exec(`UPDATE partnerships SET pic_names = json_array(pic_name) WHERE pic_names IS NULL AND pic_name IS NOT NULL AND pic_name != ''`);
   // Migrate old stage values → 01-05 pipeline
@@ -124,7 +135,7 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async listUsers() {
       return db.select().from(users).all();
     }
-    async updateUser(id: number, data: Partial<Pick<User, "status" | "role">>) {
+    async updateUser(id: number, data: Partial<Pick<User, "status" | "role" | "name" | "title" | "avatarUrl">>) {
       return db.update(users).set(data).where(eq(users.id, id)).returning().get();
     }
 
@@ -184,6 +195,13 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     }
     async deleteAttachment(id: number) {
       db.delete(attachments).where(eq(attachments.id, id)).run();
+    }
+
+    async createAuditLog(data: Omit<AuditLog, "id">) {
+      return db.insert(auditLogs).values(data).returning().get();
+    }
+    async listAuditLogs(partnershipId: number) {
+      return db.select().from(auditLogs).where(eq(auditLogs.partnershipId, partnershipId)).all();
     }
 
     async listChangeRequests() {

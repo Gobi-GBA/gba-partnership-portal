@@ -30,7 +30,7 @@ export default function Login() {
     setBusy(true);
     try {
       await login(loginEmail, loginPassword);
-      navigate("/submit");
+      navigate("/");
     } catch (err: any) {
       const msg = String(err?.message ?? "");
       if (msg.includes("pending_approval")) {

@@ -9,14 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye } from "lucide-react";
 import type { Partnership, Stage, AttachmentInput } from "@shared/schema";
-import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
+import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf, levelOfStage } from "@/lib/constants";
 
 const emptyForm = {
   nameEn: "",
@@ -89,7 +88,8 @@ function toPayload(form: FormState) {
     partnershipType: form.partnershipType,
     startDate: form.startDate,
     stage: form.stage,
-    collabLevel: Number(form.collabLevel),
+    // Collaboration level is derived from the stage — single source of truth
+    collabLevel: levelOfStage(form.stage),
     notes: form.notes,
   };
 }
@@ -330,7 +330,7 @@ export default function Submit() {
                   ref={aiFileRef}
                   type="file"
                   multiple
-                  accept=".pdf,.docx,image/*"
+                  accept=".pdf,.docx"
                   className="hidden"
                   onChange={(e) => setAiFiles(Array.from(e.target.files ?? []).slice(0, 4))}
                   data-testid="input-ai-files"
@@ -378,6 +378,10 @@ export default function Submit() {
             className="mt-8 space-y-6"
             onSubmit={(e) => {
               e.preventDefault();
+              if (!form.startDate) {
+                toast({ title: t("startDateRequired"), variant: "destructive" });
+                return;
+              }
               if (isSuggest) changeMutation.mutate();
               else submitMutation.mutate();
             }}
@@ -442,10 +446,10 @@ export default function Submit() {
               <Field label={t("contactEmail")}>
                 <Input type="email" value={form.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} data-testid="input-contact-email" />
               </Field>
-              <Field label={t("startDate")}>
-                <Input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} data-testid="input-start-date" />
+              <Field label={t("startDate")} required>
+                <Input type="date" required value={form.startDate} onChange={(e) => set("startDate", e.target.value)} data-testid="input-start-date" />
               </Field>
-              <Field label={t("filterStage")}>
+              <Field label={`${t("filterStage")} · ${t("collabLevel")}`}>
                 <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
                   <SelectTrigger data-testid="select-form-stage"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -456,15 +460,6 @@ export default function Submit() {
                 </Select>
               </Field>
             </div>
-
-            <Field label={`${t("collabLevel")}: ${form.collabLevel}/5`}>
-              <Slider
-                value={[Number(form.collabLevel)]}
-                onValueChange={([v]) => set("collabLevel", v)}
-                min={1} max={5} step={1}
-                data-testid="slider-collab-level"
-              />
-            </Field>
 
             <Field label={t("descriptionEn")}>
               <Textarea rows={3} value={form.descriptionEn} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="input-desc-en" />

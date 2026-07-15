@@ -40,7 +40,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Faculty collaboration",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "parentId": 1,
@@ -110,7 +110,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Innovation economy collaboration",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "J.P. Morgan is a premier global financial services firm delivering market-leading banking solutions worldwide. Through its Innovation Economy division, the firm champions high-growth tech entrepreneurs and venture capitalists, leveraging its global platform to support startups through every phase of their scaling journey.\n\nGobi partners with J.P. Morgan to accelerate the growth of regional startup ecosystems and strengthen cross-border investor networks. The investment team actively engages with the firm’s specialized programs, connecting with high-potential founders at initiatives like the JPM Innovation House to foster strategic fundraising and alignment. (Source: 2025 Ecosystem Partners)"
@@ -133,7 +133,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Industry association",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Hong Kong Venture Capital and Private Equity Association (HKVCA) is a premier industry body dedicated to promoting and fostering the venture capital and private equity markets in Asia. By creating a vibrant platform for networking, professional development, and advocacy, the Association connects institutional investors, fund managers, and industry advisors to drive market best practices and strengthen Hong Kong’s position as a leading global financial and investment hub.\n\nGobi collaborates with HKVCA to advance regional investment strategies and support ecosystem growth. This includes contributing strategic market insights to the Association's flagship gatherings, notably sharing venture capital perspectives during panel discussions at the prominent Greater China Private Equity Summit. (Source: 2025 Ecosystem Partners)"
@@ -156,7 +156,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Media & research collaboration",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "VCBeat (動脈網) is a leading Chinese media and research platform focused on the healthcare and life sciences innovation sectors. By tracking global industry data, emerging technologies, and policy shifts, the platform provides deep industrial insights and organizes premier medical technology conferences to connect entrepreneurs, research institutions, and specialized investors across the healthcare ecosystem.\n\nGobi collaborates with VCBeat to identify and evaluate breakthrough medical technologies and frontier healthcare solutions. This includes contributing industry-leading insights to the platform's flagship national forums, sharing market perspectives during panel discussions at the China Innovative Medical Assets Parlor (中國創新醫療資產會客廳) and the Future Healthcare VB100 Conference (未來醫療醫藥100強大會). (Source: 2025 Ecosystem Partners)"
@@ -179,7 +179,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Ecosystem — judging & events",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Hong Kong Trade Development Council (HKTDC) is a statutory body established to promote, assist, and develop Hong Kong's trade. Through its global network of offices, the Council organizes international exhibitions, conferences, and business missions to create opportunities for local small and medium-sized enterprises, while positioning Hong Kong as a premier two-way global investment and business hub.\n\nGobi collaborates closely with HKTDC to drive entrepreneurial growth and evaluate breakthrough innovations across its flagship international platforms. This includes providing strategic guidance and venture capital expertise to global cohorts, notably serving as pitch judges during the Asia Summit on Global Health (ASGH) as well as evaluating high-potential tech startups at the annual HKTDC Start-up Express Pitching Final. (Source: 2025 Ecosystem Partners)"
@@ -202,7 +202,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Strategic capital partner",
     "startDate": "",
     "stage": "s5_strategic",
-    "collabLevel": 4,
+    "collabLevel": 5,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Hong Kong Investment Corporation Limited (HKIC) is a government-owned institutional investor that deploys strategic capital into Hong Kong's innovation and technology sectors. Focusing on core areas like artificial intelligence, biotechnology, and green technology, HKIC invests patient capital to enhance the city's competitiveness, drive economic value, and attract global investment into the regional ecosystem.\n\nGobi works in tandem with HKIC to anchor frontier technologies and accelerate the commercialization of deep-tech clusters within the local ecosystem. This synergy is demonstrated through active participation in specialized industry plug-ins, such as the Large Model Industry Forum co-hosted with the Beijing Academy of Artificial Intelligence (BAAI), where Gobi helps bridge high-caliber research with market-ready applications to build a robust regional AI value chain. (Source: 2025 Ecosystem Partners)"
@@ -224,7 +224,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Media collaboration",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Phoenix TV is a leading global Chinese-language media network that provides comprehensive news, business analysis, and cultural programming to audiences across more than 180 countries and regions. Leveraging its strong media presence, the network serves as a vital bridge for economic communication, hosting high-profile international forums to foster regional collaboration and financial integration within the Greater Bay Area.\n\nGobi supports Phoenix TV by providing expert venture capital perspectives for its premier economic and financial broadcasts. Gobishares strategic insights on regional innovation and economic development, notably serving as panel speakers during the Phoenix GBA Financial Forum and Summit. (Source: 2025 Ecosystem Partners)"
@@ -246,7 +246,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Thought leadership",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "CFA Society Hong Kong is a professional organization comprising local financial analysts and investment professionals. Dedicated to promoting the highest ethical and professional standards within the region’s financial industry, the Society supports the investment community through continuous education, networking, and market advocacy.\n\nGobi supports CFA Society Hong Kong by contributing thought leadership and investment insights to its flagship financial programs. The investment team actively participates in high-profile industry dialogues, such as the 2026 Sustainable Investing Symposium, to share venture capital perspectives and advance regional ESG and sustainable investment outcomes. (Source: 2025 Ecosystem Partners)"
@@ -291,7 +291,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Thought leadership",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Gobi actively collaborates with Citi through targeted industry panels, an initiative aimed at fostering innovation and supporting high-growth startups within the regional ecosystem. The collaboration creates a vibrant dialogue cluster to scale market insights and commercialise next-generation financial technologies.\n\nLeveraging its expertise in the Greater Bay Area and emerging Asian markets, Gobi plays a key role in nurturing early-stage ventures alongside global financial institutions. Through participating in dedicated thought-leadership events like the Citi Panel, Gobi strengthens the region’s innovation pipeline and reinforces its commitment to advancing technological entrepreneurship. (Source: 2025 Ecosystem Partners)"
@@ -313,7 +313,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Ecosystem & mentorship",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Hong Kong General Chamber of Young Entrepreneurs (HKGCYE) is a leading platform dedicated to fostering the next generation of entrepreneurial leaders in Hong Kong. Focusing on professional training, resource networking, and cross-border market access within the Greater Bay Area, the Chamber empowers young founders with the tools required to scale their ventures efficiently.\n\nGobi supports HKGCYE by delivering corporate finance and fundraising workshops for its young entrepreneur community. The investment team also provides ecosystem mentorship to guide early-stage founders on navigating angel investments. (Source: 2025 Ecosystem Partners)"
@@ -405,7 +405,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Summit MoU platform",
     "startDate": "2024-09-11",
     "stage": "s3_agreement",
-    "collabLevel": 2,
+    "collabLevel": 3,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Belt and Road Summit is a leading international platform that promotes multilateral business collaboration among governments and private sector leaders across Belt and Road economies.\n\nAt the 2024 summit, Gobi Partners GBA signed a Memorandum of Understanding with Base Therapeutics to support its advancements in gene editing and healthcare innovation. The partnership reinforces Gobi’s commitment to backing frontier technologies and strengthens its position in global healthcare investment. (Source: 2025 Ecosystem Partners)"
@@ -428,7 +428,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "SVF co-investment partner",
     "startDate": "2023-06-01",
     "stage": "s5_strategic",
-    "collabLevel": 4,
+    "collabLevel": 5,
     "hallOfFame": 0,
     "notes": "",
     "context": "The National Development Company (NDC) is the state-owned investment arm of the Philippines, supporting industrial and innovation-led growth through initiatives such as the Startup Venture Fund (SVF).\n\nSince 2023, Gobi-Core has served as a Co-Investment Partner to the SVF, matching investments in qualified Philippine-based startups. Beyond capital, Gobi contributes mentorship, oversight, and network access. In 2025, Gobi signed a MOU with NDC to strengthen support for the Philippine Innovation Hub (iHub). (Source: 2025 Ecosystem Partners)"
@@ -451,7 +451,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Conference partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Philippine Startup Week is the country’s flagship annual startup conference, held every November to showcase high-potential Filipino startups and foster collaboration across the innovation ecosystem.\n\nGobi-Core is a key partner of PHSW, contributing thought leadership through initiatives such as the Philippine Horizons: Filipino Innovation in the ASEAN Landscape report. The fund also co-organises Fiestartup, a grassroots initiative that supports and celebrates the startup ecosystem in Cebu. (Source: 2025 Ecosystem Partners)"
@@ -497,7 +497,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "LaunchX venture partner",
     "startDate": "2023-01-01",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Sunway iLabs is a joint initiative by Sunway Group and Sunway University that fosters entrepreneurship and market-driven innovation through collaborative efforts across academia, research, and industry. Its Sunway Living Lab focuses on six key verticals: Smart Cities, Edutech, Digital HealthTech, Agri-food Tech, Retail Tech, and FinTech.\n\nSince 2023, Gobi has supported LaunchX, Sunway iLabs’ university startup accelerator, as a venture partner. The programme equips Malaysian students with the tools and mentorship to transform ideas into fundable startups, contributing to a vibrant pipeline of innovation-driven ventures. (Source: 2025 Ecosystem Partners)"
@@ -519,7 +519,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Investor partner",
     "startDate": "2022-01-01",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Circulars Accelerator is a global programme backed by a network of leading organisations committed to scaling solutions that advance the Circular Economy.\n\nSince 2022, Gobi has been an investor partner of TCA, forming strategic partnerships with circular innovators, amplifying their visibility, and contributing to high-profile events that promote sustainable innovation across the ecosystem. (Source: 2025 Ecosystem Partners)"
@@ -541,7 +541,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Official Nominator",
     "startDate": "2023-01-01",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Founded by His Royal Highness Prince William in 2020, The Earthshot Prize is a global environmental award that identifies and scales innovative solutions to the world’s most pressing environmental challenges.\n\nSince 2023, Gobi has served as an Official Nominator for TEP, reinforcing its commitment to sustainability leadership across Asia. The fund nominates impactful startups that are developing solutions to regenerate the planet and drive measurable environmental progress. (Source: 2025 Ecosystem Partners)"
@@ -587,7 +587,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "National platform partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "MYStartup is Malaysia’s national startup platform, initiated by the Ministry of Science, Technology and Innovation (MOSTI) and powered by Cradle Fund, to connect startups with funding, mentorship, talent, and growth opportunities.\n\nGobi is one of the private partners supporting MYStartup’s mission to build a thriving, innovation-led ecosystem. The fund contributes by fostering cross-border collaboration, bridging diverse cultures, and helping local startups scale beyond Malaysia’s borders. (Source: 2025 Ecosystem Partners)"
@@ -609,7 +609,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Innovation challenge partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "UpLink is an open innovation platform by the World Economic Forum, developed in partnership with Salesforce and global collaborators to advance solutions aligned with the UN Sustainable Development Goals.\n\nGobi supports UpLink’s sustainability initiatives, including the Traceability for Circularity Challenge, which promotes circular business models through material tracking innovations. The fund is also an active partner of The Circulars Acceleration Network, helping connect startups and corporates to scale Circular Economy solutions globally. (Source: 2025 Ecosystem Partners)"
@@ -632,7 +632,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Supporting partner",
     "startDate": "2023-01-01",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Startup World Cup Malaysia, organised by Growth Charger and supported by Cradle Fund, is the local edition of a global competition that connects top startups, investors, and tech leaders from over 60 countries. Winners compete at the Grand Finale in San Francisco for a US$1 million investment prize.\n\nSince 2023, Gobi has served as a Supporting Partner, working with Growth Charger to strengthen Malaysia’s startup ecosystem. The fund contributes resources, mentorship, and network access to help local startups scale and compete on the global stage. (Source: 2025 Ecosystem Partners)"
@@ -678,7 +678,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Coaching committee",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Liveability Challenge is a regional sustainability initiative that supports Asia-based innovators in developing climate-positive solutions to address pressing urban and environmental challenges.\n\nGobi has participated in the Challenge for three consecutive years, serving on the e-coaching and pitch preparation committee to support startups in refining their solutions and strengthening their investment readiness. (Source: 2025 Ecosystem Partners)"
@@ -701,7 +701,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "MOU — SGF committee",
     "startDate": "2025-01-01",
     "stage": "s3_agreement",
-    "collabLevel": 4,
+    "collabLevel": 3,
     "hallOfFame": 0,
     "notes": "",
     "context": "The Department of Information and Communications Technology (DICT) supports early-stage innovation in the Philippines through the Startup Grant Fund (SGF), which targets startups from ideation to minimum viable product stage.\n\nAs a member of the SGF Committee, Gobi evaluates business proposals and provides guidance and feedback to founders—contributing to the development of the country’s startup ecosystem. In 2025, Gobi signed an MOU with DICT, focusing on skills development, employability, and capacity building to prepare Filipino startups for local and international competitiveness. (Source: 2025 Ecosystem Partners)"
@@ -723,7 +723,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Conference thought leadership",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Echelon Philippines is a regional platform designed to empower the local startup ecosystem and connect founders, investors, and business leaders across Southeast Asia.\n\nAt its inaugural event in September 2024, Gobi supported the initiative through thought leadership—delivering a keynote on emerging startup trends and moderating a panel on the future of Filipino e-commerce. (Source: 2025 Ecosystem Partners)"
@@ -746,7 +746,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Netpreneur Masterclass partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Alibaba Global Initiatives is the professional training arm of the eWTP initiative, which is part of Alibaba International Digital Commerce Group (AIDC). Gobi is a long-time partner of AGI, organising events like the Alibaba Netpreneur Masterclass in the Philippines to train entrepreneurs and strengthen connections across the ecosystem. The firm also helped bring in participants for AGI’s AInnovator Program and collaborates on other projects focused on upskilling entrepreneurs and serving the needs of founders. (Source: 2025 Ecosystem Partners)"
@@ -768,7 +768,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Ambassador — climate investing",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Gobi Partner and Head of Sustainability Carlo Chen-Delantar serves as the Manila ambassador to Investors for Climate (I4C), running events to spark conversations on climate investment. I4C is a close-knit community of more than 400 investors across over 40 countries whose members have invested more than US$50 million in climate and sustainability.\n\nI4C launched in Manila in November 2025, creating a new platform for discussions on strengthening the country’s emerging climate-tech ecosystem. (Source: 2025 Ecosystem Partners)"
@@ -790,7 +790,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Community partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 1,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Gobi attended the 2025 Asia Pacific Circular Economy Roundtable as a community partner. The Asia Pacific Circular Economy Roundtable (APCER) brings together entrepreneurs, corporates, academic experts, advocates, and government leaders to accelerate circular solutions across the Asia Pacific. (Source: 2025 Ecosystem Partners)"
@@ -813,7 +813,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Founding board member",
     "startDate": "",
     "stage": "s5_strategic",
-    "collabLevel": 4,
+    "collabLevel": 5,
     "hallOfFame": 0,
     "notes": "",
     "context": "Endeavor is a global network that supports high-impact entrepreneurs in building thriving ecosystems across emerging and underserved markets.\n\nGobi is a founding board member of Endeavor Pakistan, contributing strategic guidance and participating in investment selection panels—reinforcing its commitment to scaling transformative ventures in the region. (Source: 2025 Ecosystem Partners)"
@@ -880,7 +880,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Ecosystem sponsor",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Katalyst Labs is a technology accelerator and innovation hub in Pakistan that supports visionary founders through its startup acceleration programme, women entrepreneur fellowship, and ecosystem-focused knowledge sessions.\n\nGobi supports Katalyst Labs by sponsoring ecosystem events and international conferences, as well as conducting office hours and workshops for its startup community. (Source: 2025 Ecosystem Partners)"
@@ -902,7 +902,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Workshops & office hours",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Habib University is a leading liberal arts and sciences institution in Karachi, committed to enriching student lives and advancing society through teaching, research, and service.\n\nGobi supports Habib University’s entrepreneurial efforts by delivering workshops on launching and fundraising for high-tech ventures. The investment team also provides office hours to guide students on their startup journeys. (Source: 2025 Ecosystem Partners)"
@@ -924,7 +924,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Workshops & office hours",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Institute of Business Administration is a leading business school in Karachi, committed to enriching student lives and advancing society through teaching, research, and service.\n\nGobi supports IBA’s entrepreneurial efforts by delivering workshops on launching and fundraising for high-tech ventures. The investment team also provides office hours to guide students on their startup journeys. (Source: 2025 Ecosystem Partners)"
@@ -946,7 +946,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Community co-host",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "PakLaunch is a global community that connects the Pakistani diaspora with the country’s entrepreneurial and investment ecosystem.\n\nGobi has partnered with PakLaunch on multiple occasions to co-host meetups in Pakistan, fostering connections between local founders and global investors to strengthen cross-border collaboration. (Source: 2025 Ecosystem Partners)"
@@ -968,7 +968,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Mentorship partner",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 2,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "LCE, originally established as a campus incubator, has grown into a dynamic platform that connects entrepreneurs, mentors, and industry leaders globally.\n\nGobi partners with LCE to support its entrepreneurial initiatives and provides mentorship to incubatees, reinforcing its commitment to nurturing talent from one of Pakistan’s leading academic institutions. (Source: 2025 Ecosystem Partners)"
@@ -991,7 +991,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Mentorship & summits",
     "startDate": "",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "Ignite’s National Incubation Centers (NICs), located across six major cities in Pakistan, have supported over 1,300 startups and empowered more than 2,300 women entrepreneurs to date.\n\nSince the programme’s inception, Gobi has played an active role by providing mentorship and participating in investor summits, pitch competitions, and workshops—contributing to the growth of Pakistan’s startup ecosystem nationwide. (Source: 2025 Ecosystem Partners)"
@@ -1013,7 +1013,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Co-investment agreement",
     "startDate": "2025-05-20",
     "stage": "s3_agreement",
-    "collabLevel": 4,
+    "collabLevel": 3,
     "hallOfFame": 0,
     "notes": "",
     "context": "Legacy record carried over from the previous portal seed. (Source: Ecosystem Partners — Sustainability Report 2026)"
@@ -1035,7 +1035,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Deal flow",
     "startDate": "",
     "stage": "s2_engaged",
-    "collabLevel": 1,
+    "collabLevel": 2,
     "hallOfFame": 0,
     "notes": "",
     "context": "Legacy record carried over from the previous portal seed. (Source: Ecosystem Partners — Sustainability Report 2026)"
@@ -1102,7 +1102,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "LP — Meranti ASEAN Growth Fund II",
     "startDate": "2024-11-01",
     "stage": "s5_strategic",
-    "collabLevel": 4,
+    "collabLevel": 5,
     "hallOfFame": 0,
     "notes": "",
     "context": "In November 2024, Gobi Partners and Cross Capital joined forces to supercharge Japanese investment in Southeast Asia's startup ecosystem. Cross Capital, a business-development fund-of-funds connecting Japanese corporate LPs to global startups, invested as an LP in Gobi's Meranti ASEAN Growth Fund II. Note: branded Japan-focused; legal HQ is Cross Capital Pte. Ltd., Singapore. (Source: gobi.vc news, Nov 2024)"
@@ -1125,7 +1125,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Global Network Partner",
     "startDate": "2025-10-01",
     "stage": "s4_progressive",
-    "collabLevel": 3,
+    "collabLevel": 4,
     "hallOfFame": 0,
     "notes": "",
     "context": "In 2025 Gobi Partners expanded to Japan by joining TAKANAWA GATEWAY LiSH, JR East's flagship innovation hub, as a Global Network Partner — bridging Southeast Asia's growth with Japan's innovation frontier. (Source: gobi.vc news, 2025)"
@@ -1215,7 +1215,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "Joint co-investment fund — Gobi Korea",
     "startDate": "2025-06-18",
     "stage": "s3_agreement",
-    "collabLevel": 4,
+    "collabLevel": 3,
     "hallOfFame": 0,
     "notes": "",
     "context": "In June 2025, Gobi Partners and Korea's SU& Group signed an agreement to create a joint co-investment fund targeting more than 500 billion won, coinciding with the launch of Gobi Korea. (Source: Chosun Biz, Jun 2025)"
@@ -1238,7 +1238,7 @@ export const SEED_PARTNERS: any[] = [
     "partnershipType": "National VC fund — exploratory",
     "startDate": "2026-03-01",
     "stage": "s2_engaged",
-    "collabLevel": 1,
+    "collabLevel": 2,
     "hallOfFame": 0,
     "notes": "",
     "context": "In March 2026, Gobi Partners expressed interest in joining Vietnam's ~US$19M national venture capital initiative under Decree 264/2025, engaging with the Ministry of Science and Technology. No formal agreement yet — exploratory stage. (Source: TechNode Global, Mar 2026)"

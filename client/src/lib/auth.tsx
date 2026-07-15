@@ -7,6 +7,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (u: SafeUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -14,6 +15,7 @@ const AuthContext = createContext<AuthContextValue>({
   login: async () => {},
   register: async () => {},
   logout: () => {},
+  updateUser: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,8 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries();
   };
 
+  const updateUser = (u: SafeUser) => setUser(u);
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

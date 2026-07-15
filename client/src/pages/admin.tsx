@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
-import { Layout, PartnerLogo, StageBadge, PicChecklist } from "@/components/shared";
+import { Layout, PartnerLogo, PicAvatars } from "@/components/shared";
+import { EditPartnershipDialog } from "@/components/edit-partnership";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,11 +20,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, Paperclip, Loader2 } from "lucide-react";
-import type { Partnership, SafeUser, Stage, ChangeRequest, AttachmentMeta } from "@shared/schema";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays } from "lucide-react";
+import type { Partnership, SafeUser, Stage, ChangeRequest } from "@shared/schema";
 import { ROLES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
-import { API_BASE } from "@/lib/queryClient";
 
 export default function Admin() {
   const { t } = useLang();
@@ -107,10 +107,10 @@ function UserAdmin() {
       </Badge>
       {u.status === "pending" && (
         <>
-          <Button size="sm" onClick={() => mutation.mutate({ id: u.id, status: "approved" })} data-testid={`button-approve-user-${u.id}`}>
+          <Button size="sm" onClick={() => mutation.mutate({ id: u.id, status: "approved" })} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-user-${u.id}`}>
             <Check className="h-4 w-4 mr-1" />{t("approve")}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => mutation.mutate({ id: u.id, status: "rejected" })} data-testid={`button-reject-user-${u.id}`}>
+          <Button size="sm" variant="outline" onClick={() => mutation.mutate({ id: u.id, status: "rejected" })} className="border-red-300 text-red-600 transition-colors hover:bg-red-600 hover:text-white hover:border-red-600 dark:border-red-900 dark:text-red-400" data-testid={`button-reject-user-${u.id}`}>
             <X className="h-4 w-4 mr-1" />{t("reject")}
           </Button>
         </>
@@ -207,10 +207,10 @@ function ChangeRequestAdmin() {
           </Badge>
           {r.status === "pending" && (
             <>
-              <Button size="sm" onClick={() => mutation.mutate({ id: r.id, action: "approve" })} disabled={mutation.isPending} data-testid={`button-approve-change-${r.id}`}>
+              <Button size="sm" onClick={() => mutation.mutate({ id: r.id, action: "approve" })} disabled={mutation.isPending} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-change-${r.id}`}>
                 <Check className="h-4 w-4 mr-1" />{t("approve")}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => mutation.mutate({ id: r.id, action: "reject" })} disabled={mutation.isPending} data-testid={`button-reject-change-${r.id}`}>
+              <Button size="sm" variant="outline" onClick={() => mutation.mutate({ id: r.id, action: "reject" })} disabled={mutation.isPending} className="border-red-300 text-red-600 transition-colors hover:bg-red-600 hover:text-white hover:border-red-600 dark:border-red-900 dark:text-red-400" data-testid={`button-reject-change-${r.id}`}>
                 <X className="h-4 w-4 mr-1" />{t("reject")}
               </Button>
             </>
@@ -315,17 +315,16 @@ function PartnershipAdmin() {
             </SelectContent>
           </Select>
 
-          {/* Level select */}
-          <Select value={String(p.collabLevel)} onValueChange={(v) => patch.mutate({ id: p.id, data: { collabLevel: Number(v) } })}>
-            <SelectTrigger className="w-20 h-8 text-xs" data-testid={`select-level-${p.id}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <SelectItem key={n} value={String(n)}>Lv {n}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* PIC */}
+          <div className="flex items-center" title={picsOf(p).join(", ")} data-testid={`pics-${p.id}`}>
+            <PicAvatars names={picsOf(p)} />
+          </div>
+
+          {/* Start date */}
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums w-24" data-testid={`date-${p.id}`}>
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            {p.startDate || "—"}
+          </span>
 
           {/* HOF toggle */}
           <Button
@@ -333,28 +332,29 @@ function PartnershipAdmin() {
             variant="ghost"
             title={t("hallOfFameToggle")}
             onClick={() => patch.mutate({ id: p.id, data: { hallOfFame: p.hallOfFame === 1 ? 0 : 1 } })}
+            className="transition-colors hover:bg-[hsl(var(--gold))]/15"
             data-testid={`button-hof-${p.id}`}
           >
-            <Star className={p.hallOfFame === 1 ? "h-4 w-4 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" : "h-4 w-4 text-muted-foreground"} />
+            <Star className={p.hallOfFame === 1 ? "h-4 w-4 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" : "h-4 w-4 text-muted-foreground transition-colors group-hover:text-[hsl(var(--gold))]"} />
           </Button>
 
           {/* Edit */}
-          <Button size="icon" variant="ghost" onClick={() => setEditTarget(p)} data-testid={`button-edit-${p.id}`}>
+          <Button size="icon" variant="ghost" onClick={() => setEditTarget(p)} className="text-[hsl(193,52%,38%)] transition-colors hover:bg-[hsl(var(--aqua))]/15 hover:text-[hsl(193,52%,30%)] dark:text-[hsl(var(--aqua))]" title={t("editRecord")} data-testid={`button-edit-${p.id}`}>
             <Pencil className="h-4 w-4" />
           </Button>
 
           {p.status !== "approved" && (
-            <Button size="sm" onClick={() => patch.mutate({ id: p.id, data: { status: "approved" } })} data-testid={`button-approve-${p.id}`}>
+            <Button size="sm" onClick={() => patch.mutate({ id: p.id, data: { status: "approved" } })} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-${p.id}`}>
               <Check className="h-4 w-4 mr-1" />{t("approve")}
             </Button>
           )}
           {p.status === "pending" && (
-            <Button size="sm" variant="outline" onClick={() => patch.mutate({ id: p.id, data: { status: "rejected" } })} data-testid={`button-reject-${p.id}`}>
+            <Button size="sm" variant="outline" onClick={() => patch.mutate({ id: p.id, data: { status: "rejected" } })} className="border-red-300 text-red-600 transition-colors hover:bg-red-600 hover:text-white hover:border-red-600 dark:border-red-900 dark:text-red-400" data-testid={`button-reject-${p.id}`}>
               <X className="h-4 w-4 mr-1" />{t("reject")}
             </Button>
           )}
-          <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(p)} data-testid={`button-delete-${p.id}`}>
-            <Trash2 className="h-4 w-4 text-destructive" />
+          <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(p)} className="text-destructive/80 transition-colors hover:bg-destructive/15 hover:text-destructive" title={t("delete")} data-testid={`button-delete-${p.id}`}>
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -398,194 +398,6 @@ function PartnershipAdmin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-// ---------------- Full edit dialog (admin) ----------------
-function EditPartnershipDialog({
-  p, allPartners, onClose, onSaved,
-}: {
-  p: Partnership | null;
-  allPartners: Partnership[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { t, lang } = useLang();
-  const { toast } = useToast();
-  const [form, setForm] = useState<Record<string, any>>({});
-  const [loadedId, setLoadedId] = useState<number | null>(null);
-
-  const { data: attachments } = useQuery<AttachmentMeta[]>({
-    queryKey: ["/api/partnerships", p?.id ?? 0, "attachments"],
-    enabled: !!p,
-  });
-
-  if (p && loadedId !== p.id) {
-    setLoadedId(p.id);
-    setForm({
-      nameEn: p.nameEn ?? "", nameCn: p.nameCn ?? "", category: p.category,
-      region: p.region ?? "hongkong", website: p.website ?? "", logoUrl: p.logoUrl ?? "",
-      descriptionEn: p.descriptionEn ?? "", descriptionCn: p.descriptionCn ?? "",
-      contactName: p.contactName ?? "", contactEmail: p.contactEmail ?? "",
-      picNames: picsOf(p), parentId: p.parentId ? String(p.parentId) : "none",
-      context: p.context ?? "", partnershipType: p.partnershipType ?? "",
-      startDate: p.startDate ?? "", stage: p.stage, collabLevel: p.collabLevel,
-      notes: p.notes ?? "",
-    });
-  }
-
-  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
-
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!p) return;
-      const payload = {
-        ...form,
-        parentId: form.parentId === "none" ? null : Number(form.parentId),
-        collabLevel: Number(form.collabLevel),
-      };
-      const res = await apiRequest("PATCH", `/api/partnerships/${p.id}`, payload);
-      return res.json();
-    },
-    onSuccess: () => {
-      onSaved();
-      onClose();
-      setLoadedId(null);
-    },
-    onError: () => toast({ title: "Update failed", variant: "destructive" }),
-  });
-
-  const deleteAttachment = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/attachments/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/partnerships", p?.id ?? 0, "attachments"] }),
-    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
-  });
-
-  if (!p) return null;
-
-  return (
-    <Dialog open={!!p} onOpenChange={(o) => { if (!o) { onClose(); setLoadedId(null); } }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-lg">{t("editRecord")} — {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}</DialogTitle>
-        </DialogHeader>
-        <form
-          className="space-y-4"
-          onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EField label={t("nameEn")}><Input value={form.nameEn ?? ""} onChange={(e) => set("nameEn", e.target.value)} required data-testid="edit-name-en" /></EField>
-            <EField label={t("nameCn")}><Input value={form.nameCn ?? ""} onChange={(e) => set("nameCn", e.target.value)} data-testid="edit-name-cn" /></EField>
-            <EField label={t("filterCategory")}>
-              <Select value={form.category} onValueChange={(v) => set("category", v)}>
-                <SelectTrigger data-testid="edit-category"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{t(`cat_${c}` as any)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </EField>
-            <EField label={t("region")}>
-              <Select value={form.region} onValueChange={(v) => set("region", v)}>
-                <SelectTrigger data-testid="edit-region"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {REGIONS.map((r) => <SelectItem key={r} value={r}>{t(`region_${r}` as any)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </EField>
-            <EField label={t("picsLabel")}>
-              <PicChecklist value={form.picNames ?? []} onChange={(v) => set("picNames", v)} />
-            </EField>
-            <EField label={t("parentLabel")}>
-              <Select value={form.parentId} onValueChange={(v) => set("parentId", v)}>
-                <SelectTrigger data-testid="edit-parent"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("parentNone")}</SelectItem>
-                  {allPartners.filter((x) => x.id !== p.id).map((x) => (
-                    <SelectItem key={x.id} value={String(x.id)}>
-                      {lang === "cn" && x.nameCn ? x.nameCn : x.nameEn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </EField>
-            <EField label={t("partnershipType")}><Input value={form.partnershipType ?? ""} onChange={(e) => set("partnershipType", e.target.value)} data-testid="edit-type" /></EField>
-            <EField label={t("website")}><Input value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} data-testid="edit-website" /></EField>
-            <EField label={t("logoUrl")}><Input value={form.logoUrl ?? ""} onChange={(e) => set("logoUrl", e.target.value)} data-testid="edit-logo" /></EField>
-            <EField label={t("contactName")}><Input value={form.contactName ?? ""} onChange={(e) => set("contactName", e.target.value)} data-testid="edit-contact-name" /></EField>
-            <EField label={t("contactEmail")}><Input value={form.contactEmail ?? ""} onChange={(e) => set("contactEmail", e.target.value)} data-testid="edit-contact-email" /></EField>
-            <EField label={t("startDate")}><Input type="date" value={form.startDate ?? ""} onChange={(e) => set("startDate", e.target.value)} data-testid="edit-start-date" /></EField>
-            <EField label={t("filterStage")}>
-              <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
-                <SelectTrigger data-testid="edit-stage"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STAGES.map((s) => (
-                    <SelectItem key={s} value={s}>{STAGE_NUM[s as Stage]} · {t(`stage_${s}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </EField>
-            <EField label={t("collabLevel")}>
-              <Select value={String(form.collabLevel ?? 1)} onValueChange={(v) => set("collabLevel", Number(v))}>
-                <SelectTrigger data-testid="edit-level"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>Lv {n}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </EField>
-          </div>
-          <EField label={t("descriptionEn")}><Textarea rows={2} value={form.descriptionEn ?? ""} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="edit-desc-en" /></EField>
-          <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>
-          <EField label={t("contextLabel")}><Textarea rows={3} value={form.context ?? ""} onChange={(e) => set("context", e.target.value)} data-testid="edit-context" /></EField>
-          <EField label={t("notes")}><Textarea rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} data-testid="edit-notes" /></EField>
-
-          {attachments && attachments.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-sm">{t("attachments")}</Label>
-              {attachments.map((a) => (
-                <div key={a.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <a
-                    href={`${API_BASE}/api/attachments/${a.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="truncate font-medium hover:underline"
-                  >
-                    {a.name}
-                  </a>
-                  <button
-                    type="button"
-                    className="ml-auto text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteAttachment.mutate(a.id)}
-                    aria-label="delete attachment"
-                    data-testid={`button-delete-attachment-${a.id}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => { onClose(); setLoadedId(null); }} data-testid="button-cancel-edit">
-              {t("cancel")}
-            </Button>
-            <Button type="submit" disabled={save.isPending} data-testid="button-save-edit">
-              {save.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t("submitting")}</> : t("save")}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-sm">{label}</Label>
-      {children}
     </div>
   );
 }
