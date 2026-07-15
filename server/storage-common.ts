@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -85,8 +85,85 @@ export interface IStorage {
   createChangeRequest(data: Omit<ChangeRequest, "id">): Promise<ChangeRequest>;
   updateChangeRequestStatus(id: number, status: string): Promise<ChangeRequest | undefined>;
 
+  listRdItems(): Promise<RdItem[]>;
+  getRdItem(id: number): Promise<RdItem | undefined>;
+  createRdItem(data: Omit<RdItem, "id">): Promise<RdItem>;
+  updateRdItem(id: number, data: Partial<RdItem>): Promise<RdItem | undefined>;
+  deleteRdItem(id: number): Promise<void>;
+
   listFeedback(): Promise<Feedback[]>;
   listFeedbackByUser(userId: number): Promise<Feedback[]>;
   createFeedback(data: Omit<Feedback, "id">): Promise<Feedback>;
   updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>): Promise<Feedback | undefined>;
 }
+
+// ---------- R&D Planner seed (inserted once when rd_items is empty) ----------
+// The ecosystem is the big project; each row is a module / function / agent on the timeline.
+export const RD_SEED: Omit<RdItem, "id">[] = [
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "Portal core (directory, approvals, bilingual)",
+    details: "v1-v3 foundation: bilingual partner directory, login-first flow, account approvals, star map and timeline views.",
+    kind: "module",
+    status: "done",
+    teammates: JSON.stringify(["Fred Li"]),
+    startDate: "2026-06-20",
+    endDate: "2026-07-05",
+    createdBy: 1,
+  },
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "AI intake agent (DeepSeek)",
+    details: "Generative drafting of partnership entries and descriptions via the DeepSeek API.",
+    kind: "agent",
+    status: "done",
+    teammates: JSON.stringify(["Fred Li"]),
+    startDate: "2026-07-01",
+    endDate: "2026-07-10",
+    createdBy: 1,
+  },
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "Galaxy & Gobi desert visual themes",
+    details: "Animated dark-mode galaxy and light-mode Gobi desert scenes matching the fund's identity.",
+    kind: "module",
+    status: "done",
+    teammates: JSON.stringify(["Fred Li"]),
+    startDate: "2026-07-12",
+    endDate: "2026-07-15",
+    createdBy: 1,
+  },
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "R&D Planner",
+    details: "This planner: developer/admin-only roadmap for building functions, modules and agents, shown to management.",
+    kind: "function",
+    status: "in_progress",
+    teammates: JSON.stringify(["Fred Li"]),
+    startDate: "2026-07-15",
+    endDate: "2026-07-22",
+    createdBy: 1,
+  },
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "Advisor module",
+    details: "Advisors directory as a module of the ecosystem project: profiles, expertise tags and engagement history.",
+    kind: "module",
+    status: "planned",
+    teammates: JSON.stringify(["Fred Li", "Elaine Zhang"]),
+    startDate: "2026-07-20",
+    endDate: "2026-08-31",
+    createdBy: 1,
+  },
+  {
+    project: "Partnership Portal Ecosystem",
+    name: "Email notifications (Gmail SMTP)",
+    details: "Approval and password-reset emails via Gmail SMTP; awaiting mailbox credentials in production.",
+    kind: "integration",
+    status: "planned",
+    teammates: JSON.stringify(["Fred Li"]),
+    startDate: "2026-08-01",
+    endDate: "2026-08-15",
+    createdBy: 1,
+  },
+];

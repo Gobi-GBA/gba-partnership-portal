@@ -32,6 +32,7 @@ export function VersionLogDialog({ open, onClose }: { open: boolean; onClose: ()
                   <Badge className="bg-[hsl(var(--gold))] text-[hsl(214,68%,12%)] hover:bg-[hsl(var(--gold))]">{t("currentVersion")}</Badge>
                 )}
                 <span className="text-xs tabular-nums text-muted-foreground">{v.date}</span>
+                <span className="text-xs text-muted-foreground">{t("versionBy")} {v.by}</span>
               </div>
               <p className="mt-0.5 text-sm font-semibold">{lang === "cn" ? v.titleCn : v.titleEn}</p>
               <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("whatsNew")}</p>

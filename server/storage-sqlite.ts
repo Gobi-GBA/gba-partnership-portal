@@ -1,12 +1,13 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
-import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
+import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
+import { FRED_TITLE, V45_NEW_PARTNERS } from "./upgrade-v45.js";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -117,6 +118,22 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "is_ir", "is_ir INTEGER NOT NULL DEFAULT 0");
   // Grant IR membership to the seed admin (idempotent)
   sqlite.prepare(`UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`).run();
+  ensureColumn("users", "is_dev", "is_dev INTEGER NOT NULL DEFAULT 0");
+  // The seed admin is also a developer (idempotent)
+  sqlite.prepare(`UPDATE users SET is_dev = 1 WHERE email = 'fred@gobi.vc'`).run();
+  // R&D planner table (developer + admin only)
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS rd_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT NOT NULL DEFAULT 'Partnership Portal Ecosystem',
+    name TEXT NOT NULL,
+    details TEXT,
+    kind TEXT NOT NULL DEFAULT 'module',
+    status TEXT NOT NULL DEFAULT 'planned',
+    teammates TEXT NOT NULL DEFAULT '[]',
+    start_date TEXT,
+    end_date TEXT,
+    created_by INTEGER
+  )`);
   // Backfill example gallery photos for flagship partners (idempotent)
   for (const seed of PHOTO_SEED) {
     sqlite
@@ -217,6 +234,23 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
       db.delete(attachments).where(eq(attachments.partnershipId, id)).run();
       // detach children
       db.update(partnerships).set({ parentId: null }).where(eq(partnerships.parentId, id)).run();
+    }
+
+    async listRdItems() {
+      return db.select().from(rdItems).all();
+    }
+    async getRdItem(id: number) {
+      return db.select().from(rdItems).where(eq(rdItems.id, id)).get();
+    }
+    async createRdItem(data: Omit<RdItem, "id">) {
+      return db.insert(rdItems).values(data).returning().get();
+    }
+    async updateRdItem(id: number, data: Partial<RdItem>) {
+      const { id: _ignore, ...rest } = data as RdItem;
+      return db.update(rdItems).set(rest).where(eq(rdItems.id, id)).returning().get();
+    }
+    async deleteRdItem(id: number) {
+      db.delete(rdItems).where(eq(rdItems.id, id)).run();
     }
 
     async listAttachmentMeta(partnershipId: number) {
@@ -336,6 +370,31 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     sqlite
       .prepare(`INSERT INTO meta (key, value) VALUES ('migration_v43_info_upgrade', ?)`)
       .run(new Date().toISOString());
+  }
+
+  // v4.5 one-time site sync (Fred's role + ecosystem partners from fred-li.vercel.app)
+  const v45Done = sqlite.prepare(`SELECT value FROM meta WHERE key = 'migration_v45_site_sync'`).get();
+  if (!v45Done) {
+    sqlite.prepare(`UPDATE users SET title = ? WHERE email = 'fred@gobi.vc'`).run(FRED_TITLE);
+    for (const p of V45_NEW_PARTNERS) {
+      const exists = sqlite.prepare(`SELECT id FROM partnerships WHERE name_en = ?`).get(p.nameEn);
+      if (!exists) {
+        db.insert(partnerships)
+          .values({ ...p, status: "approved", submittedBy: 1, createdAt: new Date().toISOString() } as any)
+          .run();
+      }
+    }
+    sqlite
+      .prepare(`INSERT INTO meta (key, value) VALUES ('migration_v45_site_sync', ?)`)
+      .run(new Date().toISOString());
+  }
+
+  // Seed the R&D planner once, when empty
+  const rdCount = sqlite.prepare(`SELECT COUNT(*) AS c FROM rd_items`).get() as { c: number };
+  if (rdCount.c === 0) {
+    for (const item of RD_SEED) {
+      db.insert(rdItems).values(item).run();
+    }
   }
 
   return new SqliteStorage();

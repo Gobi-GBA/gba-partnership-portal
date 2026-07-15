@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLang } from "@/lib/i18n";
 import type { Partnership, Category, Region } from "@shared/schema";
-import { CATEGORY_COLORS_DARK, CATEGORIES, CATEGORY_COLORS, REGION_ORDER, REGION_COLORS, logoFor } from "@/lib/constants";
+import { CATEGORY_COLORS_DARK, CATEGORIES, CATEGORY_COLORS, REGION_ORDER, REGION_COLORS, logoFor, isNew } from "@/lib/constants";
+import { DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
 import {
   forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY,
   type SimulationNodeDatum,
@@ -59,10 +60,12 @@ export function NetworkGraph({
   partnerships,
   onSelect,
   height = 620,
+  options = DEFAULT_VIEW_OPTIONS,
 }: {
   partnerships: Partnership[];
   onSelect: (p: Partnership) => void;
   height?: number;
+  options?: ViewOptions;
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -319,9 +322,10 @@ export function NetworkGraph({
       .attr("font-weight", 800)
       .attr("fill", "#0C2340");
 
-    // hub labels inside the ring
+    // hub labels inside the ring (hidden when the region/category block is opted out)
+    const showHubLabels = groupBy === "region" ? options.region : options.category;
     nodeSel
-      .filter((d) => !!d.isHub)
+      .filter((d) => !!d.isHub && showHubLabels)
       .append("text")
       .text((d) => d.label!)
       .attr("text-anchor", "middle")
@@ -349,6 +353,35 @@ export function NetworkGraph({
       .attr("dy", (d) => d.r + 28)
       .attr("font-size", 9)
       .attr("fill", "#A8C4DA");
+
+    // NEW tag above recently added partners
+    if (options.newBadge) {
+      nodeSel
+        .filter((d) => !d.isCenter && !d.isHub && !d.isParticle && !!d.partnership && isNew(d.partnership))
+        .append("text")
+        .attr("class", "tag-new")
+        .text("NEW")
+        .attr("text-anchor", "middle")
+        .attr("dy", (d) => -(d.r + 8))
+        .attr("font-size", 7.5)
+        .attr("font-weight", 800)
+        .attr("letter-spacing", 1.2)
+        .attr("fill", "#F0C75E");
+    }
+
+    // LP / Hall-of-Fame star beside the node (LP status only present for IR users)
+    if (options.lpStar) {
+      nodeSel
+        .filter((d) => !d.isCenter && !d.isHub && !d.isParticle && !!d.partnership && (d.partnership.lpStatus === "lp" || d.partnership.lpStatus === "target" || d.partnership.hallOfFame === 1))
+        .append("text")
+        .attr("class", "tag-star")
+        .text((d) => (d.partnership!.lpStatus === "target" && d.partnership!.hallOfFame !== 1 ? "\u2606" : "\u2605"))
+        .attr("text-anchor", "middle")
+        .attr("x", (d) => d.r * 0.95)
+        .attr("y", (d) => -d.r * 0.75)
+        .attr("font-size", 11)
+        .attr("fill", "#F0C75E");
+    }
 
     // Hover effect: brighten + enlarge the hovered partner star
     nodeSel
@@ -448,7 +481,7 @@ export function NetworkGraph({
     return () => {
       sim.stop();
     };
-  }, [partnerships, lang, t, height, groupBy]);
+  }, [partnerships, lang, t, height, groupBy, options]);
 
   const zoomBy = (factor: number) => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;

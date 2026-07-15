@@ -146,6 +146,7 @@ export default function Updates() {
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">{v.date}</span>
+                  <span className="text-xs text-muted-foreground" data-testid={`version-author-${v.version}`}>{t("versionBy")} {v.by}</span>
                 </div>
                 <div className="font-semibold text-sm mb-1.5">{lang === "cn" ? v.titleCn : v.titleEn}</div>
                 <ul className="space-y-1 text-sm text-muted-foreground list-disc pl-4">

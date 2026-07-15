@@ -2,18 +2,45 @@
 export interface VersionEntry {
   version: string;
   date: string; // YYYY-MM-DD
+  by: string; // author (GitHub: lklfred = Fred Li)
   titleEn: string;
   titleCn: string;
   itemsEn: string[];
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.4";
+export const CURRENT_VERSION = "4.5";
 
 export const VERSIONS: VersionEntry[] = [
   {
+    version: "4.5",
+    date: "2026-07-15",
+    by: "Fred Li",
+    titleEn: "Desert scene, R&D planner, display options & rights matrix",
+    titleCn: "沙漠场景、研发规划、显示选项与权限矩阵",
+    itemsEn: [
+      "New Developer R&D Planner — dev/admin-only roadmap of the ecosystem's modules, functions and agents on a date timeline with teammate tags, built to show management",
+      "Light mode now opens onto a cinematic Gobi desert — drifting dunes, wind-blown sand and a slow camel caravan with long shadows; dark mode keeps the galaxy",
+      "Display options on cards and the star map — toggle NEW, LP star, PIC, region, stage and category blocks before screenshotting as a slide",
+      "Admin accounts redesigned as a rights checkbox matrix (View / Edit / IR / Dev / Admin) with a plain-language legend, including the new Developer tag",
+      "Admins can edit any member's name, title and photo, and run the gobi.vc sync for them",
+      "Roles and network synced from fred-li.vercel.app — updated title and nine new ecosystem partners across HK universities, NUS BLOCK71, BIOCHINA, Tencent Education, RITS, GBA NTIC and LEAP East",
+      "Related sites in the footer (gobi.vc and fred-li.vercel.app), and the update log now shows the author of each release",
+    ],
+    itemsCn: [
+      "新增开发者研发规划 — 仅开发者与管理员可见，以时间线展示生态内模块、功能与智能体的建设计划，带团队成员标签，可直接向管理层展示",
+      "浅色模式呈现电影感戈壁沙漠 — 沙丘漂移、风沙拂过、驼队缓行并投下长影；深色模式保留星空",
+      "卡片与星图新增显示选项 — 截图做幻灯片前可自由隐藏 NEW、LP 星标、负责人、地区、阶段与类别信息块",
+      "管理后台账号改为权限勾选矩阵（查看 / 编辑 / IR / 开发 / 管理），含新增的开发者标签，并附通俗易懂的权限说明",
+      "管理员可编辑任何成员的姓名、职位与照片，并可代为执行 gobi.vc 同步",
+      "角色与网络与 fred-li.vercel.app 同步 — 更新职位，并新增九家生态伙伴（香港高校、NUS BLOCK71、BIOCHINA、腾讯教育、深圳清华研究院、大湾区国创中心、LEAP East）",
+      "页脚新增相关网站（gobi.vc 与 fred-li.vercel.app），系统更新日志显示每次发布的作者",
+    ],
+  },
+  {
     version: "4.4",
     date: "2026-07-15",
+    by: "Fred Li",
     titleEn: "Galaxy interface",
     titleCn: "星系界面",
     itemsEn: [
@@ -30,6 +57,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "4.3",
     date: "2026-07-15",
+    by: "Fred Li",
     titleEn: "LP status, smarter AI intake & data upgrade",
     titleCn: "LP 状态、更智能的 AI 录入与数据升级",
     itemsEn: [
@@ -52,6 +80,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "4.2",
     date: "2026-07-15",
+    by: "Fred Li",
     titleEn: "Filters, feedback & photo galleries",
     titleCn: "筛选、反馈与照片展示",
     itemsEn: [
@@ -74,6 +103,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "4.1",
     date: "2026-07-15",
+    by: "Fred Li",
     titleEn: "Account security & email",
     titleCn: "账户安全与邮件",
     itemsEn: [
@@ -92,6 +122,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "4.0",
     date: "2026-07-15",
+    by: "Fred Li",
     titleEn: "Login-first, Gobi rebrand, timeline & audit",
     titleCn: "登录优先、Gobi 品牌升级、时间线与审计",
     itemsEn: [
@@ -130,6 +161,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "3.0",
     date: "2026-07-12",
+    by: "Fred Li",
     titleEn: "Full partner sync, star map & multi-PIC",
     titleCn: "全量伙伴同步、星图与多负责人",
     itemsEn: [
@@ -148,6 +180,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "2.0",
     date: "2026-07-10",
+    by: "Fred Li",
     titleEn: "Roles, AI quick-fill & attachments",
     titleCn: "角色权限、AI 速填与附件",
     itemsEn: [
@@ -166,6 +199,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "1.0",
     date: "2026-07-08",
+    by: "Fred Li",
     titleEn: "First release — bilingual partnership portal",
     titleCn: "首个版本 — 双语合作伙伴门户",
     itemsEn: [

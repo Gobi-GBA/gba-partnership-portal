@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { useLang } from "@/lib/i18n";
-import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter } from "@/components/shared";
+import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter, DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EditPartnershipDialog } from "@/components/edit-partnership";
 import { NetworkGraph, NetworkLegend } from "@/components/network-graph";
 import { Input } from "@/components/ui/input";
@@ -10,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, LayoutGrid, Share2, CalendarRange, Download, Star } from "lucide-react";
+import { Search, LayoutGrid, Share2, CalendarRange, Download, Star, SlidersHorizontal } from "lucide-react";
 import type { Partnership } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, sortPartnerships, picsOf, levelOfStage, yearsOf } from "@/lib/constants";
 
@@ -32,6 +35,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   const [editTarget, setEditTarget] = useState<Partnership | null>(null);
   const [view, setView] = useState<ViewMode>(initialView);
   const [hof, setHof] = useState(initialHof);
+  const [viewOpts, setViewOpts] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [timelineFrom, setTimelineFrom] = useState("");
   const [timelineTo, setTimelineTo] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
@@ -214,6 +218,42 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             </button>
           </div>
 
+          {/* Display options: opt info blocks in/out (useful when screenshotting as a slide) */}
+          {(view === "cards" || view === "network") && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  data-testid="button-display-options"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" /> {t("displayOptions")}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="text-xs">{t("displayOptionsHint")}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {([
+                  ["newBadge", t("optNewBadge")],
+                  ["lpStar", t("optLpStar")],
+                  ["pic", t("optPic")],
+                  ["region", t("optRegion")],
+                  ["stage", t("optStage")],
+                  ["category", t("optCategory")],
+                ] as [keyof ViewOptions, string][]).map(([key, label]) => (
+                  <DropdownMenuCheckboxItem
+                    key={key}
+                    checked={viewOpts[key]}
+                    onCheckedChange={(c) => setViewOpts((o) => ({ ...o, [key]: c === true }))}
+                    onSelect={(e) => e.preventDefault()}
+                    data-testid={`check-opt-${key}`}
+                  >
+                    {label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           {/* Star map mode: all partners / Hall of Fame */}
           {view === "network" && (
             <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
@@ -272,7 +312,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             <div className="mb-4">
               <NetworkLegend />
             </div>
-            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} />
+            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} />
           </div>
         ) : view === "timeline" ? (
           timeline.dated.length === 0 ? (
@@ -320,7 +360,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((p) => (
-              <PartnershipCard key={p.id} p={p} onClick={() => setSelected(p)} />
+              <PartnershipCard key={p.id} p={p} onClick={() => setSelected(p)} opts={viewOpts} />
             ))}
           </div>
         )}

@@ -4,11 +4,12 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
-import { hashPassword, getSeedPassword, PHOTO_SEED, type IStorage } from "./storage-common.js";
+import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
+import { FRED_TITLE, V45_NEW_PARTNERS } from "./upgrade-v45.js";
 
 const BOOTSTRAP: string[] = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -90,6 +91,20 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS lp_status TEXT NOT NULL DEFAULT 'na'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_ir INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_dev INTEGER NOT NULL DEFAULT 0`,
+  `UPDATE users SET is_dev = 1 WHERE email = 'fred@gobi.vc'`,
+  `CREATE TABLE IF NOT EXISTS rd_items (
+    id SERIAL PRIMARY KEY,
+    project TEXT NOT NULL DEFAULT 'Partnership Portal Ecosystem',
+    name TEXT NOT NULL,
+    details TEXT,
+    kind TEXT NOT NULL DEFAULT 'module',
+    status TEXT NOT NULL DEFAULT 'planned',
+    teammates TEXT NOT NULL DEFAULT '[]',
+    start_date TEXT,
+    end_date TEXT,
+    created_by INTEGER
+  )`,
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
   `CREATE TABLE IF NOT EXISTS feedback (
     id SERIAL PRIMARY KEY,
@@ -173,6 +188,30 @@ export function createPgStorage(): IStorage {
             `INSERT INTO meta (key, value) VALUES ('migration_v43_info_upgrade', $1) ON CONFLICT (key) DO NOTHING`,
             [new Date().toISOString()],
           );
+        }
+        // v4.5 one-time site sync (Fred's role + ecosystem partners from fred-li.vercel.app)
+        const v45Res = await sql.query(`SELECT value FROM meta WHERE key = 'migration_v45_site_sync'`);
+        const v45Rows: unknown[] = Array.isArray(v45Res) ? v45Res : ((v45Res as any)?.rows ?? []);
+        if (v45Rows.length === 0) {
+          await sql.query(`UPDATE users SET title = $1 WHERE email = 'fred@gobi.vc'`, [FRED_TITLE]);
+          for (const p of V45_NEW_PARTNERS) {
+            const existRes = await sql.query(`SELECT id FROM partnerships WHERE name_en = $1`, [p.nameEn]);
+            const existRows: unknown[] = Array.isArray(existRes) ? existRes : ((existRes as any)?.rows ?? []);
+            if (existRows.length === 0) {
+              await db.insert(partnerships).values({ ...p, status: "approved", submittedBy: 1, createdAt: new Date().toISOString() } as any);
+            }
+          }
+          await sql.query(
+            `INSERT INTO meta (key, value) VALUES ('migration_v45_site_sync', $1) ON CONFLICT (key) DO NOTHING`,
+            [new Date().toISOString()],
+          );
+        }
+        // Seed the R&D planner once, when empty
+        const anyRd = await db.select({ id: rdItems.id }).from(rdItems).limit(1);
+        if (anyRd.length === 0) {
+          for (const item of RD_SEED) {
+            await db.insert(rdItems).values(item as any);
+          }
         }
       })().catch((err) => {
         ready = null; // allow retry on next request
@@ -275,6 +314,31 @@ export function createPgStorage(): IStorage {
       const rows = await db.update(partnerships).set(rest as any).where(eq(partnerships.id, id)).returning();
       return rows[0] as Partnership | undefined;
     }
+    async listRdItems() {
+      await init();
+      return (await db.select().from(rdItems)) as RdItem[];
+    }
+    async getRdItem(id: number) {
+      await init();
+      const rows = await db.select().from(rdItems).where(eq(rdItems.id, id)).limit(1);
+      return rows[0] as RdItem | undefined;
+    }
+    async createRdItem(data: Omit<RdItem, "id">) {
+      await init();
+      const rows = await db.insert(rdItems).values(data as any).returning();
+      return rows[0] as RdItem;
+    }
+    async updateRdItem(id: number, data: Partial<RdItem>) {
+      await init();
+      const { id: _ignore, ...rest } = data as RdItem;
+      const rows = await db.update(rdItems).set(rest as any).where(eq(rdItems.id, id)).returning();
+      return rows[0] as RdItem | undefined;
+    }
+    async deleteRdItem(id: number) {
+      await init();
+      await db.delete(rdItems).where(eq(rdItems.id, id));
+    }
+
     async deletePartnership(id: number) {
       await init();
       await db.delete(partnerships).where(eq(partnerships.id, id));

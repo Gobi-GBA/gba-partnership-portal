@@ -12,6 +12,7 @@ import {
   feedbackInputSchema,
   feedbackUpdateSchema,
   adminCreateUserSchema,
+  rdItemInputSchema,
   STAGES,
   CATEGORIES,
   REGIONS,
@@ -207,7 +208,7 @@ function diffFields(existing: Record<string, any>, patch: Record<string, any>): 
 }
 
 // Role gate: "admin" = admin only; "submit" = admin or staff (viewer excluded); undefined = any approved user
-function requireAuth(level?: "admin" | "submit") {
+function requireAuth(level?: "admin" | "submit" | "dev") {
   return async (req: AuthedRequest, res: Response, next: NextFunction) => {
     const user = await resolveUser(req);
     if (!user || user.status !== "approved") {
@@ -218,6 +219,9 @@ function requireAuth(level?: "admin" | "submit") {
     }
     if (level === "submit" && user.role !== "admin" && user.role !== "staff") {
       return res.status(403).json({ message: "Viewer accounts are read-only" });
+    }
+    if (level === "dev" && user.role !== "admin" && user.isDev !== 1) {
+      return res.status(403).json({ message: "Developer access required" });
     }
     req.user = user;
     next();
@@ -371,26 +375,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Profile sync from gobi.vc: pull photo, title (and LinkedIn) from the
   // public team page by matching the user's name.
+  async function syncUserFromGobi(userId: number, userName: string) {
+    const members = await fetchGobiTeam();
+    const me = normalizeName(userName);
+    const match =
+      members.find((m) => normalizeName(m.name) === me) ??
+      members.find((m) => {
+        const a = normalizeName(m.name).split(" ");
+        const b = me.split(" ");
+        return a.length > 1 && b.length > 1 && a.every((tok) => b.includes(tok));
+      });
+    if (!match) return { error: 404 as const };
+    const data: Partial<Pick<User, "title" | "avatarUrl">> = {};
+    if (match.title) data.title = match.title;
+    if (match.photoUrl) data.avatarUrl = match.photoUrl;
+    const updated = await storage.updateUser(userId, data);
+    if (!updated) return { error: 404 as const };
+    return { user: updated, matched: match };
+  }
+
   app.post("/api/profile/sync-gobi", requireAuth(), async (req: AuthedRequest, res) => {
     try {
-      const members = await fetchGobiTeam();
-      const me = normalizeName(req.user!.name);
-      const match =
-        members.find((m) => normalizeName(m.name) === me) ??
-        members.find((m) => {
-          const a = normalizeName(m.name).split(" ");
-          const b = me.split(" ");
-          return a.length > 1 && b.length > 1 && a.every((tok) => b.includes(tok));
-        });
-      if (!match) return res.status(404).json({ message: "not_found_on_gobi" });
-      const data: Partial<Pick<User, "title" | "avatarUrl">> = {};
-      if (match.title) data.title = match.title;
-      if (match.photoUrl) data.avatarUrl = match.photoUrl;
-      const updated = await storage.updateUser(req.user!.id, data);
-      if (!updated) return res.status(404).json({ message: "Not found" });
-      res.json({ user: safe(updated), matched: match });
+      const result = await syncUserFromGobi(req.user!.id, req.user!.name);
+      if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
+      res.json({ user: safe(result.user), matched: result.matched });
     } catch (err) {
       console.error("gobi.vc sync failed:", err);
+      res.status(502).json({ message: "gobi_fetch_failed" });
+    }
+  });
+
+  // Admin: run the gobi.vc profile sync for any account
+  app.post("/api/admin/users/:id/sync-gobi", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const target = await storage.getUser(Number(req.params.id));
+    if (!target) return res.status(404).json({ message: "Not found" });
+    try {
+      const result = await syncUserFromGobi(target.id, target.name);
+      if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
+      res.json({ user: safe(result.user), matched: result.matched });
+    } catch (err) {
+      console.error("gobi.vc admin sync failed:", err);
       res.status(502).json({ message: "gobi_fetch_failed" });
     }
   });
@@ -626,6 +650,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(updated);
   });
 
+  // ---------- R&D Planner (developer + admin only) ----------
+  app.get("/api/rd-items", requireAuth("dev"), async (_req, res) => {
+    res.json(await storage.listRdItems());
+  });
+
+  app.post("/api/rd-items", requireAuth("dev"), async (req: AuthedRequest, res) => {
+    const parsed = rdItemInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid data" });
+    const { teammates, ...rest } = parsed.data;
+    const created = await storage.createRdItem({
+      ...rest,
+      details: rest.details ?? null,
+      startDate: rest.startDate ?? null,
+      endDate: rest.endDate ?? null,
+      teammates: JSON.stringify(teammates),
+      createdBy: req.user!.id,
+    });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/rd-items/:id", requireAuth("dev"), async (req: AuthedRequest, res) => {
+    const parsed = rdItemInputSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid data" });
+    const { teammates, ...rest } = parsed.data;
+    const data: Record<string, unknown> = { ...rest };
+    if (teammates !== undefined) data.teammates = JSON.stringify(teammates);
+    if (!Object.keys(data).length) return res.status(400).json({ message: "Nothing to update" });
+    const updated = await storage.updateRdItem(Number(req.params.id), data);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/rd-items/:id", requireAuth("dev"), async (req: AuthedRequest, res) => {
+    const existing = await storage.getRdItem(Number(req.params.id));
+    if (!existing) return res.status(404).json({ message: "Not found" });
+    await storage.deleteRdItem(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
   // ---------- Admin ----------
   app.get("/api/admin/users", requireAuth("admin"), async (_req, res) => {
     const all = await storage.listUsers();
@@ -633,7 +696,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.patch("/api/admin/users/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
-    const data: { status?: string; role?: string; isIr?: number } = {};
+    const data: { status?: string; role?: string; isIr?: number; isDev?: number; name?: string; title?: string | null; avatarUrl?: string | null } = {};
+    if (req.body?.name !== undefined) {
+      const name = String(req.body.name).trim();
+      if (!name || name.length > 80) return res.status(400).json({ message: "Invalid name" });
+      data.name = name;
+    }
+    if (req.body?.title !== undefined) {
+      const title = req.body.title === null ? null : String(req.body.title).trim();
+      if (title !== null && title.length > 120) return res.status(400).json({ message: "Invalid title" });
+      data.title = title || null;
+    }
+    if (req.body?.avatarUrl !== undefined) {
+      const avatarUrl = req.body.avatarUrl === null ? null : String(req.body.avatarUrl).trim();
+      if (avatarUrl !== null && avatarUrl.length > 500) return res.status(400).json({ message: "Invalid avatar URL" });
+      data.avatarUrl = avatarUrl || null;
+    }
     if (req.body?.status !== undefined) {
       if (!["approved", "rejected", "pending"].includes(req.body.status)) {
         return res.status(400).json({ message: "Invalid status" });
@@ -645,6 +723,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Invalid isIr value" });
       }
       data.isIr = req.body.isIr;
+    }
+    if (req.body?.isDev !== undefined) {
+      if (![0, 1].includes(req.body.isDev)) {
+        return res.status(400).json({ message: "Invalid isDev value" });
+      }
+      data.isDev = req.body.isDev;
     }
     if (req.body?.role !== undefined) {
       if (!(ROLES as readonly string[]).includes(req.body.role)) {

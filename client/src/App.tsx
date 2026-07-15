@@ -16,6 +16,7 @@ import Reset from "@/pages/reset";
 import Admin from "@/pages/admin";
 import Updates from "@/pages/updates";
 import Advisors from "@/pages/advisors";
+import RdPlanner from "@/pages/rd-planner";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -43,6 +44,7 @@ function AppRouter() {
       <Route path="/reset" component={Reset} />
       <Route path="/updates" component={Updates} />
       <Route path="/advisors" component={Advisors} />
+      <Route path="/rd" component={RdPlanner} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>

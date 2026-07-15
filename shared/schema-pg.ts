@@ -13,6 +13,7 @@ export const usersPg = pgTable("users", {
   title: text("title"),
   avatarUrl: text("avatar_url"),
   isIr: integer("is_ir").notNull().default(0),
+  isDev: integer("is_dev").notNull().default(0),
   secretQ1: text("secret_q1"),
   secretA1Hash: text("secret_a1_hash"),
   secretQ2: text("secret_q2"),
@@ -24,6 +25,19 @@ export const usersPg = pgTable("users", {
 export const sessionsPg = pgTable("sessions", {
   token: text("token").primaryKey(),
   userId: integer("user_id").notNull(),
+});
+
+export const rdItemsPg = pgTable("rd_items", {
+  id: serial("id").primaryKey(),
+  project: text("project").notNull().default("Partnership Portal Ecosystem"),
+  name: text("name").notNull(),
+  details: text("details"),
+  kind: text("kind").notNull().default("module"),
+  status: text("status").notNull().default("planned"),
+  teammates: text("teammates").notNull().default("[]"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  createdBy: integer("created_by"),
 });
 
 export const partnershipsPg = pgTable("partnerships", {

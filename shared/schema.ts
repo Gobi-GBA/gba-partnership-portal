@@ -19,6 +19,7 @@ export const users = sqliteTable("users", {
   title: text("title"), // job title, editable by the user
   avatarUrl: text("avatar_url"), // profile photo (URL or data URI)
   isIr: integer("is_ir").notNull().default(0), // 0 | 1 — IR team member (can see LP status)
+  isDev: integer("is_dev").notNull().default(0), // 0 | 1 — Developer (can see the R&D planner)
   secretQ1: text("secret_q1"), // secret question id (see SECRET_QUESTIONS)
   secretA1Hash: text("secret_a1_hash"),
   secretQ2: text("secret_q2"),
@@ -68,6 +69,43 @@ export const sessions = sqliteTable("sessions", {
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+// ---------- R&D Planner (developer + admin only) ----------
+// The ecosystem is the big project; modules (e.g. Advisors), functions,
+// agents and integrations are items placed on a date timeline.
+export const RD_STATUSES = ["planned", "in_progress", "testing", "done", "paused"] as const;
+export type RdStatus = (typeof RD_STATUSES)[number];
+
+export const RD_KINDS = ["module", "function", "agent", "integration", "other"] as const;
+export type RdKind = (typeof RD_KINDS)[number];
+
+export const rdItems = sqliteTable("rd_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  project: text("project").notNull().default("Partnership Portal Ecosystem"), // big project / swimlane
+  name: text("name").notNull(),
+  details: text("details"),
+  kind: text("kind").notNull().default("module"), // 'module' | 'function' | 'agent' | 'integration' | 'other'
+  status: text("status").notNull().default("planned"), // see RD_STATUSES
+  teammates: text("teammates").notNull().default("[]"), // JSON string[] of teammate names
+  startDate: text("start_date"), // YYYY-MM-DD
+  endDate: text("end_date"), // YYYY-MM-DD (target)
+  createdBy: integer("created_by"),
+});
+
+export type RdItem = typeof rdItems.$inferSelect;
+
+// API input shape — teammates travel as a real array and are serialized server-side
+export const rdItemInputSchema = z.object({
+  project: z.string().min(1).max(120),
+  name: z.string().min(1).max(120),
+  details: z.string().max(2000).nullable().optional(),
+  kind: z.enum(RD_KINDS).default("module"),
+  status: z.enum(RD_STATUSES).default("planned"),
+  teammates: z.array(z.string().min(1).max(60)).max(12).default([]),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+});
+export type RdItemInput = z.infer<typeof rdItemInputSchema>;
 
 // ---------- Partnerships ----------
 // Pipeline: 01 New/Target → 02 Engaged → 03 MOU/Agreement → 04 Progressive → 05 Strategic
@@ -273,7 +311,7 @@ export const GOBI_STAFF: GobiStaff[] = [
   { name: "Hisham Ibrahim", title: "Managing Director", office: "Malaysia" },
   { name: "Suryono Darnor", title: "Advisor", office: "Malaysia" },
   { name: "Angel Chau", title: "Chief Financial Officer", office: "Hong Kong (SAR)" },
-  { name: "Fred Li", title: "Managing Director / Head of University Ventures", office: "Hong Kong (SAR)" },
+  { name: "Fred Li", title: "Managing Director & Head of University Ventures", office: "Hong Kong (SAR)" },
   { name: "Renee Pan", title: "Managing Director", office: "Mainland China" },
   { name: "Khairil Abdullah", title: "Advisor", office: "Malaysia" },
   { name: "Wai Kit Lau", title: "Advisor", office: "Hong Kong (SAR)" },

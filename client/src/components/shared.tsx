@@ -209,6 +209,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true, soon: true },
     { href: "/updates", label: t("navUpdates"), show: true },
+    { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
 
@@ -408,7 +409,28 @@ export function Layout({ children }: { children: ReactNode }) {
               </Link>
             </div>
           </div>
-          <div className="text-center md:text-left text-xs text-muted-foreground/80 border-t border-border/60 pt-3" data-testid="text-dev-note">
+          <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4 border-t border-border/60 pt-3 text-xs text-muted-foreground" data-testid="footer-related-sites">
+            <span className="font-semibold uppercase tracking-wide text-[10px] text-muted-foreground/70">{t("relatedSites")}</span>
+            <a
+              href="https://gobi.vc"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 hover:text-[hsl(var(--aqua))] transition-colors"
+              data-testid="link-related-gobi"
+            >
+              <ExternalLink className="h-3 w-3" /> Gobi Partners — gobi.vc
+            </a>
+            <a
+              href="https://fred-li.vercel.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 hover:text-[hsl(var(--aqua))] transition-colors"
+              data-testid="link-related-fred"
+            >
+              <ExternalLink className="h-3 w-3" /> Fred Li — fred-li.vercel.app
+            </a>
+          </div>
+          <div className="text-center md:text-left text-xs text-muted-foreground/80" data-testid="text-dev-note">
             {t("devNote")}
           </div>
           <div className="text-center md:text-left text-[11px] leading-relaxed text-muted-foreground/70" data-testid="text-disclaimer">
@@ -649,7 +671,27 @@ export function PipelineProgress({ stage }: { stage: Stage }) {
 }
 
 // ---------------- Partnership card ----------------
-export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () => void }) {
+// Display options: which info blocks appear on cards and the star map.
+// Lets users hide sensitive or noisy blocks before taking a screenshot.
+export type ViewOptions = {
+  newBadge: boolean;
+  lpStar: boolean;
+  pic: boolean;
+  region: boolean;
+  stage: boolean;
+  category: boolean;
+};
+
+export const DEFAULT_VIEW_OPTIONS: ViewOptions = {
+  newBadge: true,
+  lpStar: true,
+  pic: true,
+  region: true,
+  stage: true,
+  category: true,
+};
+
+export function PartnershipCard({ p, onClick, opts = DEFAULT_VIEW_OPTIONS }: { p: Partnership; onClick: () => void; opts?: ViewOptions }) {
   const { lang, t } = useLang();
   const name = lang === "cn" && p.nameCn ? p.nameCn : p.nameEn;
   const altName = lang === "cn" ? p.nameEn : p.nameCn;
@@ -665,23 +707,25 @@ export function PartnershipCard({ p, onClick }: { p: Partnership; onClick: () =>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-base truncate">{name}</h3>
-            {p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
-            <LpBadge p={p} />
-            <NewBadge p={p} />
+            {opts.lpStar && p.hallOfFame === 1 && <Star className="h-4 w-4 shrink-0 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />}
+            {opts.lpStar && <LpBadge p={p} />}
+            {opts.newBadge && <NewBadge p={p} />}
           </div>
           {altName && <p className="text-xs text-muted-foreground truncate">{altName}</p>}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StageBadge stage={p.stage as Stage} />
-            <CategoryBadge category={p.category as Category} />
-            <RegionBadge region={p.region as Region} />
-          </div>
+          {(opts.stage || opts.category || opts.region) && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {opts.stage && <StageBadge stage={p.stage as Stage} />}
+              {opts.category && <CategoryBadge category={p.category as Category} />}
+              {opts.region && <RegionBadge region={p.region as Region} />}
+            </div>
+          )}
         </div>
       </div>
       {desc && <p className="mt-3 text-sm text-muted-foreground line-clamp-2">{desc}</p>}
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <LevelDots level={levelOfStage(p.stage)} />
-          <PicAvatars names={picsOf(p)} />
+          {opts.pic && <PicAvatars names={picsOf(p)} />}
         </div>
         <span className="text-xs text-[hsl(var(--aqua))] font-medium">{t("viewDetails")} →</span>
       </div>

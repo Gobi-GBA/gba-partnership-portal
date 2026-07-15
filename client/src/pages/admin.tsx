@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
@@ -20,7 +20,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { UserAvatar } from "@/components/user-panels";
 import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus } from "@shared/schema";
 import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
@@ -229,17 +231,128 @@ function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
+function EditAccountDialog({ u, onClose }: { u: SafeUser | null; onClose: () => void }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    if (u) {
+      setName(u.name);
+      setTitle(u.title ?? "");
+      setAvatarUrl(u.avatarUrl ?? "");
+    }
+  }, [u]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${u!.id}`, {
+        name: name.trim(),
+        title: title.trim() || null,
+        avatarUrl: avatarUrl.trim() || null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: t("accountUpdated") });
+      onClose();
+    },
+    onError: (e: any) => toast({ title: String(e?.message ?? "Failed"), variant: "destructive" }),
+  });
+
+  const sync = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/users/${u!.id}/sync-gobi`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data?.user) {
+        setName(data.user.name);
+        setTitle(data.user.title ?? "");
+        setAvatarUrl(data.user.avatarUrl ?? "");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: t("syncGobiDone"), description: data?.matched ? `${data.matched.name} — ${data.matched.title}` : undefined });
+    },
+    onError: (e: any) => {
+      const msg = String(e?.message ?? "");
+      toast({ title: msg.includes("not_found_on_gobi") ? t("syncGobiNotFound") : t("syncGobiFailed"), variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={!!u} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("editAccount")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-2">{t("editAccountSub")}</p>
+        {u && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <UserAvatar name={name || u.name} avatarUrl={avatarUrl || null} size="lg" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{u.email}</p>
+                <p className="text-xs text-muted-foreground">{t(`role_${u.role}` as any)}</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-[hsl(var(--aqua))]/50 text-[hsl(193,52%,32%)] dark:text-[hsl(193,60%,70%)]"
+              onClick={() => sync.mutate()}
+              disabled={sync.isPending}
+              data-testid="button-admin-sync-gobi"
+            >
+              {sync.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {t("syncFromGobi")}
+            </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-acct-name">{t("profileName")}</Label>
+              <Input id="edit-acct-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} data-testid="input-edit-account-name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-acct-title">{t("profileJobTitle")}</Label>
+              <Input id="edit-acct-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} data-testid="input-edit-account-title" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-acct-avatar">{t("profilePhoto")}</Label>
+              <Input id="edit-acct-avatar" placeholder="https://…" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} data-testid="input-edit-account-avatar" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={onClose} data-testid="button-cancel-edit-account">{t("cancel")}</Button>
+              <Button
+                disabled={!name.trim() || save.isPending}
+                onClick={() => save.mutate()}
+                className="bg-[hsl(193,52%,38%)] hover:bg-[hsl(193,52%,30%)] text-white"
+                data-testid="button-save-account"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {t("save")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UserAdmin() {
   const { t } = useLang();
   const { toast } = useToast();
   const { user: me } = useAuth();
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<SafeUser | null>(null);
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
 
   const mutation = useMutation({
-    mutationFn: async ({ id, status, role, isIr }: { id: number; status?: string; role?: string; isIr?: number }) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${id}`, { status, role, isIr });
+    mutationFn: async ({ id, status, role, isIr, isDev }: { id: number; status?: string; role?: string; isIr?: number; isDev?: number }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}`, { status, role, isIr, isDev });
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
@@ -254,45 +367,72 @@ function UserAdmin() {
   const pending = visible.filter((u) => u.status === "pending");
   const others = visible.filter((u) => u.status !== "pending");
 
+  // Rights matrix semantics:
+  // View  = account approved (can sign in and browse)
+  // Edit  = role staff or admin (can register and edit partnerships)
+  // IR    = isIr flag (can see and edit LP status)
+  // Dev   = isDev flag (can see the R&D planner)
+  // Admin = role admin (implies Edit; manages accounts and approvals)
+  const rightCell = (
+    u: SafeUser,
+    key: "view" | "edit" | "ir" | "dev" | "admin",
+    checked: boolean,
+    disabled: boolean,
+    hint: string,
+    onChange: (c: boolean) => void,
+  ) => (
+    <label key={key} title={hint} className="flex w-12 flex-col items-center gap-1.5 cursor-pointer">
+      <span className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">{t(`right_${key}` as any)}</span>
+      <Checkbox
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(c) => onChange(c === true)}
+        className="data-[state=checked]:bg-[hsl(193,52%,38%)] data-[state=checked]:border-[hsl(193,52%,38%)]"
+        data-testid={`check-${key}-${u.id}`}
+      />
+    </label>
+  );
+
   const row = (u: SafeUser) => (
-    <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-card-border bg-card px-4 py-3" data-testid={`row-user-${u.id}`}>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-sm">{u.name}</p>
-        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+    <div key={u.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-card-border bg-card px-4 py-3" data-testid={`row-user-${u.id}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-3" style={{ minWidth: "12rem" }}>
+        <UserAvatar name={u.name} avatarUrl={u.avatarUrl} size="sm" />
+        <div className="min-w-0">
+          <p className="font-semibold text-sm truncate">{u.name}</p>
+          {u.title && <p className="text-[11px] text-muted-foreground truncate">{u.title}</p>}
+          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+        </div>
       </div>
-      {/* Role select */}
-      <Select
-        value={u.role}
-        onValueChange={(role) => mutation.mutate({ id: u.id, role })}
-        disabled={me?.id === u.id}
-      >
-        <SelectTrigger className="w-32 h-8 text-xs" data-testid={`select-role-${u.id}`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {ROLES.map((r) => (
-            <SelectItem key={r} value={r}>{t(`role_${r}` as any)}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {/* IR team toggle — members can see LP status */}
-      <button
-        type="button"
-        title={t("irToggleHint")}
-        onClick={() => mutation.mutate({ id: u.id, isIr: u.isIr === 1 ? 0 : 1 })}
-        data-testid={`button-toggle-ir-${u.id}`}
-        className={
-          u.isIr === 1
-            ? "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--gold))] bg-[hsl(var(--gold))]/15 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[hsl(40,55%,32%)] dark:text-[hsl(var(--gold))]"
-            : "inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground transition-colors hover:border-[hsl(var(--gold))] hover:text-[hsl(40,55%,32%)] dark:hover:text-[hsl(var(--gold))]"
-        }
-      >
-        <Landmark className="h-3 w-3" />
-        {t("irTeam")}
-      </button>
+      {/* Rights matrix */}
+      <div className="flex items-end gap-1 rounded-md border border-border/60 bg-background/40 px-2 py-1.5">
+        {rightCell(u, "view", u.status === "approved", me?.id === u.id, t("right_view_hint"), (c) =>
+          mutation.mutate({ id: u.id, status: c ? "approved" : "pending" }),
+        )}
+        {rightCell(u, "edit", u.role === "staff" || u.role === "admin", me?.id === u.id || u.role === "admin", t("right_edit_hint"), (c) =>
+          mutation.mutate({ id: u.id, role: c ? "staff" : "viewer" }),
+        )}
+        {rightCell(u, "ir", u.isIr === 1, false, t("right_ir_hint"), (c) =>
+          mutation.mutate({ id: u.id, isIr: c ? 1 : 0 }),
+        )}
+        {rightCell(u, "dev", u.isDev === 1, false, t("right_dev_hint"), (c) =>
+          mutation.mutate({ id: u.id, isDev: c ? 1 : 0 }),
+        )}
+        {rightCell(u, "admin", u.role === "admin", me?.id === u.id, t("right_admin_hint"), (c) =>
+          mutation.mutate({ id: u.id, role: c ? "admin" : "staff" }),
+        )}
+      </div>
       <Badge variant={u.status === "approved" ? "default" : u.status === "rejected" ? "destructive" : "secondary"}>
         {t(`status_${u.status}` as any)}
       </Badge>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => setEditing(u)}
+        title={t("editAccount")}
+        data-testid={`button-edit-user-${u.id}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
       {u.status === "pending" && (
         <>
           <Button size="sm" onClick={() => mutation.mutate({ id: u.id, status: "approved" })} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-user-${u.id}`}>
@@ -341,7 +481,22 @@ function UserAdmin() {
       )}
       <div className="space-y-2">{others.map(row)}</div>
       {visible.length === 0 && <p className="text-muted-foreground">{t("noPending")}</p>}
+      {/* Rights legend */}
+      <div className="rounded-lg border border-border/60 bg-card/60 px-4 py-3" data-testid="rights-legend">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          <Info className="h-3.5 w-3.5" />
+          {t("rightsLegendTitle")}
+        </p>
+        <ul className="grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2">
+          <li><span className="font-bold text-foreground">{t("right_view")}</span> — {t("right_view_hint")}</li>
+          <li><span className="font-bold text-foreground">{t("right_edit")}</span> — {t("right_edit_hint")}</li>
+          <li><span className="font-bold text-foreground">{t("right_ir")}</span> — {t("right_ir_hint")}</li>
+          <li><span className="font-bold text-foreground">{t("right_dev")}</span> — {t("right_dev_hint")}</li>
+          <li><span className="font-bold text-foreground">{t("right_admin")}</span> — {t("right_admin_hint")}</li>
+        </ul>
+      </div>
       <AddAccountDialog open={showAdd} onClose={() => setShowAdd(false)} />
+      <EditAccountDialog u={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }
