@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network } from "lucide-react";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical } from "lucide-react";
 import type { Partnership, Stage, Category, Region, AttachmentMeta } from "@shared/schema";
 import { GOBI_OFFICES } from "@shared/schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -60,6 +60,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { dark, toggle } = useTheme();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [showTestBanner, setShowTestBanner] = useState(true);
 
   const links: { href: string; label: string; show: boolean }[] = [
     { href: "/", label: t("navDirectory"), show: true },
@@ -172,7 +173,40 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </header>
 
+      {showTestBanner && (
+        <div
+          role="status"
+          data-testid="banner-internal-test"
+          className="border-b border-amber-500/30 bg-amber-500/10 text-foreground"
+        >
+          <div className="mx-auto max-w-6xl px-4 py-2 flex items-start md:items-center gap-2.5 text-xs md:text-[13px]">
+            <FlaskConical className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 md:mt-0" aria-hidden="true" />
+            <p className="flex-1 leading-snug">
+              <span className="font-semibold">{t("testBannerTitle")}</span>
+              <span className="text-muted-foreground"> — {t("testBannerBody")}</span>
+            </p>
+            <button
+              onClick={() => setShowTestBanner(false)}
+              data-testid="button-dismiss-test-banner"
+              className="shrink-0 rounded px-2 py-1 font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/15 transition-colors"
+            >
+              {t("testBannerDismiss")}
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1">{children}</main>
+
+      <div
+        aria-hidden="true"
+        data-testid="watermark-internal-testing"
+        className="pointer-events-none fixed bottom-3 right-3 z-50 select-none"
+      >
+        <span className="inline-block rounded-full border border-border/60 bg-background/55 backdrop-blur-sm px-3 py-1 text-[10px] tracking-wide text-muted-foreground/80 shadow-sm">
+          {t("testWatermark")}
+        </span>
+      </div>
 
       <footer className="border-t border-border py-8 mt-16">
         <div className="mx-auto max-w-6xl px-4 flex flex-col gap-3">
