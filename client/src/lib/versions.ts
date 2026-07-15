@@ -8,9 +8,25 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.3";
+export const CURRENT_VERSION = "4.4";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.4",
+    date: "2026-07-15",
+    titleEn: "Galaxy interface",
+    titleCn: "星系界面",
+    itemsEn: [
+      "Animated starry-galaxy background across the portal, including the sign-in screen — twinkling stars, drifting nebulas and the occasional shooting star",
+      "Glass interface — cards, dialogs and panels are now slightly translucent with a soft blur so the galaxy shows through",
+      "Adapts to light and dark mode, and respects reduced-motion system settings",
+    ],
+    itemsCn: [
+      "全站动态星空背景（含登录页）— 星光闪烁、星云漂移，偶有流星划过",
+      "玻璃质感界面 — 卡片、弹窗与面板微透明并带柔和模糊，星空若隐若现",
+      "自适应深浅色模式，并遵循系统的减少动效设置",
+    ],
+  },
   {
     version: "4.3",
     date: "2026-07-15",

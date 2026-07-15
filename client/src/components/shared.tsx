@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { GalaxyBackground } from "@/components/galaxy-bg";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -212,7 +213,8 @@ export function Layout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="relative min-h-screen flex flex-col text-foreground">
+      <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
@@ -387,7 +389,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
       {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
 
-      <footer className="border-t border-border py-8 mt-16">
+      <footer className="border-t border-border bg-background/70 backdrop-blur-sm py-8 mt-16">
         <div className="mx-auto max-w-6xl px-4 flex flex-col gap-3">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

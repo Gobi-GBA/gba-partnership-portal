@@ -108,7 +108,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   return (
     <Layout>
       {/* Hero */}
-      <section className="border-b border-border bg-[hsl(214,68%,15%)] dark:bg-[hsl(218,71%,5%)] text-white">
+      <section className="border-b border-border bg-[hsl(214,68%,15%)]/85 dark:bg-[hsl(218,71%,5%)]/55 backdrop-blur-sm text-white">
         <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[hsl(var(--aqua))] mb-4">
             {t("heroEyebrow")}

@@ -326,3 +326,23 @@
 .bg-gold { background-color: hsl(var(--gold)); }
 .text-aqua { color: hsl(var(--aqua)); }
 html { scroll-behavior: smooth; }
+
+/* ---- v4.4 galaxy glass: surfaces go slightly translucent so the starfield shows through ---- */
+.bg-background {
+  background-color: hsl(var(--background) / 0.86);
+}
+.bg-card {
+  background-color: hsl(var(--card) / 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.bg-popover {
+  background-color: hsl(var(--popover) / 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+/* Dialogs, sheets and the mobile menu sit on bg-background — give them the glass blur too */
+[role="dialog"] {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
