@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PartnerLogo, StageBadge, CategoryBadge } from "@/components/shared";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
-import type { Feedback, FeedbackStatus } from "@shared/schema";
-import { History, MessageSquarePlus, Send } from "lucide-react";
+import type { Feedback, FeedbackStatus, Partnership, Stage, Category } from "@shared/schema";
+import { History, MessageSquarePlus, Send, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const STATUS_STYLES: Record<FeedbackStatus, string> = {
@@ -40,6 +42,19 @@ export default function Updates() {
     queryKey: ["/api/feedback"],
     enabled: !!user,
   });
+
+  const { data: partnerships, isLoading: loadingPartners } = useQuery<Partnership[]>({
+    queryKey: ["/api/partnerships"],
+    enabled: !!user,
+  });
+
+  // Partnership records log: newest first, keyed on start date (fallback to created date)
+  const logDate = (p: Partnership) => p.startDate || p.createdAt;
+  const partnerLog = (partnerships ?? [])
+    .slice()
+    .sort((a, b) => (logDate(a) < logDate(b) ? 1 : logDate(a) > logDate(b) ? -1 : b.id - a.id));
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" });
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -121,42 +136,109 @@ export default function Updates() {
           )}
         </section>
 
-        {/* ---- System update log ---- */}
+        {/* ---- Logs: system updates + partnership records (tabbed) ---- */}
         <section>
-          <div className="flex items-center gap-2 mb-1">
-            <History className="h-5 w-5 text-[hsl(193,52%,38%)]" />
-            <h2 className="font-display text-xl font-bold" data-testid="text-updates-title">{t("updatesTitle")}</h2>
-          </div>
-          <p className="text-sm text-muted-foreground mb-6">{t("updatesSub")}</p>
+          <Tabs defaultValue="system" className="w-full">
+            <TabsList className="mb-6">
+              <TabsTrigger value="system" data-testid="tab-system-log">
+                <History className="h-4 w-4 mr-2" />
+                {t("tabSystemLog")}
+              </TabsTrigger>
+              <TabsTrigger value="partnerships" data-testid="tab-partnership-log">
+                <Handshake className="h-4 w-4 mr-2" />
+                {t("tabPartnershipLog")}
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="relative border-l-2 border-border ml-2 space-y-8">
-            {VERSIONS.map((v) => (
-              <div key={v.version} className="relative pl-6" data-testid={`version-entry-${v.version}`}>
-                <span
-                  className={cn(
-                    "absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background",
-                    v.version === CURRENT_VERSION ? "bg-[hsl(43,55%,55%)]" : "bg-[hsl(193,52%,38%)]",
-                  )}
-                />
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="font-display font-bold">v{v.version}</span>
-                  {v.version === CURRENT_VERSION && (
-                    <Badge className="bg-[hsl(43,55%,55%)]/15 text-[hsl(43,55%,35%)] dark:text-[hsl(43,55%,65%)] border-[hsl(43,55%,55%)]/30" variant="outline">
-                      {t("currentVersion")}
-                    </Badge>
-                  )}
-                  <span className="text-xs text-muted-foreground tabular-nums">{v.date}</span>
-                  <span className="text-xs text-muted-foreground" data-testid={`version-author-${v.version}`}>{t("versionBy")} {v.by}</span>
-                </div>
-                <div className="font-semibold text-sm mb-1.5">{lang === "cn" ? v.titleCn : v.titleEn}</div>
-                <ul className="space-y-1 text-sm text-muted-foreground list-disc pl-4">
-                  {(lang === "cn" ? v.itemsCn : v.itemsEn).map((item, i) => (
-                    <li key={i}>{item}</li>
-                  ))}
-                </ul>
+            {/* Tab 1: system update log */}
+            <TabsContent value="system" data-testid="panel-system-log">
+              <div className="flex items-center gap-2 mb-1">
+                <History className="h-5 w-5 text-[hsl(193,52%,38%)]" />
+                <h2 className="font-display text-xl font-bold" data-testid="text-updates-title">{t("updatesTitle")}</h2>
               </div>
-            ))}
-          </div>
+              <p className="text-sm text-muted-foreground mb-6">{t("updatesSub")}</p>
+
+              <div className="relative border-l-2 border-border ml-2 space-y-8">
+                {VERSIONS.map((v) => (
+                  <div key={v.version} className="relative pl-6" data-testid={`version-entry-${v.version}`}>
+                    <span
+                      className={cn(
+                        "absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background",
+                        v.version === CURRENT_VERSION ? "bg-[hsl(43,55%,55%)]" : "bg-[hsl(193,52%,38%)]",
+                      )}
+                    />
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="font-display font-bold">v{v.version}</span>
+                      {v.version === CURRENT_VERSION && (
+                        <Badge className="bg-[hsl(43,55%,55%)]/15 text-[hsl(43,55%,35%)] dark:text-[hsl(43,55%,65%)] border-[hsl(43,55%,55%)]/30" variant="outline">
+                          {t("currentVersion")}
+                        </Badge>
+                      )}
+                      <span className="text-xs text-muted-foreground tabular-nums">{v.date}</span>
+                      <span className="text-xs text-muted-foreground" data-testid={`version-author-${v.version}`}>{t("versionBy")} {v.by}</span>
+                    </div>
+                    <div className="font-semibold text-sm mb-1.5">{lang === "cn" ? v.titleCn : v.titleEn}</div>
+                    <ul className="space-y-1 text-sm text-muted-foreground list-disc pl-4">
+                      {(lang === "cn" ? v.itemsCn : v.itemsEn).map((item, i) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            {/* Tab 2: partnership records log */}
+            <TabsContent value="partnerships" data-testid="panel-partnership-log">
+              <div className="flex items-center gap-2 mb-1">
+                <Handshake className="h-5 w-5 text-[hsl(193,52%,38%)]" />
+                <h2 className="font-display text-xl font-bold" data-testid="text-partner-log-title">{t("partnerLogTitle")}</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">{t("partnerLogSub")}</p>
+
+              {loadingPartners ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : partnerLog.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-partner-log-empty">{t("partnerLogEmpty")}</p>
+              ) : (
+                <div className="relative border-l-2 border-border ml-2 space-y-6">
+                  {partnerLog.map((p) => (
+                    <div key={p.id} className="relative pl-6" data-testid={`partner-log-entry-${p.id}`}>
+                      <span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-[hsl(193,52%,38%)]" />
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-xs text-muted-foreground tabular-nums" data-testid={`partner-log-date-${p.id}`}>{fmtDate(logDate(p))}</span>
+                        <span className="text-[11px] text-muted-foreground/70">·</span>
+                        <span className="text-[11px] text-muted-foreground/80">
+                          {p.startDate ? t("partnerLogStarted") : t("partnerLogAdded")}
+                        </span>
+                        {p.status === "pending" && (
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                            {t("partnerLogPending")}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+                        <PartnerLogo p={p} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-sm truncate" data-testid={`partner-log-name-${p.id}`}>
+                            {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <CategoryBadge category={p.category as Category} />
+                            <StageBadge stage={p.stage as Stage} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </section>
       </div>
     </Layout>
