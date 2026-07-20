@@ -123,23 +123,58 @@ export const CATEGORIES = [
   "other",       // 其他
 ] as const;
 
-// Domicile regions — Gobi office regions ranked first
+// Territory-level regions (specific), ordered with Gobi office regions first.
+// Grouped under macro-regions below (best-practice two-layer taxonomy).
 export const REGIONS = [
   "hongkong",   // 香港 (Gobi office)
   "mainland",   // 中国内地 (Gobi office)
-  "malaysia",   // 马来西亚 (Gobi office)
-  "singapore",  // 新加坡 (Gobi office)
-  "philippines",// 菲律宾 (Gobi office)
-  "vietnam",    // 越南 (Gobi office)
-  "indonesia",  // 印度尼西亚 (Gobi office)
-  "pakistan",   // 巴基斯坦 (Gobi office)
-  "japan",      // 日本
-  "korea",      // 韩国
   "taiwan",     // 台湾
   "macau",      // 澳门
-  "sea",        // 东南亚（其他）
-  "international", // 国际
+  "singapore",  // 新加坡 (Gobi office)
+  "malaysia",   // 马来西亚 (Gobi office)
+  "indonesia",  // 印度尼西亚 (Gobi office)
+  "vietnam",    // 越南 (Gobi office)
+  "philippines",// 菲律宾 (Gobi office)
+  "japan",      // 日本
+  "korea",      // 韩国
+  "pakistan",   // 巴基斯坦 (Gobi office)
+  "global",     // 全球 (undefined / other)
 ] as const;
+
+// Macro-regions (broad) — the top layer of the two-layer taxonomy.
+export const MACRO_REGIONS = [
+  "greater_china",   // 大中华区: HK, Mainland, Taiwan, Macau
+  "southeast_asia",  // 东南亚: Singapore, Malaysia, Indonesia, Vietnam, Philippines
+  "northeast_asia",  // 东北亚: Japan, Korea
+  "south_asia",      // 南亚: Pakistan
+  "global",          // 全球: undefined / other
+] as const;
+
+// Maps each territory to its macro-region.
+export const REGION_TO_MACRO: Record<(typeof REGIONS)[number], (typeof MACRO_REGIONS)[number]> = {
+  hongkong: "greater_china",
+  mainland: "greater_china",
+  taiwan: "greater_china",
+  macau: "greater_china",
+  singapore: "southeast_asia",
+  malaysia: "southeast_asia",
+  indonesia: "southeast_asia",
+  vietnam: "southeast_asia",
+  philippines: "southeast_asia",
+  japan: "northeast_asia",
+  korea: "northeast_asia",
+  pakistan: "south_asia",
+  global: "global",
+};
+
+// Territories grouped by macro-region, in display order.
+export const MACRO_TO_REGIONS: Record<(typeof MACRO_REGIONS)[number], (typeof REGIONS)[number][]> = {
+  greater_china: ["hongkong", "mainland", "taiwan", "macau"],
+  southeast_asia: ["singapore", "malaysia", "indonesia", "vietnam", "philippines"],
+  northeast_asia: ["japan", "korea"],
+  south_asia: ["pakistan"],
+  global: ["global"],
+};
 
 export const partnerships = sqliteTable("partnerships", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -192,6 +227,7 @@ export type Partnership = typeof partnerships.$inferSelect;
 export type Stage = (typeof STAGES)[number];
 export type Category = (typeof CATEGORIES)[number];
 export type Region = (typeof REGIONS)[number];
+export type MacroRegion = (typeof MACRO_REGIONS)[number];
 
 // ---------- Attachments (stored in SQLite so they survive redeploys) ----------
 export const attachments = sqliteTable("attachments", {

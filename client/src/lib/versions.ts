@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.6";
+export const CURRENT_VERSION = "4.7";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.7",
+    date: "2026-07-20",
+    by: "Fred Li",
+    titleEn: "Two-layer regions & interactive star map",
+    titleCn: "两层地区分类与可交互星图",
+    itemsEn: [
+      "Regions now follow a best-practice two-layer model — broad macro-regions (Greater China, Southeast Asia, Northeast Asia, South Asia, Global) each grouping the specific territories, so Southeast Asia correctly includes Singapore, Malaysia, Indonesia, Vietnam and the Philippines",
+      "Renamed the old 'International' bucket to 'Global' for anything that cannot be placed in a specific region",
+      "The region filter and the star map are now mutually linked — click a region hub on the map to filter to it, and it highlights in gold; clear it and both update together",
+      "Fixed a scroll bug where long people-picker lists were cut off at the bottom of the screen on smaller devices",
+    ],
+    itemsCn: [
+      "地区采用最佳实践的两层分类 — 宏观大区（大中华区、东南亚、东北亚、南亚、全球）分别统领具体地区，东南亚现已正确包含新加坡、马来西亚、印尼、越南与菲律宾",
+      "将原来的“国际”归类重命名为“全球”，用于无法归入具体地区的伙伴",
+      "地区筛选与星图现已双向联动 — 在星图上点击地区节点即可筛选并以金色高亮，取消时两者同步更新",
+      "修复在较小屏幕上选择负责人时长列表被屏幕底部截断、无法滚动的问题",
+    ],
+  },
   {
     version: "4.6",
     date: "2026-07-20",

@@ -206,6 +206,17 @@ export function createPgStorage(): IStorage {
             [new Date().toISOString()],
           );
         }
+        // v4.7 one-time region taxonomy migration: legacy values -> new taxonomy
+        // "international" and the old "sea" catch-all both collapse into "global".
+        const v47Res = await sql.query(`SELECT value FROM meta WHERE key = 'migration_v47_region_taxonomy'`);
+        const v47Rows: unknown[] = Array.isArray(v47Res) ? v47Res : ((v47Res as any)?.rows ?? []);
+        if (v47Rows.length === 0) {
+          await sql.query(`UPDATE partnerships SET region = 'global' WHERE region IN ('international', 'sea')`);
+          await sql.query(
+            `INSERT INTO meta (key, value) VALUES ('migration_v47_region_taxonomy', $1) ON CONFLICT (key) DO NOTHING`,
+            [new Date().toISOString()],
+          );
+        }
         // Seed the R&D planner once, when empty
         const anyRd = await db.select({ id: rdItems.id }).from(rdItems).limit(1);
         if (anyRd.length === 0) {

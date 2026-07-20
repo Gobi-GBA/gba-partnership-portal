@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { useLang } from "@/lib/i18n";
-import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter, DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
+import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter, GroupedRegionFilter, DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -174,9 +174,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             className="w-full md:w-44"
             testid="select-stage"
           />
-          <MultiSelectFilter
-            label={t("filterRegion")}
-            options={REGIONS.map((r) => ({ value: r, label: t(`region_${r}` as any) }))}
+          <GroupedRegionFilter
             selected={region}
             onChange={setRegion}
             className="w-full md:w-40"
@@ -312,7 +310,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             <div className="mb-4">
               <NetworkLegend />
             </div>
-            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} />
+            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} />
           </div>
         ) : view === "timeline" ? (
           timeline.dated.length === 0 ? (

@@ -77,9 +77,14 @@ const dict = {
   region_japan: { en: "Japan", cn: "日本" },
   region_korea: { en: "South Korea", cn: "韩国" },
   region_taiwan: { en: "Taiwan", cn: "台湾" },
-  region_sea: { en: "Southeast Asia", cn: "东南亚" },
   region_macau: { en: "Macau", cn: "澳门" },
-  region_international: { en: "International", cn: "国际" },
+  region_global: { en: "Global", cn: "全球" },
+  // Macro-regions (broad grouping)
+  macro_greater_china: { en: "Greater China", cn: "大中华区" },
+  macro_southeast_asia: { en: "Southeast Asia", cn: "东南亚" },
+  macro_northeast_asia: { en: "Northeast Asia", cn: "东北亚" },
+  macro_south_asia: { en: "South Asia", cn: "南亚" },
+  macro_global: { en: "Global", cn: "全球" },
 
   // PIC / hierarchy / context
   picLabel: { en: "Gobi PIC", cn: "戈壁负责人" },

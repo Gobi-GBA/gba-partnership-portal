@@ -1,5 +1,5 @@
-import type { Stage, Category, Region, Partnership } from "@shared/schema";
-import { STAGES, CATEGORIES, REGIONS, GOBI_STAFF } from "@shared/schema";
+import type { Stage, Category, Region, MacroRegion, Partnership } from "@shared/schema";
+import { STAGES, CATEGORIES, REGIONS, MACRO_REGIONS, GOBI_STAFF } from "@shared/schema";
 
 export { STAGES, CATEGORIES, REGIONS, GOBI_STAFF };
 
@@ -35,22 +35,30 @@ export const REGION_ORDER: Record<Region, number> = Object.fromEntries(
   REGIONS.map((r, i) => [r, i]),
 ) as Record<Region, number>;
 
-// Hub colors per region (network diagram)
+// Hub colors per territory-level region (network diagram)
 export const REGION_COLORS: Record<Region, string> = {
   hongkong: "#48A9C5",
   mainland: "#C4716C",
-  malaysia: "#7FB069",
-  singapore: "#3E8E7E",
-  philippines: "#D4A843",
-  vietnam: "#6B93C4",
-  indonesia: "#B08968",
-  pakistan: "#5E8C61",
-  japan: "#C48BB8",
-  korea: "#8E7CC3",
   taiwan: "#C99A5B",
   macau: "#9B8CC4",
-  sea: "#7FB069",
-  international: "#5B84B1",
+  singapore: "#3E8E7E",
+  malaysia: "#7FB069",
+  indonesia: "#B08968",
+  vietnam: "#6B93C4",
+  philippines: "#D4A843",
+  japan: "#C48BB8",
+  korea: "#8E7CC3",
+  pakistan: "#5E8C61",
+  global: "#5B84B1",
+};
+
+// Macro-region colors (broad grouping for the two-layer taxonomy)
+export const MACRO_REGION_COLORS: Record<MacroRegion, string> = {
+  greater_china: "#48A9C5",
+  southeast_asia: "#3E8E7E",
+  northeast_asia: "#C48BB8",
+  south_asia: "#5E8C61",
+  global: "#5B84B1",
 };
 
 // Category colors (used in network diagram + badges)

@@ -440,7 +440,7 @@ export const V43_NEW_PARTNERS: any[] = [
     nameEn: "Thaioil",
     nameCn: "泰国石油",
     category: "corporate",
-    region: "sea",
+    region: "global",
     website: "https://www.thaioilgroup.com/en",
     logoUrl: "https://www.google.com/s2/favicons?domain=thaioilgroup.com&sz=128",
     descriptionEn:

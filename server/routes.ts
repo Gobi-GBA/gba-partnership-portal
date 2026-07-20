@@ -895,7 +895,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
   "nameEn": "partner organisation name in English",
   "nameCn": "partner organisation name in Chinese",
   "category": one of ${JSON.stringify(CATEGORIES)},
-  "region": one of ${JSON.stringify(REGIONS)} (hongkong=Hong Kong, mainland=Chinese Mainland, macau=Macau, sea=other Southeast Asia, international=elsewhere; judge by the partner's domicile),
+  "region": one of ${JSON.stringify(REGIONS)} (hongkong=Hong Kong, mainland=Chinese Mainland, taiwan=Taiwan, macau=Macau; singapore/malaysia/indonesia/vietnam/philippines=Southeast Asia; japan/korea=Northeast Asia; pakistan=South Asia; global=elsewhere or cannot be determined; judge by the partner's domicile),
   "website": "https://... if mentioned or confidently known",
   "descriptionEn": "1-2 sentence English summary of the partnership/collaboration",
   "descriptionCn": "1-2 sentence Chinese summary of the partnership/collaboration",

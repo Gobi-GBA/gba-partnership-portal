@@ -22,6 +22,8 @@ interface GraphNode extends SimulationNodeDatum {
   opacity?: number;
   isCenter?: boolean;
   isHub?: boolean;
+  hubKey?: string;
+  hubGroup?: "region" | "category";
   isParticle?: boolean;
   partnership?: Partnership;
 }
@@ -61,11 +63,15 @@ export function NetworkGraph({
   onSelect,
   height = 620,
   options = DEFAULT_VIEW_OPTIONS,
+  selectedRegions = [],
+  onToggleRegion,
 }: {
   partnerships: Partnership[];
   onSelect: (p: Partnership) => void;
   height?: number;
   options?: ViewOptions;
+  selectedRegions?: string[];
+  onToggleRegion?: (region: string) => void;
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -125,6 +131,8 @@ export function NetworkGraph({
           ? (REGION_COLORS[k as Region] ?? "#48A9C5")
           : (CATEGORY_COLORS_DARK[k as Category] ?? CATEGORY_COLORS_DARK.other),
       isHub: true,
+      hubKey: k,
+      hubGroup: groupBy,
       x: hubPos.get(k)!.x,
       y: hubPos.get(k)!.y,
     }));
@@ -275,9 +283,22 @@ export function NetworkGraph({
       .selectAll<SVGGElement, GraphNode>("g")
       .data(nodes)
       .join("g")
-      .style("cursor", (d) => (d.isParticle ? "default" : d.partnership ? "pointer" : "grab"))
-      .on("click", (_event, d) => {
-        if (d.partnership) onSelect(d.partnership);
+      .style("cursor", (d) =>
+        d.isParticle
+          ? "default"
+          : d.partnership
+            ? "pointer"
+            : d.isHub && d.hubGroup === "region" && onToggleRegion
+              ? "pointer"
+              : "grab",
+      )
+      .on("click", (event, d) => {
+        if (d.partnership) {
+          onSelect(d.partnership);
+        } else if (d.isHub && d.hubGroup === "region" && d.hubKey && onToggleRegion) {
+          event.stopPropagation();
+          onToggleRegion(d.hubKey);
+        }
       });
 
     // glow halo
@@ -287,7 +308,11 @@ export function NetworkGraph({
       .attr("class", "halo")
       .attr("r", (d) => d.r * (d.isHub ? 1.3 : 1.45))
       .attr("fill", (d) => d.color)
-      .attr("opacity", (d) => (d.isHub ? 0.2 : 0.28))
+      .attr("opacity", (d) =>
+        d.isHub
+          ? (d.hubGroup === "region" && d.hubKey && selectedRegions.includes(d.hubKey) ? 0.5 : 0.2)
+          : 0.28,
+      )
       .attr("filter", "url(#net-glow)");
 
     nodeSel
@@ -296,8 +321,24 @@ export function NetworkGraph({
       .attr("r", (d) => d.r)
       .attr("fill", (d) => (d.isHub ? "#0B2240" : d.color))
       .attr("opacity", (d) => d.opacity ?? 1)
-      .attr("stroke", (d) => (d.isParticle ? "none" : d.isHub ? d.color : "rgba(234,243,250,0.9)"))
-      .attr("stroke-width", (d) => (d.isCenter ? 2 : d.isHub ? 1.8 : 1.2))
+      .attr("stroke", (d) =>
+        d.isParticle
+          ? "none"
+          : d.isHub && d.hubGroup === "region" && d.hubKey && selectedRegions.includes(d.hubKey)
+            ? "#F0C75E"
+            : d.isHub
+              ? d.color
+              : "rgba(234,243,250,0.9)",
+      )
+      .attr("stroke-width", (d) =>
+        d.isCenter
+          ? 2
+          : d.isHub && d.hubGroup === "region" && d.hubKey && selectedRegions.includes(d.hubKey)
+            ? 3.5
+            : d.isHub
+              ? 1.8
+              : 1.2,
+      )
       .attr("filter", (d) => (d.isParticle ? "url(#net-glow)" : null));
 
     // logos inside partner nodes
@@ -481,7 +522,7 @@ export function NetworkGraph({
     return () => {
       sim.stop();
     };
-  }, [partnerships, lang, t, height, groupBy, options]);
+  }, [partnerships, lang, t, height, groupBy, options, selectedRegions, onToggleRegion]);
 
   const zoomBy = (factor: number) => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;

@@ -10,10 +10,10 @@ import {
 import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { GalaxyBackground } from "@/components/galaxy-bg";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Partnership, Stage, Category, Region, AttachmentMeta, AuditLog } from "@shared/schema";
-import { GOBI_OFFICES } from "@shared/schema";
+import type { Partnership, Stage, Category, Region, MacroRegion, AttachmentMeta, AuditLog } from "@shared/schema";
+import { GOBI_OFFICES, MACRO_REGIONS, MACRO_TO_REGIONS } from "@shared/schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STAFF, logoFor, initialsFor, picsOf, levelOfStage, isNew } from "@/lib/constants";
@@ -83,6 +83,105 @@ export function MultiSelectFilter({
             {o.label}
           </DropdownMenuCheckboxItem>
         ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Two-layer region filter: territories grouped under macro-regions.
+// A macro header toggles all its territories at once; the trigger shows a count.
+export function GroupedRegionFilter({
+  selected, onChange, className, testid,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+  className?: string;
+  testid: string;
+}) {
+  const { t } = useLang();
+  const toggle = (value: string) =>
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  const macroState = (macro: MacroRegion): "all" | "some" | "none" => {
+    const terrs = MACRO_TO_REGIONS[macro];
+    const on = terrs.filter((r) => selected.includes(r)).length;
+    if (on === 0) return "none";
+    if (on === terrs.length) return "all";
+    return "some";
+  };
+  const toggleMacro = (macro: MacroRegion) => {
+    const terrs = MACRO_TO_REGIONS[macro] as string[];
+    if (macroState(macro) === "all") {
+      onChange(selected.filter((v) => !terrs.includes(v)));
+    } else {
+      onChange(Array.from(new Set([...selected, ...terrs])));
+    }
+  };
+  const display =
+    selected.length === 0 ? `${t("filterRegion")}: ${t("filterAll")}` : `${t("filterRegion")} (${selected.length})`;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid={testid}
+          className={cn(
+            "flex h-10 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+            selected.length > 0 && "border-[hsl(var(--aqua))]/60 text-foreground",
+            className,
+          )}
+        >
+          <span className="truncate">{display}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[70vh] overflow-y-auto min-w-[13rem]">
+        <DropdownMenuItem
+          onSelect={(e) => { e.preventDefault(); onChange([]); }}
+          className={cn("text-sm", selected.length === 0 && "font-semibold")}
+          data-testid={`${testid}-all`}
+        >
+          {t("filterRegion")}: {t("filterAll")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {MACRO_REGIONS.map((macro) => {
+          const st = macroState(macro);
+          return (
+            <div key={macro}>
+              <DropdownMenuItem
+                onSelect={(e) => { e.preventDefault(); toggleMacro(macro); }}
+                className="gap-2 py-1.5"
+                data-testid={`${testid}-macro-${macro}`}
+              >
+                <span
+                  className={cn(
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border",
+                    st === "all" && "bg-[hsl(var(--aqua))] border-[hsl(var(--aqua))]",
+                    st === "some" && "bg-[hsl(var(--aqua))]/40 border-[hsl(var(--aqua))]",
+                    st === "none" && "border-muted-foreground/40",
+                  )}
+                >
+                  {st === "all" && <span className="h-1.5 w-1.5 rounded-[1px] bg-white" />}
+                  {st === "some" && <span className="h-0.5 w-2 rounded bg-white" />}
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t(`macro_${macro}` as any)}
+                </span>
+              </DropdownMenuItem>
+              {MACRO_TO_REGIONS[macro].map((r) => (
+                <DropdownMenuCheckboxItem
+                  key={r}
+                  checked={selected.includes(r)}
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={() => toggle(r)}
+                  className="pl-8"
+                  data-testid={`${testid}-${r}`}
+                >
+                  {t(`region_${r}` as any)}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </div>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -553,8 +652,16 @@ export function PicChecklist({ value, onChange }: { value: string[]; onChange: (
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
-        <div className="max-h-72 overflow-y-auto">
+      <PopoverContent
+        className="w-80 p-0"
+        align="start"
+        collisionPadding={12}
+        avoidCollisions
+      >
+        <div
+          className="overflow-y-auto overscroll-contain"
+          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height, 18rem))" }}
+        >
           {GOBI_OFFICES.map((office) => {
             const staff = GOBI_STAFF.filter((s) => s.office === office);
             if (!staff.length) return null;
