@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.5";
+export const CURRENT_VERSION = "4.6";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "4.6",
+    date: "2026-07-20",
+    by: "Fred Li",
+    titleEn: "Updates tabs & smoother rights editing",
+    titleCn: "动态双日志与更顺手的权限编辑",
+    itemsEn: [
+      "Updates page split into two tabs — the system update log (every release, newest first) and a new partnership records log that lists every partner by date, newest first",
+      "Admin rights matrix now stages your changes — tick the boxes (they highlight instantly) and save the whole row in one go, instead of a slow save on every click, with a Reset to discard unsaved edits",
+      "Removed the duplicate internal-testing note in the bottom corner",
+    ],
+    itemsCn: [
+      "动态页拆分为两个标签 — 系统更新日志（每次发布，最新在前）与全新的合作记录日志（按日期列出每家合作伙伴，最新在前）",
+      "管理后台权限矩阵改为暂存式编辑 — 勾选后立即高亮，整行一次性保存，不再每次点击都缓慢保存，并可一键重置放弃未保存的更改",
+      "移除右下角重复的内部测试提示",
+    ],
+  },
   {
     version: "4.5",
     date: "2026-07-15",

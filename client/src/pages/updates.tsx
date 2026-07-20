@@ -16,6 +16,9 @@ import type { Feedback, FeedbackStatus, Partnership, Stage, Category } from "@sh
 import { History, MessageSquarePlus, Send, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// The partnerships API enriches each row with the submitter's display name.
+type PartnershipWithAuthor = Partnership & { submittedByName?: string | null };
+
 export const STATUS_STYLES: Record<FeedbackStatus, string> = {
   open: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
   in_progress: "bg-[hsl(193,52%,38%)]/15 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)] border-[hsl(193,52%,38%)]/30",
@@ -43,7 +46,7 @@ export default function Updates() {
     enabled: !!user,
   });
 
-  const { data: partnerships, isLoading: loadingPartners } = useQuery<Partnership[]>({
+  const { data: partnerships, isLoading: loadingPartners } = useQuery<PartnershipWithAuthor[]>({
     queryKey: ["/api/partnerships"],
     enabled: !!user,
   });
@@ -215,6 +218,14 @@ export default function Updates() {
                         <span className="text-[11px] text-muted-foreground/80">
                           {p.startDate ? t("partnerLogStarted") : t("partnerLogAdded")}
                         </span>
+                        {p.submittedByName && (
+                          <>
+                            <span className="text-[11px] text-muted-foreground/70">·</span>
+                            <span className="text-[11px] text-muted-foreground/80" data-testid={`partner-log-by-${p.id}`}>
+                              {t("versionBy")} {p.submittedByName}
+                            </span>
+                          </>
+                        )}
                         {p.status === "pending" && (
                           <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
                             {t("partnerLogPending")}

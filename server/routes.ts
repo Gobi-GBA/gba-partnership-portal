@@ -423,7 +423,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Signed-in users only: approved partnerships
   app.get("/api/partnerships", requireAuth(), async (req: AuthedRequest, res) => {
     const all = await storage.listPartnerships();
-    res.json(all.filter((p) => p.status === "approved").map((p) => redactLp(p, req.user)));
+    const users = await storage.listUsers();
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    res.json(
+      all
+        .filter((p) => p.status === "approved")
+        .map((p) => ({
+          ...redactLp(p, req.user),
+          submittedByName: p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null,
+        })),
+    );
   });
 
   // Audit trail for one partnership — any signed-in user can view
