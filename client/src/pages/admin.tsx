@@ -350,6 +350,43 @@ function UserAdmin() {
   const [editing, setEditing] = useState<SafeUser | null>(null);
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
 
+  // Local draft of rights per user id. Checkboxes update the draft instantly
+  // (color changes right away); the admin then commits all changes in one PATCH.
+  type RightsDraft = { view: boolean; edit: boolean; ir: boolean; dev: boolean; admin: boolean };
+  const [drafts, setDrafts] = useState<Record<number, RightsDraft>>({});
+  const [savingId, setSavingId] = useState<number | null>(null);
+
+  const serverRights = (u: SafeUser): RightsDraft => ({
+    view: u.status === "approved",
+    edit: u.role === "staff" || u.role === "admin",
+    ir: u.isIr === 1,
+    dev: u.isDev === 1,
+    admin: u.role === "admin",
+  });
+
+  const draftFor = (u: SafeUser): RightsDraft => drafts[u.id] ?? serverRights(u);
+
+  const setRight = (u: SafeUser, key: keyof RightsDraft, val: boolean) => {
+    setDrafts((prev) => {
+      const base = prev[u.id] ?? serverRights(u);
+      const next: RightsDraft = { ...base, [key]: val };
+      // Admin implies Edit; turning Admin on forces Edit on, turning Edit off forces Admin off.
+      if (key === "admin" && val) next.edit = true;
+      if (key === "edit" && !val) next.admin = false;
+      return { ...prev, [u.id]: next };
+    });
+  };
+
+  const isDirty = (u: SafeUser): boolean => {
+    const d = drafts[u.id];
+    if (!d) return false;
+    const s = serverRights(u);
+    return d.view !== s.view || d.edit !== s.edit || d.ir !== s.ir || d.dev !== s.dev || d.admin !== s.admin;
+  };
+
+  const resetRow = (id: number) => setDrafts((prev) => { const n = { ...prev }; delete n[id]; return n; });
+
+  // Single-field mutation used by approve/reject buttons.
   const mutation = useMutation({
     mutationFn: async ({ id, status, role, isIr, isDev }: { id: number; status?: string; role?: string; isIr?: number; isDev?: number }) => {
       const res = await apiRequest("PATCH", `/api/admin/users/${id}`, { status, role, isIr, isDev });
@@ -358,6 +395,28 @@ function UserAdmin() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
     onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
   });
+
+  const saveRow = async (u: SafeUser) => {
+    const d = draftFor(u);
+    const payload = {
+      status: d.view ? "approved" : "pending",
+      role: d.admin ? "admin" : d.edit ? "staff" : "viewer",
+      isIr: d.ir ? 1 : 0,
+      isDev: d.dev ? 1 : 0,
+    };
+    setSavingId(u.id);
+    try {
+      const res = await apiRequest("PATCH", `/api/admin/users/${u.id}`, payload);
+      await res.json();
+      resetRow(u.id);
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: t("rightsSaved") });
+    } catch (e: any) {
+      toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
   const q = query.trim().toLowerCase();
@@ -380,14 +439,15 @@ function UserAdmin() {
     disabled: boolean,
     hint: string,
     onChange: (c: boolean) => void,
+    changed: boolean,
   ) => (
     <label key={key} title={hint} className="flex w-12 flex-col items-center gap-1.5 cursor-pointer">
-      <span className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">{t(`right_${key}` as any)}</span>
+      <span className={`text-[9px] font-extrabold uppercase tracking-wider ${changed ? "text-[hsl(43,55%,45%)]" : "text-muted-foreground"}`}>{t(`right_${key}` as any)}</span>
       <Checkbox
         checked={checked}
         disabled={disabled}
         onCheckedChange={(c) => onChange(c === true)}
-        className="data-[state=checked]:bg-[hsl(193,52%,38%)] data-[state=checked]:border-[hsl(193,52%,38%)]"
+        className={`data-[state=checked]:bg-[hsl(193,52%,38%)] data-[state=checked]:border-[hsl(193,52%,38%)] ${changed ? "ring-2 ring-[hsl(43,55%,55%)] ring-offset-1 ring-offset-background" : ""}`}
         data-testid={`check-${key}-${u.id}`}
       />
     </label>
@@ -403,24 +463,34 @@ function UserAdmin() {
           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
         </div>
       </div>
-      {/* Rights matrix */}
-      <div className="flex items-end gap-1 rounded-md border border-border/60 bg-background/40 px-2 py-1.5">
-        {rightCell(u, "view", u.status === "approved", me?.id === u.id, t("right_view_hint"), (c) =>
-          mutation.mutate({ id: u.id, status: c ? "approved" : "pending" }),
-        )}
-        {rightCell(u, "edit", u.role === "staff" || u.role === "admin", me?.id === u.id || u.role === "admin", t("right_edit_hint"), (c) =>
-          mutation.mutate({ id: u.id, role: c ? "staff" : "viewer" }),
-        )}
-        {rightCell(u, "ir", u.isIr === 1, false, t("right_ir_hint"), (c) =>
-          mutation.mutate({ id: u.id, isIr: c ? 1 : 0 }),
-        )}
-        {rightCell(u, "dev", u.isDev === 1, false, t("right_dev_hint"), (c) =>
-          mutation.mutate({ id: u.id, isDev: c ? 1 : 0 }),
-        )}
-        {rightCell(u, "admin", u.role === "admin", me?.id === u.id, t("right_admin_hint"), (c) =>
-          mutation.mutate({ id: u.id, role: c ? "admin" : "staff" }),
-        )}
-      </div>
+      {/* Rights matrix — checkboxes edit a local draft; changes are saved in one go */}
+      {(() => {
+        const d = draftFor(u);
+        const s = serverRights(u);
+        const dirty = isDirty(u);
+        const saving = savingId === u.id;
+        return (
+          <div className="flex items-end gap-2">
+            <div className={`flex items-end gap-1 rounded-md border px-2 py-1.5 transition-colors ${dirty ? "border-[hsl(43,55%,55%)] bg-[hsl(43,55%,55%)]/5" : "border-border/60 bg-background/40"}`} data-testid={`rights-matrix-${u.id}`}>
+              {rightCell(u, "view", d.view, me?.id === u.id, t("right_view_hint"), (c) => setRight(u, "view", c), d.view !== s.view)}
+              {rightCell(u, "edit", d.edit, me?.id === u.id || d.admin, t("right_edit_hint"), (c) => setRight(u, "edit", c), d.edit !== s.edit)}
+              {rightCell(u, "ir", d.ir, false, t("right_ir_hint"), (c) => setRight(u, "ir", c), d.ir !== s.ir)}
+              {rightCell(u, "dev", d.dev, false, t("right_dev_hint"), (c) => setRight(u, "dev", c), d.dev !== s.dev)}
+              {rightCell(u, "admin", d.admin, me?.id === u.id, t("right_admin_hint"), (c) => setRight(u, "admin", c), d.admin !== s.admin)}
+            </div>
+            {dirty && (
+              <div className="flex items-center gap-1">
+                <Button size="sm" onClick={() => saveRow(u)} disabled={saving} title={t("unsavedRights")} className="h-8 bg-[hsl(43,55%,50%)] text-[hsl(214,68%,15%)] font-semibold shadow-sm transition-all hover:bg-[hsl(43,55%,58%)] hover:shadow-md" data-testid={`button-save-rights-${u.id}`}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />{t("saveRights")}</>}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => resetRow(u.id)} disabled={saving} title={t("resetRights")} className="h-8 px-2 text-muted-foreground" data-testid={`button-reset-rights-${u.id}`}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <Badge variant={u.status === "approved" ? "default" : u.status === "rejected" ? "destructive" : "secondary"}>
         {t(`status_${u.status}` as any)}
       </Badge>
