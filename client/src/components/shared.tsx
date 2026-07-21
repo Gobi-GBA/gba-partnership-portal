@@ -319,7 +319,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
-              src={dark ? "/gobi-logo-white.png" : "/gobi-logo-navy.png"}
+              src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
               alt="Gobi Partners"
               className="h-8 sm:h-9 w-auto"
               data-testid="img-gobi-logo"
