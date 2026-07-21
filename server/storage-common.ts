@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -95,6 +95,15 @@ export interface IStorage {
   listFeedbackByUser(userId: number): Promise<Feedback[]>;
   createFeedback(data: Omit<Feedback, "id">): Promise<Feedback>;
   updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>): Promise<Feedback | undefined>;
+
+  // Advisors (v5.0)
+  listAdvisors(): Promise<Advisor[]>;
+  getAdvisor(id: number): Promise<Advisor | undefined>;
+  createAdvisor(data: Omit<Advisor, "id">): Promise<Advisor>;
+  updateAdvisor(id: number, data: Partial<Advisor>): Promise<Advisor | undefined>;
+  deleteAdvisor(id: number): Promise<void>;
+  listAdvisorRoles(): Promise<AdvisorRole[]>;
+  setAdvisorRoles(advisorId: number, roles: Omit<AdvisorRole, "id" | "advisorId">[]): Promise<AdvisorRole[]>;
 }
 
 // ---------- R&D Planner seed (inserted once when rd_items is empty) ----------

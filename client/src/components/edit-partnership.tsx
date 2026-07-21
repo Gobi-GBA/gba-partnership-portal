@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Paperclip, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PicChecklist } from "@/components/shared";
 import type { Partnership, AttachmentMeta, Stage } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
@@ -51,6 +52,7 @@ export function EditPartnershipDialog({
       notes: p.notes ?? "",
       photosText: (p.photos ?? []).join("\n"),
       lpStatus: p.lpStatus ?? "na",
+      isDomainKnowledgePartner: p.isDomainKnowledgePartner ?? 0,
     });
   }
 
@@ -85,6 +87,7 @@ export function EditPartnershipDialog({
         startDate: p.startDate ?? "", stage: p.stage, notes: p.notes ?? "",
         photos: p.photos ?? [],
         lpStatus: p.lpStatus ?? "na",
+        isDomainKnowledgePartner: p.isDomainKnowledgePartner ?? 0,
       };
       const changes: Record<string, any> = {};
       for (const k of Object.keys(orig)) {
@@ -198,6 +201,16 @@ export function EditPartnershipDialog({
               </EField>
             )}
           </div>
+          {user?.role === "admin" && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium" data-testid="edit-dkp-row">
+              <Checkbox
+                checked={form.isDomainKnowledgePartner === 1}
+                onCheckedChange={(v) => set("isDomainKnowledgePartner", v ? 1 : 0)}
+                data-testid="edit-dkp-checkbox"
+              />
+              {t("isDkpLabel")}
+            </label>
+          )}
           <EField label={t("descriptionEn")}><Textarea rows={2} value={form.descriptionEn ?? ""} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="edit-desc-en" /></EField>
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>
           <EField label={t("contextLabel")}><Textarea rows={3} value={form.context ?? ""} onChange={(e) => set("context", e.target.value)} data-testid="edit-context" /></EField>

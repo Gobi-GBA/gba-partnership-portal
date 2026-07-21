@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
   insertPartnershipSchema,
+  advisorInputSchema,
   attachmentInputSchema,
   changeRequestInputSchema,
   profileUpdateSchema,
@@ -20,7 +21,7 @@ import {
   LP_STATUSES,
   GOBI_STAFF,
 } from "../shared/schema.js";
-import type { SafeUser, User, AuditAction } from "../shared/schema.js";
+import type { SafeUser, User, AuditAction, Advisor, AdvisorRole } from "../shared/schema.js";
 import mammoth from "mammoth";
 import { z } from "zod";
 
@@ -478,6 +479,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       photos: parsed.data.photos ?? null,
       parentId: parsed.data.parentId ?? null,
       hallOfFame: isAdmin ? (parsed.data.hallOfFame ?? 0) : 0,
+      isDomainKnowledgePartner: isAdmin ? (parsed.data.isDomainKnowledgePartner ?? 0) : 0,
       lpStatus:
         canSeeLp(req.user) && (LP_STATUSES as readonly string[]).includes(parsed.data.lpStatus ?? "")
           ? parsed.data.lpStatus!
@@ -520,6 +522,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!isAdmin) {
       delete body.status;
       delete body.hallOfFame;
+      delete body.isDomainKnowledgePartner;
     }
     // LP status: only the IR team (or admins) may view or change it
     if (!canSeeLp(req.user) || !(LP_STATUSES as readonly string[]).includes(body.lpStatus)) {
@@ -809,6 +812,131 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     if (!updated) return res.status(404).json({ message: "Not found" });
     res.json(updated);
+  });
+
+  // ---------- Advisors (v5.0 — Gobi Advisory Network) ----------
+  // Emails and engagement history are internal: hidden from viewer accounts.
+  const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
+    user && (user.role === "admin" || user.role === "staff")
+      ? a
+      : { ...a, emails: null, engagement: null };
+
+  // List — thumbnails only (HD photos load on demand via the detail endpoint)
+  app.get("/api/advisors", requireAuth(), async (req: AuthedRequest, res) => {
+    const isAdmin = req.user!.role === "admin";
+    const all = await storage.listAdvisors();
+    const visible = all.filter(
+      (a) => a.status === "approved" || isAdmin || a.submittedBy === req.user!.id,
+    );
+    const roles = await storage.listAdvisorRoles();
+    const byAdvisor = new Map<number, AdvisorRole[]>();
+    for (const r of roles) {
+      const list = byAdvisor.get(r.advisorId) ?? [];
+      list.push(r);
+      byAdvisor.set(r.advisorId, list);
+    }
+    res.json(
+      visible.map((a) => ({
+        ...redactAdvisor(a, req.user),
+        photoUrl: null, // keep the list payload light
+        roles: (byAdvisor.get(a.id) ?? []).sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder),
+      })),
+    );
+  });
+
+  // Detail — full record including the HD photo
+  app.get("/api/advisors/:id", requireAuth(), async (req: AuthedRequest, res) => {
+    const a = await storage.getAdvisor(Number(req.params.id));
+    if (!a) return res.status(404).json({ message: "Not found" });
+    const isAdmin = req.user!.role === "admin";
+    if (a.status !== "approved" && !isAdmin && a.submittedBy !== req.user!.id) {
+      return res.status(404).json({ message: "Not found" });
+    }
+    const roles = (await storage.listAdvisorRoles())
+      .filter((r) => r.advisorId === a.id)
+      .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    res.json({ ...redactAdvisor(a, req.user), roles });
+  });
+
+  // Create — staff submissions await approval; admin entries go live at once
+  app.post("/api/advisors", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const parsed = advisorInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid advisor data", errors: parsed.error.flatten() });
+    }
+    const isAdmin = req.user!.role === "admin";
+    const { roles, ...data } = parsed.data;
+    const created = await storage.createAdvisor({
+      name: data.name,
+      nameCn: data.nameCn ?? null,
+      advisorType: data.advisorType,
+      track: data.track,
+      pillar: data.pillar,
+      emails: data.emails ?? null,
+      domains: data.domains ?? null,
+      background: data.background ?? null,
+      photoUrl: data.photoUrl ?? null,
+      photoThumbUrl: data.photoThumbUrl ?? null,
+      profileUrl: data.profileUrl ?? null,
+      linkedinUrl: data.linkedinUrl ?? null,
+      gobiPics: data.gobiPics ?? null,
+      cohort: data.cohort ?? null,
+      engagement: data.engagement ?? null,
+      status: isAdmin ? "approved" : "pending",
+      submittedBy: req.user!.id,
+      createdAt: new Date().toISOString(),
+    });
+    const savedRoles = await storage.setAdvisorRoles(
+      created.id,
+      roles.map((r, i) => ({
+        title: r.title,
+        organization: r.organization ?? null,
+        partnershipId: r.partnershipId ?? null,
+        isPrimary: r.isPrimary ?? 0,
+        sortOrder: i,
+      })),
+    );
+    res.status(201).json({ ...created, roles: savedRoles });
+  });
+
+  // Edit — admins edit anything; staff may fix their own pending submissions
+  app.patch("/api/advisors/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getAdvisor(id);
+    if (!existing) return res.status(404).json({ message: "Not found" });
+    const isAdmin = req.user!.role === "admin";
+    if (!isAdmin && !(existing.submittedBy === req.user!.id && existing.status === "pending")) {
+      return res.status(403).json({ message: "Only admins can edit approved advisors" });
+    }
+    const parsed = advisorInputSchema.partial().extend({ status: z.enum(["pending", "approved", "rejected"]).optional() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid advisor data", errors: parsed.error.flatten() });
+    }
+    const { roles, status, ...data } = parsed.data;
+    const patch: Partial<Advisor> = { ...data } as Partial<Advisor>;
+    if (isAdmin && status) patch.status = status;
+    const updated = await storage.updateAdvisor(id, patch);
+    let savedRoles: AdvisorRole[] | undefined;
+    if (roles) {
+      savedRoles = await storage.setAdvisorRoles(
+        id,
+        roles.map((r, i) => ({
+          title: r.title,
+          organization: r.organization ?? null,
+          partnershipId: r.partnershipId ?? null,
+          isPrimary: r.isPrimary ?? 0,
+          sortOrder: i,
+        })),
+      );
+    } else {
+      savedRoles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === id);
+    }
+    res.json({ ...updated, roles: savedRoles });
+  });
+
+  app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    await storage.deleteAdvisor(Number(req.params.id));
+    res.json({ ok: true });
   });
 
   // ---------- AI: extract partnership from pasted text, PDF, or DOCX (DeepSeek, text-only) ----------

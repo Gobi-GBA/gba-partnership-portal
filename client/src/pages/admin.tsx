@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
@@ -691,6 +692,7 @@ function ChangeRequestAdmin() {
 function PartnershipAdmin() {
   const { t, lang } = useLang();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [deleteTarget, setDeleteTarget] = useState<Partnership | null>(null);
   const [editTarget, setEditTarget] = useState<Partnership | null>(null);
   const [query, setQuery] = useState("");
@@ -737,11 +739,19 @@ function PartnershipAdmin() {
     return (
       <div key={p.id} className="rounded-lg border border-card-border bg-card px-4 py-3" data-testid={`row-partnership-${p.id}`}>
         <div className="flex flex-wrap items-center gap-3">
-          <PartnerLogo p={p} size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-sm truncate">{name}</p>
-            <p className="text-xs text-muted-foreground truncate">{p.partnershipType || t(`cat_${p.category}` as any)}</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate(`/partner/${p.id}`)}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left transition-opacity hover:opacity-80"
+            title={t("viewPartnerRecord")}
+            data-testid={`link-partner-record-${p.id}`}
+          >
+            <PartnerLogo p={p} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-sm truncate underline-offset-2 decoration-dotted group-hover:underline">{name}</p>
+              <p className="text-xs text-muted-foreground truncate">{p.partnershipType || t(`cat_${p.category}` as any)}</p>
+            </div>
+          </button>
           <Badge variant={p.status === "approved" ? "default" : p.status === "rejected" ? "destructive" : "secondary"} data-testid={`status-partnership-${p.id}`}>
             {t(`status_${p.status}` as any)}
           </Badge>

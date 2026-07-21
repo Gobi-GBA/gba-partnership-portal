@@ -12,7 +12,7 @@ import { GalaxyBackground } from "@/components/galaxy-bg";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Partnership, Stage, Category, Region, MacroRegion, AttachmentMeta, AuditLog } from "@shared/schema";
+import type { Partnership, Stage, Category, Region, MacroRegion, AttachmentMeta, AuditLog, AdvisorWithRoles } from "@shared/schema";
 import { GOBI_OFFICES, MACRO_REGIONS, MACRO_TO_REGIONS } from "@shared/schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -306,7 +306,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/network", label: t("navNetwork"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
-    { href: "/advisors", label: t("navAdvisors"), show: true, soon: true },
+    { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
@@ -850,7 +850,15 @@ export function PartnershipDetailDialog({
     queryKey: ["/api/partnerships"],
     enabled: open && !!p,
   });
+  const { data: allAdvisors } = useQuery<AdvisorWithRoles[]>({
+    queryKey: ["/api/advisors"],
+    enabled: open && !!p,
+  });
+  const [, navigate] = useLocation();
   if (!p) return null;
+  const linkedAdvisors = (allAdvisors ?? []).filter((a) =>
+    (a.roles ?? []).some((r) => r.partnershipId === p.id),
+  );
   const name = lang === "cn" && p.nameCn ? p.nameCn : p.nameEn;
   const altName = lang === "cn" ? p.nameEn : p.nameCn;
   const desc = lang === "cn" ? p.descriptionCn || p.descriptionEn : p.descriptionEn || p.descriptionCn;
@@ -892,7 +900,40 @@ export function PartnershipDetailDialog({
             <StageBadge stage={p.stage as Stage} />
             <CategoryBadge category={p.category as Category} />
             <RegionBadge region={p.region as Region} />
+            {p.isDomainKnowledgePartner === 1 && (
+              <Badge variant="outline" className="text-[11px] font-semibold border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 text-[hsl(var(--gold))]" data-testid={`badge-dkp-${p.id}`}>
+                {t("domainKnowledgePartnerBadge")}
+              </Badge>
+            )}
           </div>
+
+          {linkedAdvisors.length > 0 && (
+            <div className="rounded-lg border border-border p-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" /> {t("linkedAdvisorsLabel")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {linkedAdvisors.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => { onOpenChange(false); navigate(`/advisors/${a.id}`); }}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/50 py-1 pl-1 pr-3 text-xs font-medium transition-colors hover:border-[hsl(var(--gold))]/50 hover:bg-secondary"
+                    data-testid={`chip-advisor-${a.id}`}
+                  >
+                    {a.photoThumbUrl ? (
+                      <img src={a.photoThumbUrl} alt={a.name} className="h-5 w-5 rounded-full object-cover" />
+                    ) : (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-[hsl(var(--gold))]">
+                        {a.name.split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase()}
+                      </span>
+                    )}
+                    {lang === "cn" && a.nameCn ? a.nameCn : a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(parent || children.length > 0) && (
             <div className="rounded-lg border border-border p-3 space-y-1.5">

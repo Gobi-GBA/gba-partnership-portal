@@ -198,6 +198,7 @@ export const partnerships = sqliteTable("partnerships", {
   stage: text("stage").notNull().default("s1_new"),
   collabLevel: integer("collab_level").notNull().default(1), // 1-5
   hallOfFame: integer("hall_of_fame").notNull().default(0), // 0 | 1
+  isDomainKnowledgePartner: integer("is_domain_knowledge_partner").notNull().default(0), // 0 | 1 — org serves as a domain knowledge partner in the advisory network
   lpStatus: text("lp_status").notNull().default("na"), // 'na' | 'target' | 'lp' — visible to IR team only
   notes: text("notes"),
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
@@ -219,6 +220,7 @@ export const insertPartnershipSchema = createInsertSchema(partnerships).omit({
   parentId: z.number().int().nullable().optional(),
   picNames: z.array(z.string()).max(8).nullable().optional(),
   photos: z.array(z.string()).max(12).nullable().optional(),
+  isDomainKnowledgePartner: z.number().int().min(0).max(1).optional(),
 });
 
 export type InsertPartnership = z.infer<typeof insertPartnershipSchema>;
@@ -228,6 +230,90 @@ export type Stage = (typeof STAGES)[number];
 export type Category = (typeof CATEGORIES)[number];
 export type Region = (typeof REGIONS)[number];
 export type MacroRegion = (typeof MACRO_REGIONS)[number];
+
+// ---------- Advisors (v5.0 — Gobi Advisory Network) ----------
+// People-only database. Organizations that act as advisors (e.g. Esri China (HK),
+// OASA) live in the partnerships table flagged with isDomainKnowledgePartner.
+export const ADVISOR_ROLE_TYPES = [
+  "honourary_advisor",       // 荣誉顾问
+  "domain_knowledge_partner",// 领域知识伙伴 (individual acting for a partner org)
+  "mentor",                  // 导师
+] as const;
+export type AdvisorRoleType = (typeof ADVISOR_ROLE_TYPES)[number];
+
+export const ADVISOR_TRACKS = ["academic", "industry", "entrepreneur", "hybrid"] as const;
+export type AdvisorTrack = (typeof ADVISOR_TRACKS)[number];
+
+export const PILLARS = ["healthcare", "ai", "industry40", "esg", "spacetech", "consumer", "other"] as const;
+export type Pillar = (typeof PILLARS)[number];
+
+export const advisors = sqliteTable("advisors", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  nameCn: text("name_cn"), // Chinese name, e.g. 萬鈞
+  advisorType: text("advisor_type").notNull().default("honourary_advisor"), // see ADVISOR_ROLE_TYPES
+  track: text("track").notNull().default("industry"), // academic | industry | entrepreneur | hybrid
+  pillar: text("pillar").notNull().default("other"), // investment pillar, see PILLARS
+  emails: text("emails", { mode: "json" }).$type<string[]>(), // staff-visible only
+  domains: text("domains"), // expert domains, free text
+  background: text("background"), // detailed background, multi-line
+  photoUrl: text("photo_url"), // HD portrait (data URI or URL)
+  photoThumbUrl: text("photo_thumb_url"), // small thumbnail for list views
+  profileUrl: text("profile_url"), // official profile page
+  linkedinUrl: text("linkedin_url"),
+  gobiPics: text("gobi_pics", { mode: "json" }).$type<string[]>(), // Gobi PIC names
+  cohort: text("cohort"), // e.g. "2024", "2025"
+  engagement: text("engagement"), // status & history of engagement — staff-visible only
+  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  submittedBy: integer("submitted_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type Advisor = typeof advisors.$inferSelect;
+
+// One person may hold multiple jobs/roles; each role can link to a partner org.
+export const advisorRoles = sqliteTable("advisor_roles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  advisorId: integer("advisor_id").notNull(),
+  title: text("title").notNull(), // e.g. "Chair Professor of Transplant Oncology"
+  organization: text("organization"), // free-text org name
+  partnershipId: integer("partnership_id"), // optional link into the partner list
+  isPrimary: integer("is_primary").notNull().default(0), // 0 | 1 — headline role
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export type AdvisorRole = typeof advisorRoles.$inferSelect;
+
+export const advisorRoleInputSchema = z.object({
+  title: z.string().min(1).max(300),
+  organization: z.string().max(200).nullable().optional(),
+  partnershipId: z.number().int().nullable().optional(),
+  isPrimary: z.number().int().min(0).max(1).default(0),
+});
+export type AdvisorRoleInput = z.infer<typeof advisorRoleInputSchema>;
+
+export const advisorInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  nameCn: z.string().max(60).nullable().optional(),
+  advisorType: z.enum(ADVISOR_ROLE_TYPES).default("honourary_advisor"),
+  track: z.enum(ADVISOR_TRACKS).default("industry"),
+  pillar: z.enum(PILLARS).default("other"),
+  emails: z.array(z.string().max(120)).max(6).nullable().optional(),
+  domains: z.string().max(2000).nullable().optional(),
+  background: z.string().max(8000).nullable().optional(),
+  photoUrl: z.string().max(600_000).nullable().optional(), // HD data URI (~450KB max)
+  photoThumbUrl: z.string().max(80_000).nullable().optional(), // thumb data URI
+  profileUrl: z.string().max(400).nullable().optional(),
+  linkedinUrl: z.string().max(400).nullable().optional(),
+  gobiPics: z.array(z.string().max(60)).max(8).nullable().optional(),
+  cohort: z.string().max(20).nullable().optional(),
+  engagement: z.string().max(4000).nullable().optional(),
+  roles: z.array(advisorRoleInputSchema).max(12).default([]),
+});
+export type AdvisorInput = z.infer<typeof advisorInputSchema>;
+
+// Advisor enriched with roles for API responses
+export type AdvisorWithRoles = Advisor & { roles: AdvisorRole[] };
 
 // ---------- Attachments (stored in SQLite so they survive redeploys) ----------
 export const attachments = sqliteTable("attachments", {

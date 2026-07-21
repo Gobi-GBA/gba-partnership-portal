@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "4.7";
+export const CURRENT_VERSION = "5.0";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.0",
+    date: "2026-07-21",
+    by: "Fred Li",
+    titleEn: "Advisor Network — people, photos & deep links",
+    titleCn: "顾问网络 — 人物、照片与深度互联",
+    itemsEn: [
+      "New Advisor Network section — honourary advisors, domain knowledge partners and mentors, each with photo, multiple jobs & roles, expert domains, background and Gobi PICs",
+      "21 advisors migrated from the team list, fact-checked against official web sources, with photos auto-pulled from university and company profile pages",
+      "Organizations that advise us (Esri China (HK), OASA) now live in the partner list with a gold 'Our Domain Knowledge Partner' badge instead of a separate list",
+      "Everything is inter-linked — admin console records and update-log entries open the partner page, partner pages show their advisors, and an advisor's organization jumps to the partner record",
+      "Photo uploads generate an HD copy and a thumbnail automatically; advisor emails and engagement notes stay visible to staff only",
+      "Deep links for sharing — /partner/:id and /advisors/:id open the record directly",
+    ],
+    itemsCn: [
+      "新增顾问网络板块 — 荣誉顾问、领域知识伙伴与导师，包含照片、多重职务、专长领域、背景与戈壁负责人",
+      "从团队名单迁移 21 位顾问，逐一对照官方网页核实，并自动从大学及公司官网抓取照片",
+      "机构类顾问（Esri中国（香港）、OASA）并入合作伙伴列表，以金色“领域知识伙伴”徽章标识，不再单独维护",
+      "全面互联 — 管理后台记录与更新日志可直接打开伙伴页面，伙伴页面展示关联顾问，顾问职务中的机构可跳转至伙伴记录",
+      "上传照片自动生成高清版与缩略图；顾问邮箱与合作情况仅团队成员可见",
+      "支持深度链接分享 — /partner/:id 与 /advisors/:id 可直接打开对应记录",
+    ],
+  },
   {
     version: "4.7",
     date: "2026-07-20",

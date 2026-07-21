@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/shared";
 import { useLang } from "@/lib/i18n";
@@ -39,6 +40,7 @@ export default function Updates() {
   const { t, lang } = useLang();
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [message, setMessage] = useState("");
 
   const { data: requests, isLoading } = useQuery<Feedback[]>({
@@ -232,7 +234,15 @@ export default function Updates() {
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/partner/${p.id}`)}
+                        onKeyDown={(e) => e.key === "Enter" && navigate(`/partner/${p.id}`)}
+                        title={t("viewPartnerRecord")}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-all hover:border-[hsl(var(--gold))]/50 hover:shadow-sm"
+                        data-testid={`link-partner-log-${p.id}`}
+                      >
                         <PartnerLogo p={p} size="sm" />
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-sm truncate" data-testid={`partner-log-name-${p.id}`}>

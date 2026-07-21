@@ -37,6 +37,7 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/">{() => <Home />}</Route>
+      <Route path="/partner/:id">{() => <Home />}</Route>
       <Route path="/network" component={Network} />
       <Route path="/hall-of-fame" component={HallOfFame} />
       <Route path="/submit" component={Submit} />
@@ -44,6 +45,7 @@ function AppRouter() {
       <Route path="/reset" component={Reset} />
       <Route path="/updates" component={Updates} />
       <Route path="/advisors" component={Advisors} />
+      <Route path="/advisors/:id" component={Advisors} />
       <Route path="/rd" component={RdPlanner} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />

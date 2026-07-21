@@ -62,6 +62,7 @@ export const partnershipsPg = pgTable("partnerships", {
   stage: text("stage").notNull().default("s1_new"),
   collabLevel: integer("collab_level").notNull().default(1),
   hallOfFame: integer("hall_of_fame").notNull().default(0),
+  isDomainKnowledgePartner: integer("is_domain_knowledge_partner").notNull().default(0),
   lpStatus: text("lp_status").notNull().default("na"),
   notes: text("notes"),
   status: text("status").notNull().default("pending"),
@@ -98,6 +99,38 @@ export const changeRequestsPg = pgTable("change_requests", {
   note: text("note"),
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull(),
+});
+
+export const advisorsPg = pgTable("advisors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  nameCn: text("name_cn"),
+  advisorType: text("advisor_type").notNull().default("honourary_advisor"),
+  track: text("track").notNull().default("industry"),
+  pillar: text("pillar").notNull().default("other"),
+  emails: jsonb("emails").$type<string[]>(),
+  domains: text("domains"),
+  background: text("background"),
+  photoUrl: text("photo_url"),
+  photoThumbUrl: text("photo_thumb_url"),
+  profileUrl: text("profile_url"),
+  linkedinUrl: text("linkedin_url"),
+  gobiPics: jsonb("gobi_pics").$type<string[]>(),
+  cohort: text("cohort"),
+  engagement: text("engagement"),
+  status: text("status").notNull().default("pending"),
+  submittedBy: integer("submitted_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const advisorRolesPg = pgTable("advisor_roles", {
+  id: serial("id").primaryKey(),
+  advisorId: integer("advisor_id").notNull(),
+  title: text("title").notNull(),
+  organization: text("organization"),
+  partnershipId: integer("partnership_id"),
+  isPrimary: integer("is_primary").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const feedbackPg = pgTable("feedback", {

@@ -4,8 +4,8 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
@@ -93,6 +93,37 @@ const BOOTSTRAP: string[] = [
   `UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_dev INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_dev = 1 WHERE email = 'fred@gobi.vc'`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS is_domain_knowledge_partner INTEGER NOT NULL DEFAULT 0`,
+  `CREATE TABLE IF NOT EXISTS advisors (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_cn TEXT,
+    advisor_type TEXT NOT NULL DEFAULT 'honourary_advisor',
+    track TEXT NOT NULL DEFAULT 'industry',
+    pillar TEXT NOT NULL DEFAULT 'other',
+    emails JSONB,
+    domains TEXT,
+    background TEXT,
+    photo_url TEXT,
+    photo_thumb_url TEXT,
+    profile_url TEXT,
+    linkedin_url TEXT,
+    gobi_pics JSONB,
+    cohort TEXT,
+    engagement TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    submitted_by INTEGER,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS advisor_roles (
+    id SERIAL PRIMARY KEY,
+    advisor_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    organization TEXT,
+    partnership_id INTEGER,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  )`,
   `CREATE TABLE IF NOT EXISTS rd_items (
     id SERIAL PRIMARY KEY,
     project TEXT NOT NULL DEFAULT 'Partnership Portal Ecosystem',
@@ -214,6 +245,32 @@ export function createPgStorage(): IStorage {
           await sql.query(`UPDATE partnerships SET region = 'global' WHERE region IN ('international', 'sea')`);
           await sql.query(
             `INSERT INTO meta (key, value) VALUES ('migration_v47_region_taxonomy', $1) ON CONFLICT (key) DO NOTHING`,
+            [new Date().toISOString()],
+          );
+        }
+        // v5.0 one-time migration: organizations that also serve as advisors
+        // (per the Gobi Advisory Network master list) are flagged as domain
+        // knowledge partners; Esri China (HK) is added to the partner list.
+        const v50Res = await sql.query(`SELECT value FROM meta WHERE key = 'migration_v50_advisors'`);
+        const v50Rows: unknown[] = Array.isArray(v50Res) ? v50Res : ((v50Res as any)?.rows ?? []);
+        if (v50Rows.length === 0) {
+          const esriRes = await sql.query(`SELECT id FROM partnerships WHERE name_en ILIKE '%Esri%'`);
+          const esriRows: unknown[] = Array.isArray(esriRes) ? esriRes : ((esriRes as any)?.rows ?? []);
+          if (esriRows.length === 0) {
+            await sql.query(
+              `INSERT INTO partnerships (name_en, name_cn, category, region, website, logo_url, description_en, description_cn, partnership_type, stage, collab_level, is_domain_knowledge_partner, status, created_at)
+               VALUES ('Esri China (HK)', 'Esri中国（香港）', 'corporate', 'hongkong', 'https://www.esrichina.hk', 'https://www.google.com/s2/favicons?domain=esrichina.hk&sz=128',
+                 'Exclusive distributor of Esri ArcGIS in Hong Kong — geospatial and GIS domain knowledge partner of the Gobi Advisory Network.',
+                 '香港 Esri ArcGIS 独家代理——戈壁顾问网络的地理空间与 GIS 领域知识伙伴。',
+                 'Domain knowledge partner', 's2_engaged', 2, 1, 'approved', $1)`,
+              [new Date().toISOString()],
+            );
+          } else {
+            await sql.query(`UPDATE partnerships SET is_domain_knowledge_partner = 1 WHERE name_en ILIKE '%Esri%'`);
+          }
+          await sql.query(`UPDATE partnerships SET is_domain_knowledge_partner = 1 WHERE name_en = 'OASA'`);
+          await sql.query(
+            `INSERT INTO meta (key, value) VALUES ('migration_v50_advisors', $1) ON CONFLICT (key) DO NOTHING`,
             [new Date().toISOString()],
           );
         }
@@ -439,6 +496,42 @@ export function createPgStorage(): IStorage {
       await init();
       const rows = await db.update(feedback).set(data).where(eq(feedback.id, id)).returning();
       return rows[0] as Feedback | undefined;
+    }
+
+    async listAdvisors() {
+      await init();
+      return (await db.select().from(advisors)) as Advisor[];
+    }
+    async getAdvisor(id: number) {
+      await init();
+      const rows = await db.select().from(advisors).where(eq(advisors.id, id));
+      return rows[0] as Advisor | undefined;
+    }
+    async createAdvisor(data: Omit<Advisor, "id">) {
+      await init();
+      const rows = await db.insert(advisors).values(data as any).returning();
+      return rows[0] as Advisor;
+    }
+    async updateAdvisor(id: number, data: Partial<Advisor>) {
+      await init();
+      const rows = await db.update(advisors).set(data as any).where(eq(advisors.id, id)).returning();
+      return rows[0] as Advisor | undefined;
+    }
+    async deleteAdvisor(id: number) {
+      await init();
+      await db.delete(advisorRoles).where(eq(advisorRoles.advisorId, id));
+      await db.delete(advisors).where(eq(advisors.id, id));
+    }
+    async listAdvisorRoles() {
+      await init();
+      return (await db.select().from(advisorRoles)) as AdvisorRole[];
+    }
+    async setAdvisorRoles(advisorId: number, roles: Omit<AdvisorRole, "id" | "advisorId">[]) {
+      await init();
+      await db.delete(advisorRoles).where(eq(advisorRoles.advisorId, advisorId));
+      if (roles.length === 0) return [];
+      const rows = await db.insert(advisorRoles).values(roles.map((r) => ({ ...r, advisorId })) as any).returning();
+      return rows as AdvisorRole[];
     }
   }
 

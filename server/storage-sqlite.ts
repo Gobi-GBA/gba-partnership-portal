@@ -1,5 +1,5 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
@@ -115,6 +115,38 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
   ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");
+  ensureColumn("partnerships", "is_domain_knowledge_partner", "is_domain_knowledge_partner INTEGER NOT NULL DEFAULT 0");
+  // Advisors (v5.0)
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS advisors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_cn TEXT,
+    advisor_type TEXT NOT NULL DEFAULT 'honourary_advisor',
+    track TEXT NOT NULL DEFAULT 'industry',
+    pillar TEXT NOT NULL DEFAULT 'other',
+    emails TEXT,
+    domains TEXT,
+    background TEXT,
+    photo_url TEXT,
+    photo_thumb_url TEXT,
+    profile_url TEXT,
+    linkedin_url TEXT,
+    gobi_pics TEXT,
+    cohort TEXT,
+    engagement TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    submitted_by INTEGER,
+    created_at TEXT NOT NULL
+  )`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS advisor_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    advisor_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    organization TEXT,
+    partnership_id INTEGER,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  )`);
   ensureColumn("users", "is_ir", "is_ir INTEGER NOT NULL DEFAULT 0");
   // Grant IR membership to the seed admin (idempotent)
   sqlite.prepare(`UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`).run();
@@ -315,6 +347,31 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async updateFeedback(id: number, data: Partial<Pick<Feedback, "status" | "adminNote" | "updatedAt">>) {
       return db.update(feedback).set(data).where(eq(feedback.id, id)).returning().get();
     }
+
+    async listAdvisors() {
+      return db.select().from(advisors).all();
+    }
+    async getAdvisor(id: number) {
+      return db.select().from(advisors).where(eq(advisors.id, id)).get();
+    }
+    async createAdvisor(data: Omit<Advisor, "id">) {
+      return db.insert(advisors).values(data).returning().get();
+    }
+    async updateAdvisor(id: number, data: Partial<Advisor>) {
+      return db.update(advisors).set(data).where(eq(advisors.id, id)).returning().get();
+    }
+    async deleteAdvisor(id: number) {
+      db.delete(advisorRoles).where(eq(advisorRoles.advisorId, id)).run();
+      db.delete(advisors).where(eq(advisors.id, id)).run();
+    }
+    async listAdvisorRoles() {
+      return db.select().from(advisorRoles).all();
+    }
+    async setAdvisorRoles(advisorId: number, roles: Omit<AdvisorRole, "id" | "advisorId">[]) {
+      db.delete(advisorRoles).where(eq(advisorRoles.advisorId, advisorId)).run();
+      if (roles.length === 0) return [];
+      return db.insert(advisorRoles).values(roles.map((r) => ({ ...r, advisorId }))).returning().all();
+    }
   }
 
   // ---------- Seed ----------
@@ -387,6 +444,37 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     sqlite
       .prepare(`INSERT INTO meta (key, value) VALUES ('migration_v45_site_sync', ?)`)
       .run(new Date().toISOString());
+  }
+
+  // v5.0 one-time migration: org advisors join the partner list as domain knowledge partners
+  const v50Done = sqlite.prepare(`SELECT value FROM meta WHERE key = 'migration_v50_advisors'`).get();
+  if (!v50Done) {
+    const esri = sqlite.prepare(`SELECT id FROM partnerships WHERE name_en LIKE '%Esri%'`).get();
+    if (!esri) {
+      db.insert(partnerships)
+        .values({
+          nameEn: "Esri China (HK)",
+          nameCn: "Esri中国（香港）",
+          category: "corporate",
+          region: "hongkong",
+          website: "https://www.esrichina.hk",
+          logoUrl: "https://www.google.com/s2/favicons?domain=esrichina.hk&sz=128",
+          descriptionEn: "Exclusive distributor of Esri ArcGIS in Hong Kong — geospatial and GIS domain knowledge partner of the Gobi Advisory Network.",
+          descriptionCn: "香港 Esri ArcGIS 独家代理——戈壁顾问网络的地理空间与 GIS 领域知识伙伴。",
+          partnershipType: "Domain knowledge partner",
+          stage: "s2_engaged",
+          collabLevel: 2,
+          isDomainKnowledgePartner: 1,
+          status: "approved",
+          submittedBy: 1,
+          createdAt: new Date().toISOString(),
+        } as any)
+        .run();
+    } else {
+      sqlite.prepare(`UPDATE partnerships SET is_domain_knowledge_partner = 1 WHERE name_en LIKE '%Esri%'`).run();
+    }
+    sqlite.prepare(`UPDATE partnerships SET is_domain_knowledge_partner = 1 WHERE name_en = 'OASA'`).run();
+    sqlite.prepare(`INSERT INTO meta (key, value) VALUES ('migration_v50_advisors', ?)`).run(new Date().toISOString());
   }
 
   // Seed the R&D planner once, when empty

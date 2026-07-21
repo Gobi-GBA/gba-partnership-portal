@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useRoute } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { useLang } from "@/lib/i18n";
@@ -36,11 +37,22 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   const [view, setView] = useState<ViewMode>(initialView);
   const [hof, setHof] = useState(initialHof);
   const [viewOpts, setViewOpts] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
+  const [, navigate] = useLocation();
+  const [matchPartner, partnerParams] = useRoute("/partner/:id");
   const [timelineFrom, setTimelineFrom] = useState("");
   const [timelineTo, setTimelineTo] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
 
   const allYears = useMemo(() => yearsOf(partnerships ?? []), [partnerships]);
+
+  // Deep link: /partner/:id opens the record's detail dialog (used by admin
+  // console rows, the update log, and advisor role chips).
+  useEffect(() => {
+    if (matchPartner && partnerParams?.id && partnerships) {
+      const target = partnerships.find((x) => x.id === Number(partnerParams.id));
+      if (target) setSelected(target);
+    }
+  }, [matchPartner, partnerParams?.id, partnerships]);
 
   const filtered = useMemo(() => {
     if (!partnerships) return [];
@@ -367,7 +379,12 @@ export default function Home({ initialView = "network", initialHof = false }: { 
       <PartnershipDetailDialog
         p={selected}
         open={!!selected}
-        onOpenChange={(o) => !o && setSelected(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSelected(null);
+            if (matchPartner) navigate("/");
+          }
+        }}
         onEdit={(p) => {
           setSelected(null);
           setEditTarget(p);
