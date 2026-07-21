@@ -1,5 +1,5 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
@@ -147,6 +147,39 @@ export function createSqliteStorage(): IStorage {
     is_primary INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER NOT NULL DEFAULT 0
   )`);
+  // Advisor CRM + sector tags (v5.5)
+  ensureColumn("advisors", "public_clearance", "public_clearance INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("advisors", "birth_day", "birth_day INTEGER");
+  ensureColumn("advisors", "birth_month", "birth_month INTEGER");
+  ensureColumn("advisors", "birth_year", "birth_year INTEGER");
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS sector_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name_en TEXT NOT NULL,
+    name_cn TEXT,
+    color TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  )`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS advisor_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    advisor_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL
+  )`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS partnership_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partnership_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL
+  )`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS advisor_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    advisor_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'note',
+    note TEXT,
+    created_by INTEGER,
+    created_by_name TEXT,
+    created_at TEXT NOT NULL
+  )`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`);
   ensureColumn("users", "is_ir", "is_ir INTEGER NOT NULL DEFAULT 0");
   // Grant IR membership to the seed admin (idempotent)
   sqlite.prepare(`UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`).run();
@@ -371,6 +404,63 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
       db.delete(advisorRoles).where(eq(advisorRoles.advisorId, advisorId)).run();
       if (roles.length === 0) return [];
       return db.insert(advisorRoles).values(roles.map((r) => ({ ...r, advisorId }))).returning().all();
+    }
+
+    async listSectorTags() {
+      return db.select().from(sectorTags).all();
+    }
+    async createSectorTag(data: Omit<SectorTag, "id">) {
+      return db.insert(sectorTags).values(data).returning().get();
+    }
+    async updateSectorTag(id: number, data: Partial<Omit<SectorTag, "id">>) {
+      return db.update(sectorTags).set(data).where(eq(sectorTags.id, id)).returning().get();
+    }
+    async deleteSectorTag(id: number) {
+      db.delete(advisorTags).where(eq(advisorTags.tagId, id)).run();
+      db.delete(partnershipTags).where(eq(partnershipTags.tagId, id)).run();
+      db.delete(sectorTags).where(eq(sectorTags.id, id)).run();
+    }
+    async listAdvisorTagIds() {
+      return db.select({ advisorId: advisorTags.advisorId, tagId: advisorTags.tagId }).from(advisorTags).all();
+    }
+    async setAdvisorTags(advisorId: number, tagIds: number[]) {
+      db.delete(advisorTags).where(eq(advisorTags.advisorId, advisorId)).run();
+      if (tagIds.length > 0) {
+        db.insert(advisorTags).values(tagIds.map((tagId) => ({ advisorId, tagId }))).run();
+      }
+    }
+    async listPartnershipTagIds() {
+      return db.select({ partnershipId: partnershipTags.partnershipId, tagId: partnershipTags.tagId }).from(partnershipTags).all();
+    }
+    async setPartnershipTags(partnershipId: number, tagIds: number[]) {
+      db.delete(partnershipTags).where(eq(partnershipTags.partnershipId, partnershipId)).run();
+      if (tagIds.length > 0) {
+        db.insert(partnershipTags).values(tagIds.map((tagId) => ({ partnershipId, tagId }))).run();
+      }
+    }
+
+    async listAdvisorActivities(advisorId?: number) {
+      if (advisorId != null) {
+        return db.select().from(advisorActivities).where(eq(advisorActivities.advisorId, advisorId)).all();
+      }
+      return db.select().from(advisorActivities).all();
+    }
+    async createAdvisorActivity(data: Omit<AdvisorActivity, "id">) {
+      return db.insert(advisorActivities).values(data).returning().get();
+    }
+    async updateAdvisorActivity(id: number, data: Partial<Pick<AdvisorActivity, "date" | "type" | "note">>) {
+      return db.update(advisorActivities).set(data).where(eq(advisorActivities.id, id)).returning().get();
+    }
+    async deleteAdvisorActivity(id: number) {
+      db.delete(advisorActivities).where(eq(advisorActivities.id, id)).run();
+    }
+
+    async getMeta(key: string) {
+      const row = sqlite.prepare(`SELECT value FROM meta WHERE key = ?`).get(key) as { value: string } | undefined;
+      return row?.value ?? null;
+    }
+    async setMeta(key: string, value: string) {
+      sqlite.prepare(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, value);
     }
   }
 

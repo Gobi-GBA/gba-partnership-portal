@@ -7,6 +7,8 @@ import {
   insertUserSchema,
   insertPartnershipSchema,
   advisorInputSchema,
+  advisorActivityInputSchema,
+  sectorTagInputSchema,
   attachmentInputSchema,
   changeRequestInputSchema,
   profileUpdateSchema,
@@ -21,7 +23,7 @@ import {
   LP_STATUSES,
   GOBI_STAFF,
 } from "../shared/schema.js";
-import type { SafeUser, User, AuditAction, Advisor, AdvisorRole } from "../shared/schema.js";
+import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag } from "../shared/schema.js";
 import mammoth from "mammoth";
 import { z } from "zod";
 
@@ -815,11 +817,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ---------- Advisors (v5.0 — Gobi Advisory Network) ----------
-  // Emails and engagement history are internal: hidden from viewer accounts.
+  // Emails, engagement history, and personal data (DOB) are internal: hidden from viewer accounts.
+  const isStaffUser = (user: User | undefined) => !!user && (user.role === "admin" || user.role === "staff");
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
-    user && (user.role === "admin" || user.role === "staff")
+    isStaffUser(user)
       ? a
-      : { ...a, emails: null, engagement: null };
+      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null };
+
+  const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
+  async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
+    const tagById = new Map((await storage.listSectorTags()).map((t) => [t.id, t]));
+    const map = new Map<number, SectorTag[]>();
+    for (const at of await storage.listAdvisorTagIds()) {
+      const tag = tagById.get(at.tagId);
+      if (!tag) continue;
+      const list = map.get(at.advisorId) ?? [];
+      list.push(tag);
+      map.set(at.advisorId, list);
+    }
+    map.forEach((list) => sortTags(list));
+    return map;
+  }
 
   // List — thumbnails only (HD photos load on demand via the detail endpoint)
   app.get("/api/advisors", requireAuth(), async (req: AuthedRequest, res) => {
@@ -835,11 +853,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       list.push(r);
       byAdvisor.set(r.advisorId, list);
     }
+    const tagsByAdvisor = await advisorTagMap();
+    const staff = isStaffUser(req.user);
+    const lastByAdvisor = new Map<number, string>();
+    if (staff) {
+      for (const act of await storage.listAdvisorActivities()) {
+        const prev = lastByAdvisor.get(act.advisorId);
+        if (!prev || act.date > prev) lastByAdvisor.set(act.advisorId, act.date);
+      }
+    }
     res.json(
       visible.map((a) => ({
         ...redactAdvisor(a, req.user),
         photoUrl: null, // keep the list payload light
         roles: (byAdvisor.get(a.id) ?? []).sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder),
+        tags: tagsByAdvisor.get(a.id) ?? [],
+        lastActivityAt: staff ? lastByAdvisor.get(a.id) ?? null : null,
       })),
     );
   });
@@ -855,7 +884,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const roles = (await storage.listAdvisorRoles())
       .filter((r) => r.advisorId === a.id)
       .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
-    res.json({ ...redactAdvisor(a, req.user), roles });
+    const tags = (await advisorTagMap()).get(a.id) ?? [];
+    res.json({ ...redactAdvisor(a, req.user), roles, tags });
   });
 
   // Create — staff submissions await approval; admin entries go live at once
@@ -865,7 +895,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ message: "Invalid advisor data", errors: parsed.error.flatten() });
     }
     const isAdmin = req.user!.role === "admin";
-    const { roles, ...data } = parsed.data;
+    const { roles, tagIds, ...data } = parsed.data;
     const created = await storage.createAdvisor({
       name: data.name,
       nameCn: data.nameCn ?? null,
@@ -882,10 +912,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       gobiPics: data.gobiPics ?? null,
       cohort: data.cohort ?? null,
       engagement: data.engagement ?? null,
+      publicClearance: data.publicClearance ?? 0,
+      birthDay: data.birthDay ?? null,
+      birthMonth: data.birthMonth ?? null,
+      birthYear: data.birthYear ?? null,
       status: isAdmin ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
     });
+    if (tagIds) await storage.setAdvisorTags(created.id, tagIds);
     const savedRoles = await storage.setAdvisorRoles(
       created.id,
       roles.map((r, i) => ({
@@ -912,10 +947,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid advisor data", errors: parsed.error.flatten() });
     }
-    const { roles, status, ...data } = parsed.data;
+    const { roles, status, tagIds, ...data } = parsed.data;
     const patch: Partial<Advisor> = { ...data } as Partial<Advisor>;
     if (isAdmin && status) patch.status = status;
     const updated = await storage.updateAdvisor(id, patch);
+    if (tagIds) await storage.setAdvisorTags(id, tagIds);
     let savedRoles: AdvisorRole[] | undefined;
     if (roles) {
       savedRoles = await storage.setAdvisorRoles(
@@ -937,6 +973,200 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
     await storage.deleteAdvisor(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // ---------- Sector tags (v5.5 — shared by advisors and partner organisations) ----------
+  app.get("/api/sector-tags", requireAuth(), async (_req, res) => {
+    res.json(sortTags(await storage.listSectorTags()));
+  });
+
+  app.post("/api/sector-tags", requireAuth("admin"), async (req, res) => {
+    const parsed = sectorTagInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid tag" });
+    const created = await storage.createSectorTag({
+      nameEn: parsed.data.nameEn,
+      nameCn: parsed.data.nameCn ?? null,
+      color: parsed.data.color ?? null,
+      sortOrder: parsed.data.sortOrder ?? 0,
+    });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/sector-tags/:id", requireAuth("admin"), async (req, res) => {
+    const parsed = sectorTagInputSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid tag" });
+    const updated = await storage.updateSectorTag(Number(req.params.id), parsed.data);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/sector-tags/:id", requireAuth("admin"), async (req, res) => {
+    await storage.deleteSectorTag(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Tag assignments for partner organisations (joined client-side on the partners pages)
+  app.get("/api/partnership-tags", requireAuth(), async (_req, res) => {
+    res.json(await storage.listPartnershipTagIds());
+  });
+
+  app.put("/api/partnerships/:id/tags", requireAuth("admin"), async (req, res) => {
+    const parsed = z.object({ tagIds: z.array(z.number().int()).max(50) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid tags" });
+    const p = await storage.getPartnership(Number(req.params.id));
+    if (!p) return res.status(404).json({ message: "Not found" });
+    await storage.setPartnershipTags(p.id, parsed.data.tagIds);
+    res.json({ ok: true });
+  });
+
+  // ---------- Advisor activities (v5.5 — internal CRM log, staff and admin only) ----------
+  app.get("/api/advisors/:id/activities", requireAuth("submit"), async (req, res) => {
+    const rows = await storage.listAdvisorActivities(Number(req.params.id));
+    rows.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    res.json(rows);
+  });
+
+  app.post("/api/advisors/:id/activities", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const parsed = advisorActivityInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid activity", errors: parsed.error.flatten() });
+    const created = await storage.createAdvisorActivity({
+      advisorId: advisor.id,
+      date: parsed.data.date,
+      type: parsed.data.type ?? "note",
+      note: parsed.data.note ?? null,
+      createdBy: req.user!.id,
+      createdByName: req.user!.name,
+      createdAt: new Date().toISOString(),
+    });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/advisor-activities/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const existing = (await storage.listAdvisorActivities()).find((a) => a.id === id);
+    if (!existing) return res.status(404).json({ message: "Not found" });
+    if (req.user!.role !== "admin" && existing.createdBy !== req.user!.id) {
+      return res.status(403).json({ message: "You can only edit your own activity entries" });
+    }
+    const parsed = advisorActivityInputSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid activity" });
+    const updated = await storage.updateAdvisorActivity(id, parsed.data);
+    res.json(updated);
+  });
+
+  app.delete("/api/advisor-activities/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const existing = (await storage.listAdvisorActivities()).find((a) => a.id === id);
+    if (!existing) return res.status(404).json({ message: "Not found" });
+    if (req.user!.role !== "admin" && existing.createdBy !== req.user!.id) {
+      return res.status(403).json({ message: "You can only delete your own activity entries" });
+    }
+    await storage.deleteAdvisorActivity(id);
+    res.json({ ok: true });
+  });
+
+  // ---------- Settings (v5.5 — approval workflow configuration) ----------
+  // Read: any signed-in staff member needs the COO address for the approval email button.
+  app.get("/api/settings", requireAuth(), async (_req, res) => {
+    res.json({ cooEmail: (await storage.getMeta("coo_email")) ?? "" });
+  });
+
+  app.put("/api/admin/settings", requireAuth("admin"), async (req, res) => {
+    const parsed = z.object({ cooEmail: z.string().trim().email().or(z.literal("")) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid email address" });
+    await storage.setMeta("coo_email", parsed.data.cooEmail);
+    res.json({ cooEmail: parsed.data.cooEmail });
+  });
+
+  // ---------- AI: sync advisor profile from a URL (e.g. LinkedIn) or pasted text (DeepSeek) ----------
+  app.post("/api/ai/advisor-extract", requireAuth("submit"), async (req, res) => {
+    const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    const pasted = typeof req.body?.text === "string" ? req.body.text : "";
+
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.status(503).json({
+        message: "AI extraction is not configured on this deployment. Set the DEEPSEEK_API_KEY environment variable to enable it.",
+      });
+    }
+
+    let pageText = "";
+    let fetchFailed = false;
+    if (url && /^https?:\/\//i.test(url)) {
+      const t = await fetchPageText(url);
+      if (t && t.trim().length >= 80) pageText = t;
+      else fetchFailed = true;
+    }
+    if (!pageText && pasted.trim().length < 40) {
+      return res.status(422).json({
+        message: fetchFailed
+          ? "Could not read that page — LinkedIn and some sites block automated access. Open the profile, copy the text, and paste it instead."
+          : "Provide a profile URL or paste the profile text",
+        fetchFailed,
+      });
+    }
+
+    try {
+      const instruction = `You are a data-entry assistant for the advisor CRM of Gobi Partners, a venture capital firm. The material below is a professional profile (often LinkedIn) — it may be English, Chinese, or mixed.
+
+Return ONLY a JSON object with these keys (use empty string "" when unknown; never invent facts):
+{
+  "name": "person's full name in English",
+  "nameCn": "person's name in Chinese if present",
+  "background": "2-4 sentence English professional bio: current position, prior experience, education, notable achievements",
+  "domains": "comma-separated expertise areas, e.g. 'Biotech, University tech transfer, AI'",
+  "roles": [{ "title": "job title", "organization": "organisation name", "isPrimary": 1 for the current main role else 0 }],
+  "cohort": "graduation year or notable cohort if evident, else empty"
+}`;
+      const textBlock = [
+        instruction,
+        pageText ? `\nFETCHED PAGE CONTENT (${url}):\n"""\n${pageText.slice(0, 12000)}\n"""` : "",
+        pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
+      ].join("\n");
+
+      const resp = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: textBlock }],
+          response_format: { type: "json_object" },
+          max_tokens: 1200,
+        }),
+      });
+      if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
+      const completion: any = await resp.json();
+      const raw: string = completion.choices?.[0]?.message?.content ?? "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON in model output");
+      const data = JSON.parse(jsonMatch[0]);
+      res.json({
+        name: String(data.name ?? ""),
+        nameCn: String(data.nameCn ?? ""),
+        background: String(data.background ?? ""),
+        domains: String(data.domains ?? ""),
+        cohort: String(data.cohort ?? ""),
+        roles: Array.isArray(data.roles)
+          ? data.roles
+              .filter((r: any) => r && typeof r.title === "string" && r.title.trim())
+              .slice(0, 8)
+              .map((r: any) => ({
+                title: String(r.title),
+                organization: r.organization ? String(r.organization) : null,
+                isPrimary: r.isPrimary === 1 || r.isPrimary === true ? 1 : 0,
+              }))
+          : [],
+        sourceUrl: url || null,
+        fetched: !!pageText,
+      });
+    } catch (err: any) {
+      console.error("AI advisor extract failed:", err);
+      res.status(500).json({ message: "AI extraction failed — please fill the form manually" });
+    }
   });
 
   // ---------- AI: extract partnership from pasted text, PDF, or DOCX (DeepSeek, text-only) ----------

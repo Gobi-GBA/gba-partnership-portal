@@ -264,6 +264,10 @@ export const advisors = sqliteTable("advisors", {
   gobiPics: text("gobi_pics", { mode: "json" }).$type<string[]>(), // Gobi PIC names
   cohort: text("cohort"), // e.g. "2024", "2025"
   engagement: text("engagement"), // status & history of engagement — staff-visible only
+  publicClearance: integer("public_clearance").notNull().default(0), // 0 | 1 — agreed to appear on public website/materials (v5.5)
+  birthDay: integer("birth_day"),   // 1-31 — CRM birthday, staff-visible only (v5.5)
+  birthMonth: integer("birth_month"), // 1-12
+  birthYear: integer("birth_year"),  // optional, e.g. 1968
   status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
@@ -283,6 +287,66 @@ export const advisorRoles = sqliteTable("advisor_roles", {
 });
 
 export type AdvisorRole = typeof advisorRoles.$inferSelect;
+
+// ---------- Sector tags (v5.5 — shared by advisors and partner organizations) ----------
+// Managed by admins in the admin portal; assigned from pickers elsewhere.
+export const sectorTags = sqliteTable("sector_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  nameEn: text("name_en").notNull(),
+  nameCn: text("name_cn"),
+  color: text("color"), // optional hex accent, e.g. "#48A9C5"
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export type SectorTag = typeof sectorTags.$inferSelect;
+
+export const advisorTags = sqliteTable("advisor_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  advisorId: integer("advisor_id").notNull(),
+  tagId: integer("tag_id").notNull(),
+});
+
+export type AdvisorTag = typeof advisorTags.$inferSelect;
+
+export const partnershipTags = sqliteTable("partnership_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  partnershipId: integer("partnership_id").notNull(),
+  tagId: integer("tag_id").notNull(),
+});
+
+export type PartnershipTag = typeof partnershipTags.$inferSelect;
+
+export const sectorTagInputSchema = z.object({
+  nameEn: z.string().min(1).max(80),
+  nameCn: z.string().max(80).nullable().optional(),
+  color: z.string().max(20).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+});
+export type SectorTagInput = z.infer<typeof sectorTagInputSchema>;
+
+// ---------- Advisor activities (v5.5 — CRM momentum log, staff-only) ----------
+export const ACTIVITY_TYPES = ["meeting", "call", "email", "event", "intro", "note"] as const;
+export type ActivityType = (typeof ACTIVITY_TYPES)[number];
+
+export const advisorActivities = sqliteTable("advisor_activities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  advisorId: integer("advisor_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+  type: text("type").notNull().default("note"), // see ACTIVITY_TYPES
+  note: text("note"),
+  createdBy: integer("created_by"),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type AdvisorActivity = typeof advisorActivities.$inferSelect;
+
+export const advisorActivityInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  type: z.enum(ACTIVITY_TYPES).default("note"),
+  note: z.string().max(2000).nullable().optional(),
+});
+export type AdvisorActivityInput = z.infer<typeof advisorActivityInputSchema>;
 
 export const advisorRoleInputSchema = z.object({
   title: z.string().min(1).max(300),
@@ -308,12 +372,21 @@ export const advisorInputSchema = z.object({
   gobiPics: z.array(z.string().max(60)).max(8).nullable().optional(),
   cohort: z.string().max(20).nullable().optional(),
   engagement: z.string().max(4000).nullable().optional(),
+  publicClearance: z.number().int().min(0).max(1).optional(), // v5.5 — default stays 0 (No)
+  birthDay: z.number().int().min(1).max(31).nullable().optional(),
+  birthMonth: z.number().int().min(1).max(12).nullable().optional(),
+  birthYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  tagIds: z.array(z.number().int()).max(20).optional(), // sector tag ids (v5.5)
   roles: z.array(advisorRoleInputSchema).max(12).default([]),
 });
 export type AdvisorInput = z.infer<typeof advisorInputSchema>;
 
-// Advisor enriched with roles for API responses
-export type AdvisorWithRoles = Advisor & { roles: AdvisorRole[] };
+// Advisor enriched with roles, tags and momentum for API responses
+export type AdvisorWithRoles = Advisor & {
+  roles: AdvisorRole[];
+  tags?: SectorTag[];
+  lastActivityAt?: string | null; // most recent activity date (staff-only; null for viewers)
+};
 
 // ---------- Attachments (stored in SQLite so they survive redeploys) ----------
 export const attachments = sqliteTable("attachments", {

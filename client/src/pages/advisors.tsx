@@ -19,12 +19,20 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar } from "@shared/schema";
+import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS } from "@shared/schema";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
+  LayoutGrid, List, SlidersHorizontal, Send, Cake,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
+  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, type ExtractedAdvisor,
+} from "@/components/advisor-crm";
 import { cn } from "@/lib/utils";
 
 // ---------- Pillar & track styling ----------
@@ -115,6 +123,7 @@ const EMPTY_FORM = {
   name: "", nameCn: "", advisorType: "honourary_advisor" as AdvisorRoleType, track: "industry" as AdvisorTrack,
   pillar: "other" as Pillar, emailsText: "", domains: "", background: "", profileUrl: "", linkedinUrl: "",
   cohort: "", engagement: "", gobiPics: [] as string[], photoUrl: "", photoThumbUrl: "",
+  publicClearance: false, birthDay: "", birthMonth: "", birthYear: "", tagIds: [] as number[],
 };
 
 function AdvisorFormDialog({
@@ -153,6 +162,11 @@ function AdvisorFormDialog({
         linkedinUrl: target.linkedinUrl ?? "", cohort: target.cohort ?? "",
         engagement: target.engagement ?? "", gobiPics: target.gobiPics ?? [],
         photoUrl: target.photoUrl ?? "", photoThumbUrl: target.photoThumbUrl ?? "",
+        publicClearance: target.publicClearance === 1,
+        birthDay: target.birthDay ? String(target.birthDay) : "",
+        birthMonth: target.birthMonth ? String(target.birthMonth) : "",
+        birthYear: target.birthYear ? String(target.birthYear) : "",
+        tagIds: (target.tags ?? []).map((tg) => tg.id),
       });
       setRoles((target.roles ?? []).map((r) => ({ key: keyRef.current++, title: r.title, organization: r.organization ?? "", partnershipId: r.partnershipId, isPrimary: r.isPrimary })));
     } else {
@@ -186,6 +200,11 @@ function AdvisorFormDialog({
         gobiPics: form.gobiPics,
         cohort: form.cohort.trim() || null,
         engagement: form.engagement.trim() || null,
+        publicClearance: form.publicClearance ? 1 : 0,
+        birthDay: form.birthDay ? Number(form.birthDay) : null,
+        birthMonth: form.birthMonth ? Number(form.birthMonth) : null,
+        birthYear: form.birthYear ? Number(form.birthYear) : null,
+        tagIds: form.tagIds,
         roles: roles
           .filter((r) => r.title.trim())
           .map((r) => ({ title: r.title.trim(), organization: (r.organization ?? "").toString().trim() || null, partnershipId: r.partnershipId ?? null, isPrimary: r.isPrimary ?? 0 })),
@@ -371,7 +390,62 @@ function AdvisorFormDialog({
             </div>
             <div className="space-y-1">
               <Label>{t("advisorLinkedin")}</Label>
-              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} data-testid="input-adv-linkedin" />
+              <div className="flex gap-2">
+                <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} data-testid="input-adv-linkedin" />
+                <LinkedinSyncControl
+                  url={form.linkedinUrl}
+                  onApply={(d: ExtractedAdvisor) => {
+                    setForm((f) => ({
+                      ...f,
+                      name: d.name?.trim() || f.name,
+                      nameCn: d.nameCn?.trim() || f.nameCn,
+                      background: d.background?.trim() || f.background,
+                      domains: d.domains?.trim() || f.domains,
+                      cohort: d.cohort?.trim() || f.cohort,
+                    }));
+                    if (d.roles && d.roles.length > 0) {
+                      setRoles(d.roles.map((r, i) => ({
+                        key: keyRef.current++,
+                        title: r.title,
+                        organization: r.organization ?? "",
+                        partnershipId: null,
+                        isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
+                      })));
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
+            </div>
+          </div>
+
+          {/* Sector tags */}
+          <div className="space-y-1.5">
+            <Label>{t("sectorTags")}</Label>
+            <TagPicker selected={form.tagIds} onChange={(ids) => setForm((f) => ({ ...f, tagIds: ids }))} />
+          </div>
+
+          {/* CRM: date of birth */}
+          <div className="space-y-1">
+            <Label>{t("birthdayLabel")}</Label>
+            <div className="flex gap-2">
+              <Input className="w-20" inputMode="numeric" placeholder="DD" maxLength={2} value={form.birthDay} onChange={set("birthDay")} data-testid="input-adv-birth-day" />
+              <Input className="w-20" inputMode="numeric" placeholder="MM" maxLength={2} value={form.birthMonth} onChange={set("birthMonth")} data-testid="input-adv-birth-month" />
+              <Input className="w-28" inputMode="numeric" placeholder="YYYY" maxLength={4} value={form.birthYear} onChange={set("birthYear")} data-testid="input-adv-birth-year" />
+            </div>
+          </div>
+
+          {/* Public clearance */}
+          <div className="flex items-start gap-2 rounded-lg border border-border p-3">
+            <Checkbox
+              id="adv-clearance"
+              checked={form.publicClearance}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, publicClearance: v === true }))}
+              data-testid="checkbox-adv-clearance"
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="adv-clearance" className="cursor-pointer">{t("publicClearance")}</Label>
+              <p className="text-[11px] text-muted-foreground">{t("publicClearanceHint")}</p>
             </div>
           </div>
           <div className="space-y-1">
@@ -415,6 +489,7 @@ function AdvisorDetailDialog({
   });
   const isStaff = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
+  const [approvalOpen, setApprovalOpen] = useState(false);
 
   const setStatus = useMutation({
     mutationFn: async (status: "approved" | "rejected") => {
@@ -476,7 +551,19 @@ function AdvisorDetailDialog({
                       <TrackIcon className="h-3 w-3" /> {t(`track_${a.track}` as any)}
                     </Badge>
                     {a.cohort && <Badge variant="outline" className="text-[11px]">{t("cohortLabel")} {a.cohort}</Badge>}
+                    {isStaff && (
+                      a.publicClearance === 1 ? (
+                        <Badge variant="outline" className="text-[11px] border-emerald-500/40 bg-emerald-500/10 text-emerald-600" data-testid="badge-clearance-yes">
+                          {t("publicClearanceYes")}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[11px] text-muted-foreground" data-testid="badge-clearance-no">
+                          {t("publicClearanceNo")}
+                        </Badge>
+                      )
+                    )}
                   </div>
+                  <TagBadges tags={a.tags} className="mt-2" />
                 </div>
               </div>
             </DialogHeader>
@@ -548,6 +635,12 @@ function AdvisorDetailDialog({
                       <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-advisor-engagement">{a.engagement}</p>
                     </div>
                   )}
+                  {formatBirthday(a) && (
+                    <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="text-advisor-birthday">
+                      <Cake className="h-3.5 w-3.5 text-[hsl(var(--gold))]" /> {formatBirthday(a)}
+                    </p>
+                  )}
+                  <ActivityTimeline advisorId={a.id} />
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
@@ -584,6 +677,10 @@ function AdvisorDetailDialog({
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t("editAdvisor")}
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => setApprovalOpen(true)} data-testid="button-request-approval">
+                    <Send className="h-3.5 w-3.5 mr-1.5" /> {t("requestApproval")}
+                  </Button>
+                  <ApprovalEmailDialog advisor={a} open={approvalOpen} onOpenChange={setApprovalOpen} />
                   {isAdmin && a.status === "pending" && (
                     <>
                       <Button size="sm" onClick={() => setStatus.mutate("approved")} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="button-approve-advisor">
@@ -623,6 +720,12 @@ export default function Advisors() {
   const [track, setTrack] = useState<string[]>([]);
   const [advisorType, setAdvisorType] = useState<string[]>([]);
   const [cohort, setCohort] = useState<string[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [momentumFilter, setMomentumFilter] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<"name" | "activity">("name");
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [showTags, setShowTags] = useState(true);
+  const [showMomentum, setShowMomentum] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AdvisorWithRoles | null>(null);
 
@@ -636,6 +739,7 @@ export default function Advisors() {
   });
 
   const canSubmit = user?.role === "admin" || user?.role === "staff";
+  const { data: allTags } = useSectorTags(!!user);
   const cohorts = useMemo(
     () => Array.from(new Set((advisors ?? []).map((a) => a.cohort).filter(Boolean) as string[])).sort(),
     [advisors],
@@ -648,20 +752,48 @@ export default function Advisors() {
       .filter((a) => (track.length === 0 || track.includes(a.track)))
       .filter((a) => (advisorType.length === 0 || advisorType.includes(a.advisorType)))
       .filter((a) => (cohort.length === 0 || (a.cohort && cohort.includes(a.cohort))))
+      .filter((a) => (tagFilter.length === 0 || (a.tags ?? []).some((tg) => tagFilter.includes(String(tg.id)))))
+      .filter((a) => (momentumFilter.length === 0 || momentumFilter.includes(momentumOf(a.lastActivityAt))))
       .filter((a) => {
         if (!q) return true;
-        const hay = [a.name, a.nameCn, a.domains, ...(a.roles ?? []).flatMap((r) => [r.title, r.organization])]
+        const hay = [a.name, a.nameCn, a.domains, ...(a.tags ?? []).flatMap((tg) => [tg.nameEn, tg.nameCn]), ...(a.roles ?? []).flatMap((r) => [r.title, r.organization])]
           .filter(Boolean).join(" ").toLowerCase();
         return hay.includes(q);
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [advisors, search, pillar, track, advisorType, cohort]);
+      .sort((a, b) => {
+        if (sortBy === "activity") {
+          const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+          const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+          if (ta !== tb) return tb - ta;
+        }
+        return a.name.localeCompare(b.name);
+      });
+  }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, sortBy]);
 
   const dkpOrgs = useMemo(
     () => (partnerships ?? []).filter((p) => p.isDomainKnowledgePartner === 1 && p.status === "approved")
       .sort((a, b) => a.nameEn.localeCompare(b.nameEn)),
     [partnerships],
   );
+
+  // Sector tags for DKP organizations (joined client-side)
+  const { data: pTagAssignments } = useQuery<Array<{ partnershipId: number; tagId: number }>>({
+    queryKey: ["/api/partnership-tags"],
+    enabled: !!user && dkpOrgs.length > 0,
+  });
+  const orgTags = useMemo(() => {
+    const byId = new Map<number, SectorTag>();
+    (allTags ?? []).forEach((tg) => byId.set(tg.id, tg));
+    const m = new Map<number, SectorTag[]>();
+    (pTagAssignments ?? []).forEach((x) => {
+      const tg = byId.get(x.tagId);
+      if (!tg) return;
+      const arr = m.get(x.partnershipId) ?? [];
+      arr.push(tg);
+      m.set(x.partnershipId, arr);
+    });
+    return m;
+  }, [allTags, pTagAssignments]);
 
   const displayName = (a: AdvisorWithRoles) => (lang === "cn" && a.nameCn ? a.nameCn : a.name);
   const primaryRole = (a: AdvisorWithRoles) => a.roles.find((r) => r.isPrimary === 1) ?? a.roles[0];
@@ -706,9 +838,66 @@ export default function Advisors() {
             <MultiSelectFilter label={t("cohortLabel")} testid="select-cohort" selected={cohort} onChange={setCohort}
               options={cohorts.map((c) => ({ value: c, label: c }))} />
           )}
+          {(allTags ?? []).length > 0 && (
+            <MultiSelectFilter label={t("sectorTags")} testid="select-tags" selected={tagFilter} onChange={setTagFilter}
+              options={(allTags ?? []).map((tg) => ({ value: String(tg.id), label: lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn }))} />
+          )}
+          {canSubmit && (
+            <MultiSelectFilter label={t("momentumLabel")} testid="select-momentum" selected={momentumFilter} onChange={setMomentumFilter}
+              options={(["active", "warm", "dormant", "none"] as const).map((m) => ({ value: m, label: t(`momentum_${m}` as any) }))} />
+          )}
           <span className="ml-auto text-sm text-muted-foreground" data-testid="text-advisor-count">
             {filtered.length} {t("advisorCount")}
           </span>
+        </div>
+
+        {/* View & display controls */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setView("grid")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${view === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              data-testid="button-view-grid"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> {t("viewGrid")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${view === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              data-testid="button-view-list"
+            >
+              <List className="h-3.5 w-3.5" /> {t("viewList")}
+            </button>
+          </div>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "activity")}>
+            <SelectTrigger className="h-9 w-44" data-testid="select-sort">
+              <span className="text-xs text-muted-foreground mr-1">{t("sortLabel")}:</span> <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">{t("sortByName")}</SelectItem>
+              {canSubmit && <SelectItem value="activity">{t("sortByActivity")}</SelectItem>}
+            </SelectContent>
+          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9" data-testid="button-display-options">
+                <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> {t("displayOptions")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel className="text-xs">{t("displayOptions")}</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem checked={showTags} onCheckedChange={(v) => setShowTags(v === true)} data-testid="toggle-show-tags">
+                {t("sectorTags")}
+              </DropdownMenuCheckboxItem>
+              {canSubmit && (
+                <DropdownMenuCheckboxItem checked={showMomentum} onCheckedChange={(v) => setShowMomentum(v === true)} data-testid="toggle-show-momentum">
+                  {t("momentumLabel")}
+                </DropdownMenuCheckboxItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Grid */}
@@ -718,7 +907,7 @@ export default function Advisors() {
           </div>
         ) : filtered.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground" data-testid="text-advisors-empty">{t("advisorEmpty")}</p>
-        ) : (
+        ) : view === "grid" ? (
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((a) => {
               const pr = primaryRole(a);
@@ -732,8 +921,11 @@ export default function Advisors() {
                 >
                   <div className="flex items-start gap-3">
                     <AdvisorAvatar a={a} />
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="min-w-0 truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
+                        {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                      </div>
                       {pr && (
                         <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                           {pr.title}{orgSuffix(pr)}
@@ -745,7 +937,43 @@ export default function Advisors() {
                           <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
                         )}
                       </div>
+                      {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
                     </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-card/80 backdrop-blur">
+            {filtered.map((a) => {
+              const pr = primaryRole(a);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => navigate(`/advisors/${a.id}`)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
+                  data-testid={`row-advisor-${a.id}`}
+                >
+                  <AdvisorAvatar a={a} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 truncate text-sm font-semibold">{displayName(a)}</p>
+                      {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                      {a.status === "pending" && (
+                        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">{t("advisorPendingBadge")}</Badge>
+                      )}
+                    </div>
+                    {pr && (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {pr.title}{orgSuffix(pr)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[45%]">
+                    {showTags && <TagBadges tags={a.tags} />}
+                    <PillarBadge pillar={a.pillar as Pillar} />
                   </div>
                 </button>
               );
@@ -773,9 +1001,40 @@ export default function Advisors() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}</p>
                     <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">{t("domainKnowledgePartnerBadge")}</p>
+                    {showTags && <TagBadges tags={orgTags.get(p.id)} className="mt-1.5" />}
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Internal-tools workflow (v5.5 scaffold — advisor approval segment) */}
+        {canSubmit && (
+          <div className="mt-12" data-testid="section-workflow">
+            <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight" data-testid="text-workflow-title">
+              <Sparkles className="h-5 w-5 text-[hsl(var(--gold))]" /> {t("workflowTitle")}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("workflowHint")}</p>
+            <div className="mt-4 rounded-xl border border-border bg-card/80 p-4 backdrop-blur">
+              <div className="mb-3 flex items-center gap-2">
+                <Badge className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,38%)]">{t("wfLive")}</Badge>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("advisorsTitle")}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-y-2">
+                {(["wfStepRegister", "wfStepFactCheck", "wfStepApproval", "wfStepApproved", "wfStepClearance", "wfStepPublic"] as const).map((k, i, arr) => (
+                  <span key={k} className="flex items-center">
+                    <span className="rounded-full border border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 px-3 py-1 text-xs font-medium text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]">
+                      {t(k)}
+                    </span>
+                    {i < arr.length - 1 && <span className="mx-1.5 text-muted-foreground">→</span>}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center gap-2 border-t border-border pt-3">
+                <Badge variant="outline" className="text-muted-foreground">{t("wfPlanned")}</Badge>
+                <span className="text-xs text-muted-foreground">{t("wfPlannedNote")}</span>
+              </div>
             </div>
           </div>
         )}

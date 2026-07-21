@@ -21,10 +21,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
-import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus } from "@shared/schema";
+import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus, SectorTag } from "@shared/schema";
 import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 import { FeedbackStatusBadge } from "@/pages/updates";
@@ -56,11 +56,15 @@ export default function Admin() {
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
             <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
+            <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
+            <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
           </TabsList>
           <TabsContent value="partnerships"><PartnershipAdmin /></TabsContent>
           <TabsContent value="changes"><ChangeRequestAdmin /></TabsContent>
           <TabsContent value="users"><UserAdmin /></TabsContent>
           <TabsContent value="feedback"><FeedbackAdmin /></TabsContent>
+          <TabsContent value="tags"><TagAdmin /></TabsContent>
+          <TabsContent value="settings"><SettingsAdmin /></TabsContent>
         </Tabs>
       </div>
     </Layout>
@@ -861,6 +865,169 @@ function PartnershipAdmin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// ---------------- Sector tags (v5.5) ----------------
+function TagAdmin() {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const [draftEn, setDraftEn] = useState("");
+  const [draftCn, setDraftCn] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editEn, setEditEn] = useState("");
+  const [editCn, setEditCn] = useState("");
+
+  const { data: tags, isLoading } = useQuery<SectorTag[]>({ queryKey: ["/api/sector-tags"] });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/sector-tags"] });
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sector-tags", { nameEn: draftEn.trim(), nameCn: draftCn.trim() || null });
+      return res.json();
+    },
+    onSuccess: () => { invalidate(); setDraftEn(""); setDraftCn(""); },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const update = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/sector-tags/${editingId}`, { nameEn: editEn.trim(), nameCn: editCn.trim() || null });
+      return res.json();
+    },
+    onSuccess: () => { invalidate(); setEditingId(null); },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const del = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/sector-tags/${id}`),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4" data-testid="admin-tags">
+      <div className="flex items-start gap-2">
+        <Tags className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
+        <p className="text-sm text-muted-foreground">{t("sectorTagsHint")}</p>
+      </div>
+
+      <div className="rounded-lg border border-card-border bg-card p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+          <Input placeholder={t("tagNameEn")} value={draftEn} onChange={(e) => setDraftEn(e.target.value)} data-testid="input-tag-name-en" />
+          <Input placeholder={t("tagNameCn")} value={draftCn} onChange={(e) => setDraftCn(e.target.value)} data-testid="input-tag-name-cn" />
+          <Button
+            onClick={() => create.mutate()}
+            disabled={!draftEn.trim() || create.isPending}
+            className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
+            data-testid="button-add-tag"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> {t("tagAdd")}
+          </Button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">…</p>
+      ) : !tags || tags.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic" data-testid="text-tags-empty">{t("tagNone")}</p>
+      ) : (
+        <div className="divide-y divide-border rounded-lg border border-card-border bg-card">
+          {tags.map((tg) => (
+            <div key={tg.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5" data-testid={`row-tag-${tg.id}`}>
+              {editingId === tg.id ? (
+                <>
+                  <Input className="h-8 w-44" value={editEn} onChange={(e) => setEditEn(e.target.value)} data-testid={`input-edit-tag-en-${tg.id}`} />
+                  <Input className="h-8 w-44" value={editCn} onChange={(e) => setEditCn(e.target.value)} data-testid={`input-edit-tag-cn-${tg.id}`} />
+                  <Button size="sm" className="h-8 bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" disabled={!editEn.trim() || update.isPending}
+                    onClick={() => update.mutate()} data-testid={`button-save-tag-${tg.id}`}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)} data-testid={`button-cancel-tag-${tg.id}`}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Badge variant="outline" className="border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]">
+                    {lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{tg.nameEn}{tg.nameCn ? ` / ${tg.nameCn}` : ""}</span>
+                  <span className="ml-auto flex gap-1">
+                    <button type="button" className="p-1.5" data-testid={`button-edit-tag-${tg.id}`}
+                      onClick={() => { setEditingId(tg.id); setEditEn(tg.nameEn); setEditCn(tg.nameCn ?? ""); }}>
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                    </button>
+                    <button type="button" className="p-1.5" data-testid={`button-delete-tag-${tg.id}`}
+                      onClick={() => { if (confirm(t("tagConfirmDelete"))) del.mutate(tg.id); }}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Settings (v5.5) ----------------
+function SettingsAdmin() {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [cooEmail, setCooEmail] = useState("");
+  const [seeded, setSeeded] = useState(false);
+
+  const { data: settings } = useQuery<{ cooEmail: string }>({ queryKey: ["/api/settings"] });
+  if (settings && !seeded) {
+    setSeeded(true);
+    setCooEmail(settings.cooEmail ?? "");
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/admin/settings", { cooEmail: cooEmail.trim() });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      toast({ description: t("settingsSaved") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  return (
+    <div className="max-w-lg space-y-4" data-testid="admin-settings">
+      <div className="flex items-start gap-2">
+        <Settings2 className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
+        <p className="text-sm text-muted-foreground">{t("settingsCooEmailHint")}</p>
+      </div>
+      <div className="rounded-lg border border-card-border bg-card p-4 space-y-3">
+        <div className="space-y-1.5">
+          <Label>{t("settingsCooEmail")}</Label>
+          <Input
+            type="email"
+            placeholder="coo-office@gobi.vc"
+            value={cooEmail}
+            onChange={(e) => setCooEmail(e.target.value)}
+            data-testid="input-coo-email"
+          />
+        </div>
+        <div className="flex justify-end">
+          <Button
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
+            data-testid="button-save-settings"
+          >
+            <Save className="h-4 w-4 mr-1.5" /> {save.isPending ? "…" : t("save")}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

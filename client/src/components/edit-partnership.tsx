@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Trash2, Paperclip, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PicChecklist } from "@/components/shared";
+import { TagPicker } from "@/components/advisor-crm";
 import type { Partnership, AttachmentMeta, Stage } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 
@@ -38,6 +39,18 @@ export function EditPartnershipDialog({
     queryKey: ["/api/partnerships", p?.id ?? 0, "attachments"],
     enabled: !!p,
   });
+
+  // Sector tags (v5.5) — admin-only, saved separately from the change-request flow
+  const [tagIds, setTagIds] = useState<number[]>([]);
+  const [tagsSeededFor, setTagsSeededFor] = useState<number | null>(null);
+  const { data: tagAssignments } = useQuery<Array<{ partnershipId: number; tagId: number }>>({
+    queryKey: ["/api/partnership-tags"],
+    enabled: !!p && mode === "direct",
+  });
+  if (p && mode === "direct" && tagAssignments && tagsSeededFor !== p.id) {
+    setTagsSeededFor(p.id);
+    setTagIds(tagAssignments.filter((x) => x.partnershipId === p.id).map((x) => x.tagId));
+  }
 
   if (p && loadedId !== p.id) {
     setLoadedId(p.id);
@@ -74,6 +87,8 @@ export function EditPartnershipDialog({
         .slice(0, 12);
       if (mode === "direct") {
         const res = await apiRequest("PATCH", `/api/partnerships/${p.id}`, payload);
+        await apiRequest("PUT", `/api/partnerships/${p.id}/tags`, { tagIds });
+        queryClient.invalidateQueries({ queryKey: ["/api/partnership-tags"] });
         return res.json();
       }
       // Change request: send only fields that differ from the current record
@@ -121,7 +136,7 @@ export function EditPartnershipDialog({
   const tokenQS = token ? `?token=${encodeURIComponent(token)}` : "";
 
   return (
-    <Dialog open={!!p} onOpenChange={(o) => { if (!o) { onClose(); setLoadedId(null); } }}>
+    <Dialog open={!!p} onOpenChange={(o) => { if (!o) { onClose(); setLoadedId(null); setTagsSeededFor(null); } }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg">{t("editRecord")} — {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}</DialogTitle>
@@ -210,6 +225,11 @@ export function EditPartnershipDialog({
               />
               {t("isDkpLabel")}
             </label>
+          )}
+          {user?.role === "admin" && (
+            <EField label={t("sectorTags")}>
+              <TagPicker selected={tagIds} onChange={setTagIds} />
+            </EField>
           )}
           <EField label={t("descriptionEn")}><Textarea rows={2} value={form.descriptionEn ?? ""} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="edit-desc-en" /></EField>
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>

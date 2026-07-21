@@ -9,9 +9,34 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.0";
+export const CURRENT_VERSION = "5.5";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.5",
+    date: "2026-07-21",
+    by: "Fred Li",
+    titleEn: "Advisor CRM — sector tags, momentum & approval email",
+    titleCn: "顾问CRM — 行业标签、互动热度与审批邮件",
+    itemsEn: [
+      "Sector tags shared by advisors and domain knowledge partners — filter both lists by sector; tags are managed by admins in the new Admin → Tags tab",
+      "Advisor CRM — optional date of birth (DD/MM, year optional), public listing clearance flag (default no), and an internal activities log (meetings, calls, events, notes) per advisor",
+      "Momentum indicator — a dot beside each advisor shows engagement freshness (active / warm / dormant) based on the latest logged activity; filter by momentum",
+      "One-click approval request email — Gobi-styled email preview addressed to the COO office (configurable in Admin → Settings), cc Fred Li, opens in your mail client",
+      "LinkedIn auto-sync — paste a LinkedIn URL on the advisor form and let AI fill name, background, domains and roles; includes a paste-text fallback when LinkedIn blocks fetching",
+      "Advisors page now matches the partners page — grid or list view, sort options, display toggles, and sector tag & momentum filters; a team workflow diagram shows the register → fact-check → approval → clearance → public pipeline",
+      "Activities, birthdays and momentum stay internal — viewers see none of them, on screen or via the API",
+    ],
+    itemsCn: [
+      "顾问与领域知识伙伴共用行业标签 — 两个列表均可按行业筛选；标签由管理员在“管理后台 → 标签”统一管理",
+      "顾问CRM — 可选生日（日/月，年份可留空）、公开展示授权标记（默认否），以及每位顾问的内部互动记录（会议、通话、活动、备注）",
+      "互动热度指示 — 顾问姓名旁的圆点根据最近互动显示活跃/温热/沉寂状态，并支持按热度筛选",
+      "一键生成审批邮件 — 戈壁风格邮件预览，收件人为COO办公室（可在“管理后台 → 设置”配置），抄送 Fred Li，一键在邮件客户端打开",
+      "LinkedIn 自动同步 — 在顾问表单粘贴 LinkedIn 链接，AI 自动填充姓名、背景、领域与职务；LinkedIn 拦截抓取时可改为粘贴文本",
+      "顾问页面与伙伴页面看齐 — 卡片/列表视图、排序、显示选项、行业标签与热度筛选；新增团队工作流程图，展示登记 → 核实 → 审批 → 授权 → 公开的流程",
+      "互动记录、生日与热度仅限内部 — 浏览者在页面与接口均不可见",
+    ],
+  },
   {
     version: "5.0",
     date: "2026-07-21",

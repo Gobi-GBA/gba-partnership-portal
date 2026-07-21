@@ -118,6 +118,10 @@ export const advisorsPg = pgTable("advisors", {
   gobiPics: jsonb("gobi_pics").$type<string[]>(),
   cohort: text("cohort"),
   engagement: text("engagement"),
+  publicClearance: integer("public_clearance").notNull().default(0),
+  birthDay: integer("birth_day"),
+  birthMonth: integer("birth_month"),
+  birthYear: integer("birth_year"),
   status: text("status").notNull().default("pending"),
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
@@ -131,6 +135,37 @@ export const advisorRolesPg = pgTable("advisor_roles", {
   partnershipId: integer("partnership_id"),
   isPrimary: integer("is_primary").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const sectorTagsPg = pgTable("sector_tags", {
+  id: serial("id").primaryKey(),
+  nameEn: text("name_en").notNull(),
+  nameCn: text("name_cn"),
+  color: text("color"),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const advisorTagsPg = pgTable("advisor_tags", {
+  id: serial("id").primaryKey(),
+  advisorId: integer("advisor_id").notNull(),
+  tagId: integer("tag_id").notNull(),
+});
+
+export const partnershipTagsPg = pgTable("partnership_tags", {
+  id: serial("id").primaryKey(),
+  partnershipId: integer("partnership_id").notNull(),
+  tagId: integer("tag_id").notNull(),
+});
+
+export const advisorActivitiesPg = pgTable("advisor_activities", {
+  id: serial("id").primaryKey(),
+  advisorId: integer("advisor_id").notNull(),
+  date: text("date").notNull(),
+  type: text("type").notNull().default("note"),
+  note: text("note"),
+  createdBy: integer("created_by"),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
 });
 
 export const feedbackPg = pgTable("feedback", {

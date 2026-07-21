@@ -4,8 +4,8 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
@@ -137,6 +137,38 @@ const BOOTSTRAP: string[] = [
     created_by INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
+  // v5.5: advisor CRM + shared sector tags
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS public_clearance INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_day INTEGER`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_month INTEGER`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_year INTEGER`,
+  `CREATE TABLE IF NOT EXISTS sector_tags (
+    id SERIAL PRIMARY KEY,
+    name_en TEXT NOT NULL,
+    name_cn TEXT,
+    color TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS advisor_tags (
+    id SERIAL PRIMARY KEY,
+    advisor_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS partnership_tags (
+    id SERIAL PRIMARY KEY,
+    partnership_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS advisor_activities (
+    id SERIAL PRIMARY KEY,
+    advisor_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'note',
+    note TEXT,
+    created_by INTEGER,
+    created_by_name TEXT,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS feedback (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,
@@ -532,6 +564,82 @@ export function createPgStorage(): IStorage {
       if (roles.length === 0) return [];
       const rows = await db.insert(advisorRoles).values(roles.map((r) => ({ ...r, advisorId })) as any).returning();
       return rows as AdvisorRole[];
+    }
+
+    async listSectorTags() {
+      await init();
+      return (await db.select().from(sectorTags)) as SectorTag[];
+    }
+    async createSectorTag(data: Omit<SectorTag, "id">) {
+      await init();
+      const rows = await db.insert(sectorTags).values(data as any).returning();
+      return rows[0] as SectorTag;
+    }
+    async updateSectorTag(id: number, data: Partial<Omit<SectorTag, "id">>) {
+      await init();
+      const rows = await db.update(sectorTags).set(data as any).where(eq(sectorTags.id, id)).returning();
+      return rows[0] as SectorTag | undefined;
+    }
+    async deleteSectorTag(id: number) {
+      await init();
+      await db.delete(advisorTags).where(eq(advisorTags.tagId, id));
+      await db.delete(partnershipTags).where(eq(partnershipTags.tagId, id));
+      await db.delete(sectorTags).where(eq(sectorTags.id, id));
+    }
+    async listAdvisorTagIds() {
+      await init();
+      return await db.select({ advisorId: advisorTags.advisorId, tagId: advisorTags.tagId }).from(advisorTags);
+    }
+    async setAdvisorTags(advisorId: number, tagIds: number[]) {
+      await init();
+      await db.delete(advisorTags).where(eq(advisorTags.advisorId, advisorId));
+      if (tagIds.length > 0) {
+        await db.insert(advisorTags).values(tagIds.map((tagId) => ({ advisorId, tagId })));
+      }
+    }
+    async listPartnershipTagIds() {
+      await init();
+      return await db.select({ partnershipId: partnershipTags.partnershipId, tagId: partnershipTags.tagId }).from(partnershipTags);
+    }
+    async setPartnershipTags(partnershipId: number, tagIds: number[]) {
+      await init();
+      await db.delete(partnershipTags).where(eq(partnershipTags.partnershipId, partnershipId));
+      if (tagIds.length > 0) {
+        await db.insert(partnershipTags).values(tagIds.map((tagId) => ({ partnershipId, tagId })));
+      }
+    }
+
+    async listAdvisorActivities(advisorId?: number) {
+      await init();
+      if (advisorId != null) {
+        return (await db.select().from(advisorActivities).where(eq(advisorActivities.advisorId, advisorId))) as AdvisorActivity[];
+      }
+      return (await db.select().from(advisorActivities)) as AdvisorActivity[];
+    }
+    async createAdvisorActivity(data: Omit<AdvisorActivity, "id">) {
+      await init();
+      const rows = await db.insert(advisorActivities).values(data as any).returning();
+      return rows[0] as AdvisorActivity;
+    }
+    async updateAdvisorActivity(id: number, data: Partial<Pick<AdvisorActivity, "date" | "type" | "note">>) {
+      await init();
+      const rows = await db.update(advisorActivities).set(data as any).where(eq(advisorActivities.id, id)).returning();
+      return rows[0] as AdvisorActivity | undefined;
+    }
+    async deleteAdvisorActivity(id: number) {
+      await init();
+      await db.delete(advisorActivities).where(eq(advisorActivities.id, id));
+    }
+
+    async getMeta(key: string) {
+      await init();
+      const res = await sql.query(`SELECT value FROM meta WHERE key = $1`, [key]);
+      const rows = res as unknown as { value: string }[];
+      return rows[0]?.value ?? null;
+    }
+    async setMeta(key: string, value: string) {
+      await init();
+      await sql.query(`INSERT INTO meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, value]);
     }
   }
 

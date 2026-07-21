@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -104,6 +104,26 @@ export interface IStorage {
   deleteAdvisor(id: number): Promise<void>;
   listAdvisorRoles(): Promise<AdvisorRole[]>;
   setAdvisorRoles(advisorId: number, roles: Omit<AdvisorRole, "id" | "advisorId">[]): Promise<AdvisorRole[]>;
+
+  // Sector tags (v5.5) — shared by advisors and partner organizations
+  listSectorTags(): Promise<SectorTag[]>;
+  createSectorTag(data: Omit<SectorTag, "id">): Promise<SectorTag>;
+  updateSectorTag(id: number, data: Partial<Omit<SectorTag, "id">>): Promise<SectorTag | undefined>;
+  deleteSectorTag(id: number): Promise<void>; // also removes assignments
+  listAdvisorTagIds(): Promise<{ advisorId: number; tagId: number }[]>;
+  setAdvisorTags(advisorId: number, tagIds: number[]): Promise<void>;
+  listPartnershipTagIds(): Promise<{ partnershipId: number; tagId: number }[]>;
+  setPartnershipTags(partnershipId: number, tagIds: number[]): Promise<void>;
+
+  // Advisor activities (v5.5 — CRM momentum log)
+  listAdvisorActivities(advisorId?: number): Promise<AdvisorActivity[]>;
+  createAdvisorActivity(data: Omit<AdvisorActivity, "id">): Promise<AdvisorActivity>;
+  updateAdvisorActivity(id: number, data: Partial<Pick<AdvisorActivity, "date" | "type" | "note">>): Promise<AdvisorActivity | undefined>;
+  deleteAdvisorActivity(id: number): Promise<void>;
+
+  // Settings key-value store (v5.5 — e.g. COO office email)
+  getMeta(key: string): Promise<string | null>;
+  setMeta(key: string, value: string): Promise<void>;
 }
 
 // ---------- R&D Planner seed (inserted once when rd_items is empty) ----------
