@@ -1,18 +1,31 @@
-// Gmail SMTP mailer — configure with GMAIL_USER + GMAIL_APP_PASSWORD env vars.
-// When not configured, sendMail is a no-op returning false (features degrade gracefully:
-// registration succeeds without a confirmation email, password reset falls back to
-// secret questions).
+// Gmail SMTP mailer — configure with MAIL_SERVER / MAIL_PORT / MAIL_USE_TLS /
+// MAIL_USERNAME / MAIL_PASSWORD / MAIL_DEFAULT_SENDER.
+// When not configured, sendMail is a no-op returning false (features degrade
+// gracefully: registration succeeds without a confirmation email, password reset
+// falls back to secret questions).
 import nodemailer from "nodemailer";
 
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+function parseBool(value: string | undefined, fallback = false): boolean {
+  if (value == null) return fallback;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
 
-export const mailEnabled = Boolean(GMAIL_USER && GMAIL_APP_PASSWORD);
+const MAIL_SERVER = process.env.MAIL_SERVER ?? "smtp.gmail.com";
+const MAIL_PORT = Number(process.env.MAIL_PORT ?? "587");
+const MAIL_USE_TLS = parseBool(process.env.MAIL_USE_TLS, true);
+const MAIL_USERNAME = process.env.MAIL_USERNAME ?? process.env.GMAIL_USER;
+const MAIL_PASSWORD = process.env.MAIL_PASSWORD ?? process.env.GMAIL_APP_PASSWORD;
+const MAIL_DEFAULT_SENDER = process.env.MAIL_DEFAULT_SENDER ?? "noreply@gobi.vc";
+
+export const mailEnabled = Boolean(MAIL_USERNAME && MAIL_PASSWORD);
 
 const transporter = mailEnabled
   ? nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      host: MAIL_SERVER,
+      port: MAIL_PORT,
+      secure: MAIL_PORT === 465,
+      requireTLS: MAIL_USE_TLS,
+      auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD },
     })
   : null;
 
@@ -36,7 +49,8 @@ export async function sendMail(to: string, subject: string, bodyHtml: string): P
   if (!transporter) return false;
   try {
     await transporter.sendMail({
-      from: `"Gobi Partnership Portal" <${GMAIL_USER}>`,
+      from: MAIL_USERNAME ? `"Gobi Partnership Portal" <${MAIL_USERNAME}>` : MAIL_DEFAULT_SENDER,
+      replyTo: MAIL_DEFAULT_SENDER,
       to,
       subject,
       html: wrap(bodyHtml),
