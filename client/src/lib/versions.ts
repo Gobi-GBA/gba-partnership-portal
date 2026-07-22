@@ -26,6 +26,7 @@ export const VERSIONS: VersionEntry[] = [
       "R&D planner — pick the project from a list of existing projects or add a new one",
       "Partners and Network merged into one page — the star map stays as a view toggle on Partners",
       "Cover now shows a live extract of the partnership records log in the space beside the stats",
+      "Advisor form now has a single Profile URL field (LinkedIn or official page) that also drives the auto-sync — no more duplicate URL fields",
       "Header logo now opens gobi.vc; removed the Li Fo Venture Notes footer note",
     ],
     itemsCn: [
@@ -36,6 +37,7 @@ export const VERSIONS: VersionEntry[] = [
       "研发规划 — 项目可从现有项目列表中选择，或新建项目",
       "合作伙伴与网络页面合并为一 — 星图保留为合作伙伴页的视图切换",
       "封面在统计旁的空白处新增合作记录日志的实时摘要",
+      "顾问表单改为单一“主页链接”字段（LinkedIn 或官方主页），并直接驱动自动同步 — 不再有重复的链接字段",
       "页眉标志现在链接至 gobi.vc；移除页脚“李佛创投笔记”注释",
     ],
   },
@@ -56,6 +58,23 @@ export const VERSIONS: VersionEntry[] = [
       "管理后台 → 行业标签升级为控制面板 — 可从预设色板为每个标签指定颜色，并在顾问与伙伴页面生效",
       "上下箭头调整标签顺序 — 顺序在所有标签列表与筛选中统一生效",
       "每个标签显示使用量 — 编辑或删除前一目了然有多少顾问与伙伴使用该标签",
+    ],
+  },
+  {
+    version: "5.5.1",
+    date: "2026-07-22",
+    by: "Ameen Mohd Fairuz",
+    titleEn: "Functional email delivery",
+    titleCn: "邮件发送功能上线",
+    itemsEn: [
+      "Email delivery is now functional — registration confirmations and password-reset links are sent through a configurable SMTP mail server",
+      "Configurable mail settings (MAIL_SERVER, MAIL_PORT, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER); the earlier Gmail settings still work",
+      "When mail is not configured, features still degrade gracefully — registration succeeds without a confirmation email and reset falls back to secret questions",
+    ],
+    itemsCn: [
+      "邮件发送已可用 — 注册确认与密码重置链接现通过可配置的 SMTP 邮件服务器发送",
+      "可配置的邮件设置（MAIL_SERVER、MAIL_PORT、MAIL_USE_TLS、MAIL_USERNAME、MAIL_PASSWORD、MAIL_DEFAULT_SENDER）；原有 Gmail 设置仍然可用",
+      "未配置邮件时功能仍优雅降级 — 注册无需确认邮件即可完成，重置回退到密保问题",
     ],
   },
   {

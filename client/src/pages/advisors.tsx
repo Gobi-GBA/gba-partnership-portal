@@ -158,7 +158,7 @@ function AdvisorFormDialog({
         name: target.name, nameCn: target.nameCn ?? "", advisorType: target.advisorType as AdvisorRoleType,
         track: target.track as AdvisorTrack, pillar: target.pillar as Pillar,
         emailsText: (target.emails ?? []).join(", "), domains: target.domains ?? "",
-        background: target.background ?? "", profileUrl: target.profileUrl ?? "",
+        background: target.background ?? "", profileUrl: target.profileUrl || target.linkedinUrl || "",
         linkedinUrl: target.linkedinUrl ?? "", cohort: target.cohort ?? "",
         engagement: target.engagement ?? "", gobiPics: target.gobiPics ?? [],
         photoUrl: target.photoUrl ?? "", photoThumbUrl: target.photoThumbUrl ?? "",
@@ -196,7 +196,8 @@ function AdvisorFormDialog({
         photoUrl: form.photoUrl || null,
         photoThumbUrl: form.photoThumbUrl || null,
         profileUrl: form.profileUrl.trim() || null,
-        linkedinUrl: form.linkedinUrl.trim() || null,
+        // Single profile link now; keep linkedinUrl consistent for legacy records
+        linkedinUrl: /linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null,
         gobiPics: form.gobiPics,
         cohort: form.cohort.trim() || null,
         engagement: form.engagement.trim() || null,
@@ -383,40 +384,34 @@ function AdvisorFormDialog({
             <Label>{t("advisorEngagement")}</Label>
             <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>{t("advisorProfileUrl")}</Label>
-              <Input value={form.profileUrl} onChange={set("profileUrl")} data-testid="input-adv-profile-url" />
+          <div className="space-y-1">
+            <Label>{t("advisorProfileUrl")}</Label>
+            <div className="flex gap-2">
+              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+              <LinkedinSyncControl
+                url={form.profileUrl}
+                onApply={(d: ExtractedAdvisor) => {
+                  setForm((f) => ({
+                    ...f,
+                    name: d.name?.trim() || f.name,
+                    nameCn: d.nameCn?.trim() || f.nameCn,
+                    background: d.background?.trim() || f.background,
+                    domains: d.domains?.trim() || f.domains,
+                    cohort: d.cohort?.trim() || f.cohort,
+                  }));
+                  if (d.roles && d.roles.length > 0) {
+                    setRoles(d.roles.map((r, i) => ({
+                      key: keyRef.current++,
+                      title: r.title,
+                      organization: r.organization ?? "",
+                      partnershipId: null,
+                      isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
+                    })));
+                  }
+                }}
+              />
             </div>
-            <div className="space-y-1">
-              <Label>{t("advisorLinkedin")}</Label>
-              <div className="flex gap-2">
-                <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} data-testid="input-adv-linkedin" />
-                <LinkedinSyncControl
-                  url={form.linkedinUrl}
-                  onApply={(d: ExtractedAdvisor) => {
-                    setForm((f) => ({
-                      ...f,
-                      name: d.name?.trim() || f.name,
-                      nameCn: d.nameCn?.trim() || f.nameCn,
-                      background: d.background?.trim() || f.background,
-                      domains: d.domains?.trim() || f.domains,
-                      cohort: d.cohort?.trim() || f.cohort,
-                    }));
-                    if (d.roles && d.roles.length > 0) {
-                      setRoles(d.roles.map((r, i) => ({
-                        key: keyRef.current++,
-                        title: r.title,
-                        organization: r.organization ?? "",
-                        partnershipId: null,
-                        isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
-                      })));
-                    }
-                  }}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
-            </div>
+            <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
           </div>
 
           {/* Sector tags */}
@@ -684,21 +679,20 @@ function AdvisorDetailDialog({
                 </div>
               )}
 
-              {/* External links */}
-              {(a.profileUrl || a.linkedinUrl) && (
-                <div className="flex flex-wrap gap-2">
-                  {a.profileUrl && (
-                    <a href={a.profileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
-                      <ExternalLink className="h-3 w-3" /> {t("advisorProfileUrl")}
+              {/* External link — single profile link (profileUrl, falling back to legacy linkedinUrl) */}
+              {(() => {
+                const link = a.profileUrl || a.linkedinUrl;
+                if (!link) return null;
+                const isLinkedin = /linkedin\.com/i.test(link);
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
+                      {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                      {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
                     </a>
-                  )}
-                  {a.linkedinUrl && (
-                    <a href={a.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-linkedin">
-                      <Linkedin className="h-3 w-3" /> LinkedIn
-                    </a>
-                  )}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
 
             </div>
           </>
