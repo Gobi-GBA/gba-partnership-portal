@@ -2,7 +2,7 @@
 // Serverless-safe: no local filesystem, schema bootstrap + seed run once per cold start.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities } from "../shared/schema-pg.js";
 import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
@@ -568,7 +568,7 @@ export function createPgStorage(): IStorage {
 
     async listSectorTags() {
       await init();
-      return (await db.select().from(sectorTags)) as SectorTag[];
+      return (await db.select().from(sectorTags).orderBy(asc(sectorTags.sortOrder), asc(sectorTags.nameEn))) as SectorTag[];
     }
     async createSectorTag(data: Omit<SectorTag, "id">) {
       await init();

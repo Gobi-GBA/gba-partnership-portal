@@ -69,7 +69,11 @@ export function TagBadges({ tags, className }: { tags: SectorTag[] | undefined; 
         <Badge
           key={tg.id}
           variant="outline"
-          className="text-[11px] font-medium border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]"
+          className={cn(
+            "text-[11px] font-medium",
+            !tg.color && "border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]",
+          )}
+          style={tg.color ? { borderColor: `${tg.color}55`, backgroundColor: `${tg.color}14`, color: tg.color } : undefined}
           data-testid={`badge-tag-${tg.id}`}
         >
           {tagName(tg, lang)}

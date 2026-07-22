@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.5";
+export const CURRENT_VERSION = "5.6";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.6",
+    date: "2026-07-22",
+    by: "Fred Li",
+    titleEn: "Advisor actions on top & sector tag control panel",
+    titleCn: "顾问操作按钮置顶与行业标签控制面板",
+    itemsEn: [
+      "Advisor detail dialog — edit, request approval, approve/reject and delete buttons moved from the bottom to the top, right under the header",
+      "Admin → Sector tags upgraded into a control panel — assign a colour to each tag from a preset palette; coloured tags show across advisor and partner pages",
+      "Reorder tags with up/down arrows — the order applies everywhere tags are listed and filtered",
+      "Usage counts per tag — see at a glance how many advisors and partners carry each tag before editing or deleting it",
+    ],
+    itemsCn: [
+      "顾问详情弹窗 — 编辑、发起审批、通过/退回与删除按钮从底部移至顶部，紧贴标题下方",
+      "管理后台 → 行业标签升级为控制面板 — 可从预设色板为每个标签指定颜色，并在顾问与伙伴页面生效",
+      "上下箭头调整标签顺序 — 顺序在所有标签列表与筛选中统一生效",
+      "每个标签显示使用量 — 编辑或删除前一目了然有多少顾问与伙伴使用该标签",
+    ],
+  },
   {
     version: "5.5",
     date: "2026-07-21",

@@ -2,7 +2,7 @@ import { users, sessions, partnerships, attachments, changeRequests, auditLogs, 
 import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
@@ -407,7 +407,7 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     }
 
     async listSectorTags() {
-      return db.select().from(sectorTags).all();
+      return db.select().from(sectorTags).orderBy(asc(sectorTags.sortOrder), asc(sectorTags.nameEn)).all();
     }
     async createSectorTag(data: Omit<SectorTag, "id">) {
       return db.insert(sectorTags).values(data).returning().get();

@@ -21,7 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2 } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ArrowUp, ArrowDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
 import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus, SectorTag } from "@shared/schema";
@@ -878,14 +878,30 @@ function TagAdmin() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editEn, setEditEn] = useState("");
   const [editCn, setEditCn] = useState("");
+  const [editColor, setEditColor] = useState<string | null>(null);
+
+  const TAG_COLORS = ["#2F7E96", "#B08A2E", "#2E7D52", "#6D4FA3", "#B04A62", "#3A5FA8", "#B05E2E", "#5A6B7B"];
 
   const { data: tags, isLoading } = useQuery<SectorTag[]>({ queryKey: ["/api/sector-tags"] });
+  const { data: advisorList } = useQuery<{ tags?: SectorTag[] }[]>({ queryKey: ["/api/advisors"] });
+  const { data: pTagRows } = useQuery<{ partnershipId: number; tagId: number }[]>({ queryKey: ["/api/partnership-tags"] });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/sector-tags"] });
+  const usage = (tagId: number) => {
+    const adv = (advisorList ?? []).filter((a) => (a.tags ?? []).some((x) => x.id === tagId)).length;
+    const orgs = (pTagRows ?? []).filter((r) => r.tagId === tagId).length;
+    return { adv, orgs };
+  };
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/sector-tags"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/partnership-tags"] });
+  };
 
   const create = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/sector-tags", { nameEn: draftEn.trim(), nameCn: draftCn.trim() || null });
+      const maxOrder = Math.max(0, ...(tags ?? []).map((x) => x.sortOrder ?? 0));
+      const res = await apiRequest("POST", "/api/sector-tags", { nameEn: draftEn.trim(), nameCn: draftCn.trim() || null, sortOrder: maxOrder + 1 });
       return res.json();
     },
     onSuccess: () => { invalidate(); setDraftEn(""); setDraftCn(""); },
@@ -894,7 +910,7 @@ function TagAdmin() {
 
   const update = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/sector-tags/${editingId}`, { nameEn: editEn.trim(), nameCn: editCn.trim() || null });
+      const res = await apiRequest("PATCH", `/api/sector-tags/${editingId}`, { nameEn: editEn.trim(), nameCn: editCn.trim() || null, color: editColor });
       return res.json();
     },
     onSuccess: () => { invalidate(); setEditingId(null); },
@@ -903,6 +919,21 @@ function TagAdmin() {
 
   const del = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/sector-tags/${id}`),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const reorder = useMutation({
+    mutationFn: async ({ index, dir }: { index: number; dir: -1 | 1 }) => {
+      const list = [...(tags ?? [])];
+      const j = index + dir;
+      if (j < 0 || j >= list.length) return;
+      [list[index], list[j]] = [list[j], list[index]];
+      const changed = list
+        .map((tg, i) => ({ tg, i }))
+        .filter(({ tg, i }) => (tg.sortOrder ?? 0) !== i);
+      await Promise.all(changed.map(({ tg, i }) => apiRequest("PATCH", `/api/sector-tags/${tg.id}`, { sortOrder: i })));
+    },
     onSuccess: invalidate,
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
@@ -935,40 +966,81 @@ function TagAdmin() {
         <p className="text-sm text-muted-foreground italic" data-testid="text-tags-empty">{t("tagNone")}</p>
       ) : (
         <div className="divide-y divide-border rounded-lg border border-card-border bg-card">
-          {tags.map((tg) => (
-            <div key={tg.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5" data-testid={`row-tag-${tg.id}`}>
-              {editingId === tg.id ? (
-                <>
-                  <Input className="h-8 w-44" value={editEn} onChange={(e) => setEditEn(e.target.value)} data-testid={`input-edit-tag-en-${tg.id}`} />
-                  <Input className="h-8 w-44" value={editCn} onChange={(e) => setEditCn(e.target.value)} data-testid={`input-edit-tag-cn-${tg.id}`} />
-                  <Button size="sm" className="h-8 bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" disabled={!editEn.trim() || update.isPending}
-                    onClick={() => update.mutate()} data-testid={`button-save-tag-${tg.id}`}>
-                    <Check className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)} data-testid={`button-cancel-tag-${tg.id}`}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Badge variant="outline" className="border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]">
-                    {lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">{tg.nameEn}{tg.nameCn ? ` / ${tg.nameCn}` : ""}</span>
-                  <span className="ml-auto flex gap-1">
-                    <button type="button" className="p-1.5" data-testid={`button-edit-tag-${tg.id}`}
-                      onClick={() => { setEditingId(tg.id); setEditEn(tg.nameEn); setEditCn(tg.nameCn ?? ""); }}>
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                    </button>
-                    <button type="button" className="p-1.5" data-testid={`button-delete-tag-${tg.id}`}
-                      onClick={() => { if (confirm(t("tagConfirmDelete"))) del.mutate(tg.id); }}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                    </button>
-                  </span>
-                </>
-              )}
-            </div>
-          ))}
+          {tags.map((tg, index) => {
+            const u = usage(tg.id);
+            return (
+              <div key={tg.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5" data-testid={`row-tag-${tg.id}`}>
+                {editingId === tg.id ? (
+                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                    <Input className="h-8 w-44" value={editEn} onChange={(e) => setEditEn(e.target.value)} data-testid={`input-edit-tag-en-${tg.id}`} />
+                    <Input className="h-8 w-44" value={editCn} onChange={(e) => setEditCn(e.target.value)} data-testid={`input-edit-tag-cn-${tg.id}`} />
+                    <span className="inline-flex items-center gap-1.5" data-testid={`palette-tag-${tg.id}`}>
+                      <button
+                        type="button"
+                        title={t("tagColorDefault")}
+                        onClick={() => setEditColor(null)}
+                        className={"h-5 w-5 rounded-full border bg-[hsl(193,52%,38%)]/15 " + (editColor === null ? "ring-2 ring-offset-1 ring-[hsl(193,52%,38%)]" : "border-border")}
+                        data-testid={`color-default-${tg.id}`}
+                      />
+                      {TAG_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditColor(c)}
+                          className={"h-5 w-5 rounded-full border " + (editColor === c ? "ring-2 ring-offset-1 ring-[hsl(193,52%,38%)]" : "border-border")}
+                          style={{ backgroundColor: c }}
+                          data-testid={`color-${c.slice(1)}-${tg.id}`}
+                        />
+                      ))}
+                    </span>
+                    <Button size="sm" className="h-8 bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" disabled={!editEn.trim() || update.isPending}
+                      onClick={() => update.mutate()} data-testid={`button-save-tag-${tg.id}`}>
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)} data-testid={`button-cancel-tag-${tg.id}`}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="flex flex-col gap-0.5">
+                      <button type="button" className="p-0.5 disabled:opacity-25" disabled={index === 0 || reorder.isPending}
+                        onClick={() => reorder.mutate({ index, dir: -1 })} data-testid={`button-tag-up-${tg.id}`}>
+                        <ArrowUp className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                      </button>
+                      <button type="button" className="p-0.5 disabled:opacity-25" disabled={index === tags.length - 1 || reorder.isPending}
+                        onClick={() => reorder.mutate({ index, dir: 1 })} data-testid={`button-tag-down-${tg.id}`}>
+                        <ArrowDown className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                      </button>
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={!tg.color ? "border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]" : undefined}
+                      style={tg.color ? { borderColor: `${tg.color}55`, backgroundColor: `${tg.color}14`, color: tg.color } : undefined}
+                    >
+                      {lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{tg.nameEn}{tg.nameCn ? ` / ${tg.nameCn}` : ""}</span>
+                    <span className="ml-auto flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground tabular-nums" data-testid={`text-tag-usage-${tg.id}`}>
+                        {u.adv} {t("tagAdvisorsSuffix")} · {u.orgs} {t("tagPartnersSuffix")}
+                      </span>
+                      <span className="flex gap-1">
+                        <button type="button" className="p-1.5" data-testid={`button-edit-tag-${tg.id}`}
+                          onClick={() => { setEditingId(tg.id); setEditEn(tg.nameEn); setEditCn(tg.nameCn ?? ""); setEditColor(tg.color ?? null); }}>
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                        </button>
+                        <button type="button" className="p-1.5" data-testid={`button-delete-tag-${tg.id}`}
+                          onClick={() => { if (confirm(t("tagConfirmDelete"))) del.mutate(tg.id); }}>
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </span>
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

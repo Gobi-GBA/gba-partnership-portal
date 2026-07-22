@@ -569,6 +569,37 @@ function AdvisorDetailDialog({
             </DialogHeader>
 
             <div className="space-y-4 pt-1">
+              {/* Admin / owner actions */}
+              {isStaff && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+                  {(isAdmin || (a.submittedBy === user?.id && a.status === "pending")) && (
+                    <Button size="sm" variant="outline" onClick={() => onEdit(a)} data-testid="button-edit-advisor">
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t("editAdvisor")}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => setApprovalOpen(true)} data-testid="button-request-approval">
+                    <Send className="h-3.5 w-3.5 mr-1.5" /> {t("requestApproval")}
+                  </Button>
+                  <ApprovalEmailDialog advisor={a} open={approvalOpen} onOpenChange={setApprovalOpen} />
+                  {isAdmin && a.status === "pending" && (
+                    <>
+                      <Button size="sm" onClick={() => setStatus.mutate("approved")} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="button-approve-advisor">
+                        <Check className="h-3.5 w-3.5 mr-1" /> {t("advisorApprove")}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setStatus.mutate("rejected")} data-testid="button-reject-advisor">
+                        <X className="h-3.5 w-3.5 mr-1" /> {t("advisorReject")}
+                      </Button>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <Button size="sm" variant="ghost" className="ml-auto text-destructive hover:text-destructive" data-testid="button-delete-advisor"
+                      onClick={() => { if (confirm(t("advisorConfirmDelete"))) del.mutate(); }}>
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t("delete")}
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {/* Roles */}
               {a.roles.length > 0 && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
@@ -669,36 +700,6 @@ function AdvisorDetailDialog({
                 </div>
               )}
 
-              {/* Admin / owner actions */}
-              {isStaff && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                  {(isAdmin || (a.submittedBy === user?.id && a.status === "pending")) && (
-                    <Button size="sm" variant="outline" onClick={() => onEdit(a)} data-testid="button-edit-advisor">
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t("editAdvisor")}
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => setApprovalOpen(true)} data-testid="button-request-approval">
-                    <Send className="h-3.5 w-3.5 mr-1.5" /> {t("requestApproval")}
-                  </Button>
-                  <ApprovalEmailDialog advisor={a} open={approvalOpen} onOpenChange={setApprovalOpen} />
-                  {isAdmin && a.status === "pending" && (
-                    <>
-                      <Button size="sm" onClick={() => setStatus.mutate("approved")} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="button-approve-advisor">
-                        <Check className="h-3.5 w-3.5 mr-1" /> {t("advisorApprove")}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setStatus.mutate("rejected")} data-testid="button-reject-advisor">
-                        <X className="h-3.5 w-3.5 mr-1" /> {t("advisorReject")}
-                      </Button>
-                    </>
-                  )}
-                  {isAdmin && (
-                    <Button size="sm" variant="ghost" className="ml-auto text-destructive hover:text-destructive" data-testid="button-delete-advisor"
-                      onClick={() => { if (confirm(t("advisorConfirmDelete"))) del.mutate(); }}>
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t("delete")}
-                    </Button>
-                  )}
-                </div>
-              )}
             </div>
           </>
         )}
