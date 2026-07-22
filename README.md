@@ -34,7 +34,7 @@ npm run build        # bundles client + server
 NODE_ENV=production node dist/index.cjs
 ```
 
-The SQLite database (`data.db`) is created and seeded automatically on first run. Default admin account is created at seed time — change the password after first login. Environment variables: `DATABASE_URL` (Postgres, optional), `ADMIN_SEED_PASSWORD`, `DEEPSEEK_API_KEY`.
+The SQLite database (`data.db`) is created and seeded automatically on first run. Default admin account is created at seed time — change the password after first login. Environment variables: `DATABASE_URL` (Postgres, optional), `ADMIN_SEED_PASSWORD`, `DEEPSEEK_API_KEY`, `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`.
 
 ---
 
