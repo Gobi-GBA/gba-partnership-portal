@@ -152,6 +152,66 @@ async function fetchPageText(url: string): Promise<string | null> {
   }
 }
 
+// Fetch a page and return both the visible text and a best-guess portrait photo URL.
+// Prefers Open Graph / Twitter card images, then a prominent profile/headshot <img>.
+async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null }> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!resp.ok) return { text: null, photoUrl: null };
+    const type = resp.headers.get("content-type") ?? "";
+    if (!type.includes("html") && !type.includes("text")) return { text: null, photoUrl: null };
+    const html = await resp.text();
+    const text = htmlToText(html).slice(0, 10_000);
+    const photoUrl = extractPhotoUrl(html, resp.url || url);
+    return { text, photoUrl };
+  } catch {
+    return { text: null, photoUrl: null };
+  }
+}
+
+function absolutize(candidate: string, base: string): string | null {
+  const raw = candidate.trim();
+  if (!raw || raw.startsWith("data:")) return null;
+  try {
+    return new URL(raw, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractPhotoUrl(html: string, base: string): string | null {
+  // 1) Open Graph / Twitter card images (most reliable for profile pages)
+  const metaPatterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i,
+  ];
+  for (const re of metaPatterns) {
+    const m = html.match(re);
+    if (m?.[1]) {
+      const abs = absolutize(m[1], base);
+      if (abs) return abs;
+    }
+  }
+  // 2) A prominent headshot/profile <img> by hint words in class/alt/src
+  const imgTags = html.match(/<img\b[^>]*>/gi) ?? [];
+  const hintRe = /(profile|headshot|avatar|portrait|photo|team|people|staff|bio)/i;
+  for (const tag of imgTags) {
+    if (!hintRe.test(tag)) continue;
+    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1] || tag.match(/\bdata-src=["']([^"']+)["']/i)?.[1];
+    if (!src) continue;
+    if (/(sprite|logo|icon|placeholder|blank|spacer)/i.test(src)) continue;
+    const abs = absolutize(src, base);
+    if (abs) return abs;
+  }
+  return null;
+}
+
 function appBaseUrl(req: Request): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   const origin = req.headers.origin;
@@ -1112,11 +1172,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     let pageText = "";
+    let photoUrl = "";
     let fetchFailed = false;
     if (url && /^https?:\/\//i.test(url)) {
-      const t = await fetchPageText(url);
-      if (t && t.trim().length >= 80) pageText = t;
+      const meta = await fetchPageMeta(url);
+      if (meta.text && meta.text.trim().length >= 80) pageText = meta.text;
       else fetchFailed = true;
+      if (meta.photoUrl) photoUrl = meta.photoUrl;
     }
     if (!pageText && pasted.trim().length < 40) {
       return res.status(422).json({
@@ -1180,6 +1242,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
                 isPrimary: r.isPrimary === 1 || r.isPrimary === true ? 1 : 0,
               }))
           : [],
+        photoUrl: photoUrl || null,
         sourceUrl: url || null,
         fetched: !!pageText,
       });

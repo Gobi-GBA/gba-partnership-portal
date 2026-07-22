@@ -246,6 +246,39 @@ function AdvisorFormDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
+          {/* Profile URL — first, so the team can sync before filling anything */}
+          <div className="space-y-1">
+            <Label>{t("advisorProfileUrl")}</Label>
+            <div className="flex gap-2">
+              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+              <LinkedinSyncControl
+                url={form.profileUrl}
+                onApply={(d: ExtractedAdvisor) => {
+                  setForm((f) => ({
+                    ...f,
+                    name: d.name?.trim() || f.name,
+                    nameCn: d.nameCn?.trim() || f.nameCn,
+                    background: d.background?.trim() || f.background,
+                    domains: d.domains?.trim() || f.domains,
+                    cohort: d.cohort?.trim() || f.cohort,
+                    photoUrl: d.photoUrl?.trim() || f.photoUrl,
+                    photoThumbUrl: d.photoUrl?.trim() || f.photoThumbUrl,
+                  }));
+                  if (d.roles && d.roles.length > 0) {
+                    setRoles(d.roles.map((r, i) => ({
+                      key: keyRef.current++,
+                      title: r.title,
+                      organization: r.organization ?? "",
+                      partnershipId: null,
+                      isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
+                    })));
+                  }
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
+          </div>
+
           {/* Photo */}
           <div className="flex items-center gap-4">
             <AdvisorAvatar a={{ name: form.name || "?", nameCn: null, photoThumbUrl: form.photoThumbUrl || null }} size="lg" />
@@ -384,36 +417,6 @@ function AdvisorFormDialog({
             <Label>{t("advisorEngagement")}</Label>
             <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
           </div>
-          <div className="space-y-1">
-            <Label>{t("advisorProfileUrl")}</Label>
-            <div className="flex gap-2">
-              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
-              <LinkedinSyncControl
-                url={form.profileUrl}
-                onApply={(d: ExtractedAdvisor) => {
-                  setForm((f) => ({
-                    ...f,
-                    name: d.name?.trim() || f.name,
-                    nameCn: d.nameCn?.trim() || f.nameCn,
-                    background: d.background?.trim() || f.background,
-                    domains: d.domains?.trim() || f.domains,
-                    cohort: d.cohort?.trim() || f.cohort,
-                  }));
-                  if (d.roles && d.roles.length > 0) {
-                    setRoles(d.roles.map((r, i) => ({
-                      key: keyRef.current++,
-                      title: r.title,
-                      organization: r.organization ?? "",
-                      partnershipId: null,
-                      isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
-                    })));
-                  }
-                }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
-          </div>
-
           {/* Sector tags */}
           <div className="space-y-1.5">
             <Label>{t("sectorTags")}</Label>

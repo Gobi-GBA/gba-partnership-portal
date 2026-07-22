@@ -408,6 +408,7 @@ export interface ExtractedAdvisor {
   background?: string | null;
   domains?: string | null;
   cohort?: string | null;
+  photoUrl?: string | null;
   roles?: Array<{ title: string; organization?: string | null; isPrimary?: number }>;
 }
 

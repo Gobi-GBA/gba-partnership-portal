@@ -27,6 +27,7 @@ export const VERSIONS: VersionEntry[] = [
       "Partners and Network merged into one page — the star map stays as a view toggle on Partners",
       "Cover now shows a live extract of the partnership records log in the space beside the stats",
       "Advisor form now has a single Profile URL field (LinkedIn or official page) that also drives the auto-sync — no more duplicate URL fields",
+      "Profile URL now sits at the top of the advisor form, and auto-sync also pulls the person's photo from the profile page",
       "Header logo now opens gobi.vc; removed the Li Fo Venture Notes footer note",
     ],
     itemsCn: [
@@ -38,6 +39,7 @@ export const VERSIONS: VersionEntry[] = [
       "合作伙伴与网络页面合并为一 — 星图保留为合作伙伴页的视图切换",
       "封面在统计旁的空白处新增合作记录日志的实时摘要",
       "顾问表单改为单一“主页链接”字段（LinkedIn 或官方主页），并直接驱动自动同步 — 不再有重复的链接字段",
+      "主页链接移至顾问表单顶部，自动同步现在还会从主页抓取人物照片",
       "页眉标志现在链接至 gobi.vc；移除页脚“李佛创投笔记”注释",
     ],
   },
