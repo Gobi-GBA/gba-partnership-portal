@@ -596,6 +596,23 @@ const dict = {
   linkedinSyncFailed: { en: "Could not fetch that page (LinkedIn often blocks robots). Paste the profile text below instead.", cn: "无法抓取该页面（LinkedIn 常拦截机器人）。请改为粘贴主页文本。" },
   linkedinPasteLabel: { en: "Paste profile text", cn: "粘贴主页文本" },
   linkedinPasteRun: { en: "Extract from text", cn: "从文本提取" },
+  // v5.7 — CV / biography AI extract
+  cvExtract: { en: "From CV / bio", cn: "从简历/传记提取" },
+  cvExtractHint: { en: "Paste a CV, biography or profile text and AI fills the form. Review before saving.", cn: "粘贴简历、传记或主页文本，由AI填写表格，保存前请核对。", },
+  cvPasteTitle: { en: "Extract from CV / biography", cn: "从简历/传记提取" },
+  // v5.7 — edit-rights request
+  requestEdit: { en: "Request edit rights", cn: "申请编辑权限" },
+  requestEditHint: { en: "Viewers can ask an administrator for edit (staff) rights.", cn: "查看者可向管理员申请编辑（员工）权限。" },
+  requestEditPending: { en: "Edit rights requested — pending admin review.", cn: "已申请编辑权限，等待管理员审批。" },
+  requestEditSent: { en: "Request sent to administrators.", cn: "申请已发送给管理员。" },
+  requestEditBadge: { en: "Edit rights requested", cn: "申请编辑权限" },
+  // v5.7 — R&D project picker
+  rdProjectPick: { en: "Select a project", cn: "选择项目" },
+  rdProjectNew: { en: "Add new project…", cn: "新建项目…" },
+  rdProjectNewPlaceholder: { en: "New project name", cn: "新项目名称" },
+  // v5.7 — cover recent log
+  heroLogTitle: { en: "Recent partnership log", cn: "最新合作记录" },
+  heroLogAll: { en: "Full log", cn: "完整日志" },
   // v5.5 — workflow
   workflowTitle: { en: "Team workflow", cn: "团队工作流程" },
   workflowHint: { en: "How advisor records move through the portal. More internal workflows will be added here.", cn: "顾问记录在门户中的流转方式。更多内部流程将陆续加入。" },

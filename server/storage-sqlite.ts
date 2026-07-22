@@ -113,6 +113,7 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "secret_a2_hash", "secret_a2_hash TEXT");
   ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
+  ensureColumn("users", "edit_requested_at", "edit_requested_at TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
   ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");
   ensureColumn("partnerships", "is_domain_knowledge_partner", "is_domain_knowledge_partner INTEGER NOT NULL DEFAULT 0");

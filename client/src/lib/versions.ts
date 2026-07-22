@@ -9,9 +9,36 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.6";
+export const CURRENT_VERSION = "5.7";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.7",
+    date: "2026-07-22",
+    by: "Fred Li",
+    titleEn: "Smoother registration, edit-rights requests & CV extract",
+    titleCn: "更顺畅的注册、编辑权限申请与简历提取",
+    itemsEn: [
+      "Colleagues with a gobi.vc email are signed in immediately after registering, and their photo and title are pulled from the gobi.vc team page automatically",
+      "Viewers can request edit rights from their profile — the request shows as a badge in the admin team table and clears once a role is set",
+      "Advisor form — new AI extract from a pasted CV or biography, alongside the LinkedIn auto-sync",
+      "Sync from gobi.vc now matches the name typed in the form (not only the saved one) and tolerates extra middle names",
+      "R&D planner — pick the project from a list of existing projects or add a new one",
+      "Partners and Network merged into one page — the star map stays as a view toggle on Partners",
+      "Cover now shows a live extract of the partnership records log in the space beside the stats",
+      "Header logo now opens gobi.vc; removed the Li Fo Venture Notes footer note",
+    ],
+    itemsCn: [
+      "使用 gobi.vc 邮箱的同事注册后立即自动登录，并自动从 gobi.vc 团队页同步照片与职位",
+      "查看者可在个人资料中申请编辑权限 — 申请在管理员团队列表中以徽章显示，设置角色后自动清除",
+      "顾问表单 — 新增从粘贴的简历或传记中由AI提取信息，与 LinkedIn 自动同步并列",
+      "gobi.vc 同步现在按表单中输入的姓名匹配（不仅限已保存姓名），并兼容多余的中间名",
+      "研发规划 — 项目可从现有项目列表中选择，或新建项目",
+      "合作伙伴与网络页面合并为一 — 星图保留为合作伙伴页的视图切换",
+      "封面在统计旁的空白处新增合作记录日志的实时摘要",
+      "页眉标志现在链接至 gobi.vc；移除页脚“李佛创投笔记”注释",
+    ],
+  },
   {
     version: "5.6",
     date: "2026-07-22",

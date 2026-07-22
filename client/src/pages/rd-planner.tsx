@@ -176,10 +176,12 @@ function Timeline({ items, onEdit }: { items: RdItem[]; onEdit: (it: RdItem) => 
 }
 
 // ---------------- Add / edit dialog ----------------
-function RdItemDialog({ item, open, onClose }: { item: RdItem | null; open: boolean; onClose: () => void }) {
+function RdItemDialog({ item, open, onClose, existingProjects }: { item: RdItem | null; open: boolean; onClose: () => void; existingProjects: string[] }) {
   const { t } = useLang();
   const { toast } = useToast();
-  const [project, setProject] = useState(item?.project ?? "Partnership Portal Ecosystem");
+  const defaultProject = item?.project ?? existingProjects[0] ?? "";
+  const [project, setProject] = useState(defaultProject);
+  const [newProjectMode, setNewProjectMode] = useState(existingProjects.length === 0);
   const [name, setName] = useState(item?.name ?? "");
   const [details, setDetails] = useState(item?.details ?? "");
   const [kind, setKind] = useState<RdKind>((item?.kind as RdKind) ?? "module");
@@ -230,7 +232,34 @@ function RdItemDialog({ item, open, onClose }: { item: RdItem | null; open: bool
         <div className="space-y-3">
           <div>
             <label className="mb-1 block text-xs font-semibold">{t("rdProject")}</label>
-            <Input value={project} onChange={(e) => setProject(e.target.value)} maxLength={120} data-testid="input-rd-project" />
+            {!newProjectMode ? (
+              <Select
+                value={project}
+                onValueChange={(v) => {
+                  if (v === "__new__") {
+                    setNewProjectMode(true);
+                    setProject("");
+                  } else setProject(v);
+                }}
+              >
+                <SelectTrigger data-testid="select-rd-project"><SelectValue placeholder={t("rdProjectPick")} /></SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {existingProjects.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                  <SelectItem value="__new__">{t("rdProjectNew")}</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input value={project} onChange={(e) => setProject(e.target.value)} maxLength={120} placeholder={t("rdProjectNewPlaceholder")} data-testid="input-rd-project" />
+                {existingProjects.length > 0 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => { setNewProjectMode(false); setProject(defaultProject || existingProjects[0]); }} data-testid="button-rd-project-back">
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold">{t("rdName")}</label>
@@ -419,7 +448,7 @@ export default function RdPlanner() {
           </>
         )}
 
-        {dialog.open && <RdItemDialog key={dialog.item?.id ?? "new"} item={dialog.item} open={dialog.open} onClose={() => setDialog({ open: false, item: null })} />}
+        {dialog.open && <RdItemDialog key={dialog.item?.id ?? "new"} item={dialog.item} open={dialog.open} onClose={() => setDialog({ open: false, item: null })} existingProjects={projects} />}
       </div>
     </Layout>
   );

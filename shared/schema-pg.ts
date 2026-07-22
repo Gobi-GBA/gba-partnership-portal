@@ -20,6 +20,7 @@ export const usersPg = pgTable("users", {
   secretA2Hash: text("secret_a2_hash"),
   resetTokenHash: text("reset_token_hash"),
   resetExpires: text("reset_expires"),
+  editRequestedAt: text("edit_requested_at"),
 });
 
 export const sessionsPg = pgTable("sessions", {

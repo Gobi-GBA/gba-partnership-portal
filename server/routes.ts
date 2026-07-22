@@ -267,6 +267,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Confirmation email (fire-and-forget; registration succeeds even if mail fails)
     const tpl = registrationEmail(user.name, autoApproved);
     const emailSent = await sendMail(user.email, tpl.subject, tpl.html);
+    // Auto-approved colleagues are signed in immediately — no separate login step
+    if (autoApproved) {
+      const session = await storage.createSession(user.id);
+      return res.status(201).json({ user: safe(user), autoApproved, emailSent, token: session.token });
+    }
     res.status(201).json({ user: safe(user), autoApproved, emailSent });
   });
 
@@ -376,6 +381,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safe(updated) });
   });
 
+  // Viewer → admin: request edit (staff) rights; shows up in the admin team table
+  app.post("/api/me/request-edit", requireAuth(), async (req: AuthedRequest, res) => {
+    if (req.user!.role !== "viewer") return res.status(400).json({ message: "Only viewers can request edit rights" });
+    const updated = await storage.updateUser(req.user!.id, { editRequestedAt: new Date().toISOString() } as Partial<User>);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json({ user: safe(updated) });
+  });
+
   // Profile sync from gobi.vc: pull photo, title (and LinkedIn) from the
   // public team page by matching the user's name.
   async function syncUserFromGobi(userId: number, userName: string) {
@@ -383,10 +396,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const me = normalizeName(userName);
     const match =
       members.find((m) => normalizeName(m.name) === me) ??
+      // token-subset match in either direction, e.g. "Hing Ka Cheng" vs "Hing Cheng"
       members.find((m) => {
         const a = normalizeName(m.name).split(" ");
         const b = me.split(" ");
-        return a.length > 1 && b.length > 1 && a.every((tok) => b.includes(tok));
+        if (a.length < 2 || b.length < 2) return false;
+        return a.every((tok) => b.includes(tok)) || b.every((tok) => a.includes(tok));
       });
     if (!match) return { error: 404 as const };
     const data: Partial<Pick<User, "title" | "avatarUrl">> = {};
@@ -399,7 +414,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/profile/sync-gobi", requireAuth(), async (req: AuthedRequest, res) => {
     try {
-      const result = await syncUserFromGobi(req.user!.id, req.user!.name);
+      // Prefer the name currently typed in the form (may be unsaved) over the stored one
+      const formName = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
+      const result = await syncUserFromGobi(req.user!.id, formName || req.user!.name);
       if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
       res.json({ user: safe(result.user), matched: result.matched });
     } catch (err) {
@@ -413,7 +430,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(Number(req.params.id));
     if (!target) return res.status(404).json({ message: "Not found" });
     try {
-      const result = await syncUserFromGobi(target.id, target.name);
+      const formName = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
+      const result = await syncUserFromGobi(target.id, formName || target.name);
       if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
       res.json({ user: safe(result.user), matched: result.matched });
     } catch (err) {
@@ -753,6 +771,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "You cannot remove your own admin role" });
       }
       data.role = req.body.role;
+      // Any role decision resolves an outstanding edit-rights request
+      (data as Partial<User>).editRequestedAt = null;
     }
     if (!Object.keys(data).length) return res.status(400).json({ message: "Nothing to update" });
     const updated = await storage.updateUser(Number(req.params.id), data);

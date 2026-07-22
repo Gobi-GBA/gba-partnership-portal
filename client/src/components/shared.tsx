@@ -304,7 +304,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const links: { href: string; label: string; show: boolean; soon?: boolean }[] = [
     { href: "/", label: t("navDirectory"), show: true },
-    { href: "/network", label: t("navNetwork"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
@@ -317,7 +316,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
-          <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
+          <a href="https://www.gobi.vc" target="_blank" rel="noopener noreferrer" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
               alt="Gobi Partners"
@@ -328,7 +327,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="block text-sm font-bold tracking-tight">{t("brandTitle")}</span>
               <span className="block text-[11px] text-muted-foreground">{t("brandSub")}</span>
             </span>
-          </Link>
+          </a>
 
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {links.filter((l) => l.show).map((l) => (
@@ -487,7 +486,6 @@ export function Layout({ children }: { children: ReactNode }) {
               {t("footerLine")}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>李佛创投笔记 · Li Fo Venture Notes</span>
               <Link href="/updates" data-testid="button-version-log">
                 <span
                   className="inline-block cursor-pointer rounded-full border border-border px-2 py-0.5 font-semibold tabular-nums hover:bg-secondary hover:text-foreground transition-colors"

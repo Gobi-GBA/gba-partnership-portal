@@ -18,7 +18,7 @@ type ForgotStep = "email" | "sent" | "questions" | "done";
 
 export default function Login() {
   const { t } = useLang();
-  const { login, register } = useAuth();
+  const { login, register, updateUser } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
@@ -84,6 +84,19 @@ export default function Login() {
         title,
         description: result.emailSent ? t("registerEmailSent") : undefined,
       });
+      if (result.loggedIn) {
+        // Signed in directly — try to pull photo & title from the gobi.vc team page
+        try {
+          const res = await apiRequest("POST", "/api/profile/sync-gobi", { name: regName.trim() });
+          const data = await res.json();
+          updateUser(data.user);
+          toast({ title: t("syncGobiDone"), description: `${data.matched.name} — ${data.matched.title}` });
+        } catch (syncErr: any) {
+          const m = String(syncErr?.message ?? "");
+          if (m.includes("not_found_on_gobi")) toast({ title: t("syncGobiNotFound") });
+        }
+        return;
+      }
       setTab("login");
       setLoginEmail(regEmail);
     } catch (err: any) {

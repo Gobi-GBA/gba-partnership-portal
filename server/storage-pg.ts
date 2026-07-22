@@ -86,6 +86,7 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_q2 TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_a2_hash TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS edit_requested_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires TEXT`,
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS photos JSONB`,
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS lp_status TEXT NOT NULL DEFAULT 'na'`,

@@ -270,7 +270,7 @@ function EditAccountDialog({ u, onClose }: { u: SafeUser | null; onClose: () => 
 
   const sync = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/users/${u!.id}/sync-gobi`);
+      const res = await apiRequest("POST", `/api/admin/users/${u!.id}/sync-gobi`, { name: name.trim() });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -466,6 +466,11 @@ function UserAdmin() {
           <p className="font-semibold text-sm truncate">{u.name}</p>
           {u.title && <p className="text-[11px] text-muted-foreground truncate">{u.title}</p>}
           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+          {u.editRequestedAt && u.role === "viewer" && (
+            <Badge className="mt-1 bg-[hsl(43,55%,50%)]/15 text-[hsl(43,60%,35%)] dark:text-[hsl(43,60%,65%)] border border-[hsl(43,55%,50%)]/40 text-[10px]" data-testid={`badge-edit-requested-${u.id}`}>
+              {t("requestEditBadge")}
+            </Badge>
+          )}
         </div>
       </div>
       {/* Rights matrix — checkboxes edit a local draft; changes are saved in one go */}

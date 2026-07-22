@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
-import { Loader2, Upload, X, RefreshCw } from "lucide-react";
+import { Loader2, Upload, X, RefreshCw, ShieldQuestion } from "lucide-react";
 import type { SafeUser } from "@shared/schema";
 
 // ---------------- Version log dialog ----------------
@@ -63,6 +63,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
@@ -70,7 +71,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const syncFromGobi = async () => {
     setSyncing(true);
     try {
-      const res = await apiRequest("POST", "/api/profile/sync-gobi");
+      const res = await apiRequest("POST", "/api/profile/sync-gobi", { name: name.trim() });
       const data: { user: SafeUser; matched: { name: string; title: string } } = await res.json();
       updateUser(data.user);
       setTitle(data.user.title ?? "");
@@ -82,6 +83,20 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
       else toast({ title: t("syncGobiFailed"), variant: "destructive" });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const requestEdit = async () => {
+    setRequesting(true);
+    try {
+      const res = await apiRequest("POST", "/api/me/request-edit");
+      const data: { user: SafeUser } = await res.json();
+      updateUser(data.user);
+      toast({ title: t("requestEditSent") });
+    } catch {
+      toast({ title: t("syncGobiFailed"), variant: "destructive" });
+    } finally {
+      setRequesting(false);
     }
   };
 
@@ -166,6 +181,19 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
             <label className="text-sm font-medium">{t("profileJobTitle")}</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Investment Analyst" data-testid="input-profile-title" />
           </div>
+          {user.role === "viewer" && (
+            <div className="rounded-lg border border-border p-3 space-y-2">
+              <p className="text-xs text-muted-foreground">{t("requestEditHint")}</p>
+              {user.editRequestedAt ? (
+                <p className="text-sm text-[hsl(var(--gold))] font-medium" data-testid="text-edit-requested">{t("requestEditPending")}</p>
+              ) : (
+                <Button type="button" variant="outline" size="sm" className="w-full" onClick={requestEdit} disabled={requesting} data-testid="button-request-edit">
+                  {requesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldQuestion className="mr-2 h-4 w-4" />}
+                  {t("requestEdit")}
+                </Button>
+              )}
+            </div>
+          )}
           <Button
             onClick={save}
             disabled={saving}
