@@ -12,7 +12,7 @@ interface AuthContextValue {
     email: string,
     password: string,
     secrets: { secretQ1: string; secretA1: string; secretQ2: string; secretA2: string }
-  ) => Promise<{ autoApproved: boolean; emailSent: boolean }>;
+  ) => Promise<{ autoApproved: boolean; emailSent: boolean; loggedIn: boolean }>;
   logout: () => void;
   updateUser: (u: SafeUser) => void;
 }
@@ -21,7 +21,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   restoring: false,
   login: async () => {},
-  register: async () => ({ autoApproved: false, emailSent: false }),
+  register: async () => ({ autoApproved: false, emailSent: false, loggedIn: false }),
   logout: () => {},
   updateUser: () => {},
 });
@@ -65,7 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     const res = await apiRequest("POST", "/api/auth/register", { name, email, password, ...secrets });
     const data = await res.json();
-    return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent) };
+    // Auto-approved colleagues receive a session token — sign them in on the spot
+    if (data.token) {
+      setAuthToken(data.token);
+      setUser(data.user);
+      queryClient.invalidateQueries();
+    }
+    return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent), loggedIn: Boolean(data.token) };
   };
 
   const logout = () => {

@@ -18,7 +18,7 @@ import {
 import type { AdvisorWithRoles, SectorTag, AdvisorActivity } from "@shared/schema";
 import { ACTIVITY_TYPES } from "@shared/schema";
 import {
-  Plus, Trash2, Pencil, Copy, Mail, Sparkles, CalendarDays, Loader2, Send, X,
+  Plus, Trash2, Pencil, Copy, Mail, Sparkles, CalendarDays, Loader2, Send, X, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +69,11 @@ export function TagBadges({ tags, className }: { tags: SectorTag[] | undefined; 
         <Badge
           key={tg.id}
           variant="outline"
-          className="text-[11px] font-medium border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]"
+          className={cn(
+            "text-[11px] font-medium",
+            !tg.color && "border-[hsl(193,52%,38%)]/30 bg-[hsl(193,52%,38%)]/8 text-[hsl(193,52%,30%)] dark:text-[hsl(193,60%,60%)]",
+          )}
+          style={tg.color ? { borderColor: `${tg.color}55`, backgroundColor: `${tg.color}14`, color: tg.color } : undefined}
           data-testid={`badge-tag-${tg.id}`}
         >
           {tagName(tg, lang)}
@@ -404,6 +408,7 @@ export interface ExtractedAdvisor {
   background?: string | null;
   domains?: string | null;
   cohort?: string | null;
+  photoUrl?: string | null;
   roles?: Array<{ title: string; organization?: string | null; isPrimary?: number }>;
 }
 
@@ -448,12 +453,24 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
         {extract.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1.5" />}
         {t("linkedinSync")}
       </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={extract.isPending}
+        onClick={() => setPasteOpen(true)}
+        title={t("cvExtractHint")}
+        data-testid="button-cv-extract"
+      >
+        <FileText className="h-3.5 w-3.5 mr-1.5" />
+        {t("cvExtract")}
+      </Button>
 
       <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
         <DialogContent className="max-w-lg" data-testid="dialog-linkedin-paste">
           <DialogHeader>
-            <DialogTitle>{t("linkedinPasteLabel")}</DialogTitle>
-            <DialogDescription>{t("linkedinSyncFailed")}</DialogDescription>
+            <DialogTitle>{t("cvPasteTitle")}</DialogTitle>
+            <DialogDescription>{t("cvExtractHint")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">
             <Textarea rows={8} value={pasteText} onChange={(e) => setPasteText(e.target.value)} data-testid="input-linkedin-paste" />

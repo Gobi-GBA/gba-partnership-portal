@@ -152,6 +152,66 @@ async function fetchPageText(url: string): Promise<string | null> {
   }
 }
 
+// Fetch a page and return both the visible text and a best-guess portrait photo URL.
+// Prefers Open Graph / Twitter card images, then a prominent profile/headshot <img>.
+async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null }> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!resp.ok) return { text: null, photoUrl: null };
+    const type = resp.headers.get("content-type") ?? "";
+    if (!type.includes("html") && !type.includes("text")) return { text: null, photoUrl: null };
+    const html = await resp.text();
+    const text = htmlToText(html).slice(0, 10_000);
+    const photoUrl = extractPhotoUrl(html, resp.url || url);
+    return { text, photoUrl };
+  } catch {
+    return { text: null, photoUrl: null };
+  }
+}
+
+function absolutize(candidate: string, base: string): string | null {
+  const raw = candidate.trim();
+  if (!raw || raw.startsWith("data:")) return null;
+  try {
+    return new URL(raw, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractPhotoUrl(html: string, base: string): string | null {
+  // 1) Open Graph / Twitter card images (most reliable for profile pages)
+  const metaPatterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i,
+  ];
+  for (const re of metaPatterns) {
+    const m = html.match(re);
+    if (m?.[1]) {
+      const abs = absolutize(m[1], base);
+      if (abs) return abs;
+    }
+  }
+  // 2) A prominent headshot/profile <img> by hint words in class/alt/src
+  const imgTags = html.match(/<img\b[^>]*>/gi) ?? [];
+  const hintRe = /(profile|headshot|avatar|portrait|photo|team|people|staff|bio)/i;
+  for (const tag of imgTags) {
+    if (!hintRe.test(tag)) continue;
+    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1] || tag.match(/\bdata-src=["']([^"']+)["']/i)?.[1];
+    if (!src) continue;
+    if (/(sprite|logo|icon|placeholder|blank|spacer)/i.test(src)) continue;
+    const abs = absolutize(src, base);
+    if (abs) return abs;
+  }
+  return null;
+}
+
 function appBaseUrl(req: Request): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   const origin = req.headers.origin;
@@ -267,6 +327,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Confirmation email (fire-and-forget; registration succeeds even if mail fails)
     const tpl = registrationEmail(user.name, autoApproved);
     const emailSent = await sendMail(user.email, tpl.subject, tpl.html);
+    // Auto-approved colleagues are signed in immediately — no separate login step
+    if (autoApproved) {
+      const session = await storage.createSession(user.id);
+      return res.status(201).json({ user: safe(user), autoApproved, emailSent, token: session.token });
+    }
     res.status(201).json({ user: safe(user), autoApproved, emailSent });
   });
 
@@ -376,6 +441,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safe(updated) });
   });
 
+  // Viewer → admin: request edit (staff) rights; shows up in the admin team table
+  app.post("/api/me/request-edit", requireAuth(), async (req: AuthedRequest, res) => {
+    if (req.user!.role !== "viewer") return res.status(400).json({ message: "Only viewers can request edit rights" });
+    const updated = await storage.updateUser(req.user!.id, { editRequestedAt: new Date().toISOString() } as Partial<User>);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json({ user: safe(updated) });
+  });
+
   // Profile sync from gobi.vc: pull photo, title (and LinkedIn) from the
   // public team page by matching the user's name.
   async function syncUserFromGobi(userId: number, userName: string) {
@@ -383,10 +456,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const me = normalizeName(userName);
     const match =
       members.find((m) => normalizeName(m.name) === me) ??
+      // token-subset match in either direction, e.g. "Hing Ka Cheng" vs "Hing Cheng"
       members.find((m) => {
         const a = normalizeName(m.name).split(" ");
         const b = me.split(" ");
-        return a.length > 1 && b.length > 1 && a.every((tok) => b.includes(tok));
+        if (a.length < 2 || b.length < 2) return false;
+        return a.every((tok) => b.includes(tok)) || b.every((tok) => a.includes(tok));
       });
     if (!match) return { error: 404 as const };
     const data: Partial<Pick<User, "title" | "avatarUrl">> = {};
@@ -399,7 +474,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/profile/sync-gobi", requireAuth(), async (req: AuthedRequest, res) => {
     try {
-      const result = await syncUserFromGobi(req.user!.id, req.user!.name);
+      // Prefer the name currently typed in the form (may be unsaved) over the stored one
+      const formName = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
+      const result = await syncUserFromGobi(req.user!.id, formName || req.user!.name);
       if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
       res.json({ user: safe(result.user), matched: result.matched });
     } catch (err) {
@@ -413,7 +490,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(Number(req.params.id));
     if (!target) return res.status(404).json({ message: "Not found" });
     try {
-      const result = await syncUserFromGobi(target.id, target.name);
+      const formName = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
+      const result = await syncUserFromGobi(target.id, formName || target.name);
       if ("error" in result) return res.status(404).json({ message: "not_found_on_gobi" });
       res.json({ user: safe(result.user), matched: result.matched });
     } catch (err) {
@@ -753,6 +831,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "You cannot remove your own admin role" });
       }
       data.role = req.body.role;
+      // Any role decision resolves an outstanding edit-rights request
+      (data as Partial<User>).editRequestedAt = null;
     }
     if (!Object.keys(data).length) return res.status(400).json({ message: "Nothing to update" });
     const updated = await storage.updateUser(Number(req.params.id), data);
@@ -1092,11 +1172,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     let pageText = "";
+    let photoUrl = "";
     let fetchFailed = false;
     if (url && /^https?:\/\//i.test(url)) {
-      const t = await fetchPageText(url);
-      if (t && t.trim().length >= 80) pageText = t;
+      const meta = await fetchPageMeta(url);
+      if (meta.text && meta.text.trim().length >= 80) pageText = meta.text;
       else fetchFailed = true;
+      if (meta.photoUrl) photoUrl = meta.photoUrl;
     }
     if (!pageText && pasted.trim().length < 40) {
       return res.status(422).json({
@@ -1160,6 +1242,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
                 isPrimary: r.isPrimary === 1 || r.isPrimary === true ? 1 : 0,
               }))
           : [],
+        photoUrl: photoUrl || null,
         sourceUrl: url || null,
         fetched: !!pageText,
       });

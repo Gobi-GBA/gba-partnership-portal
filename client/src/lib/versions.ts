@@ -9,9 +9,76 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.5";
+export const CURRENT_VERSION = "5.7";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.7",
+    date: "2026-07-22",
+    by: "Fred Li",
+    titleEn: "Smoother registration, edit-rights requests & CV extract",
+    titleCn: "更顺畅的注册、编辑权限申请与简历提取",
+    itemsEn: [
+      "Colleagues with a gobi.vc email are signed in immediately after registering, and their photo and title are pulled from the gobi.vc team page automatically",
+      "Viewers can request edit rights from their profile — the request shows as a badge in the admin team table and clears once a role is set",
+      "Advisor form — new AI extract from a pasted CV or biography, alongside the LinkedIn auto-sync",
+      "Sync from gobi.vc now matches the name typed in the form (not only the saved one) and tolerates extra middle names",
+      "R&D planner — pick the project from a list of existing projects or add a new one",
+      "Partners and Network merged into one page — the star map stays as a view toggle on Partners",
+      "Cover now shows a live extract of the partnership records log in the space beside the stats",
+      "Advisor form now has a single Profile URL field (LinkedIn or official page) that also drives the auto-sync — no more duplicate URL fields",
+      "Profile URL now sits at the top of the advisor form, and auto-sync also pulls the person's photo from the profile page",
+      "Header logo now opens gobi.vc; removed the Li Fo Venture Notes footer note",
+    ],
+    itemsCn: [
+      "使用 gobi.vc 邮箱的同事注册后立即自动登录，并自动从 gobi.vc 团队页同步照片与职位",
+      "查看者可在个人资料中申请编辑权限 — 申请在管理员团队列表中以徽章显示，设置角色后自动清除",
+      "顾问表单 — 新增从粘贴的简历或传记中由AI提取信息，与 LinkedIn 自动同步并列",
+      "gobi.vc 同步现在按表单中输入的姓名匹配（不仅限已保存姓名），并兼容多余的中间名",
+      "研发规划 — 项目可从现有项目列表中选择，或新建项目",
+      "合作伙伴与网络页面合并为一 — 星图保留为合作伙伴页的视图切换",
+      "封面在统计旁的空白处新增合作记录日志的实时摘要",
+      "顾问表单改为单一“主页链接”字段（LinkedIn 或官方主页），并直接驱动自动同步 — 不再有重复的链接字段",
+      "主页链接移至顾问表单顶部，自动同步现在还会从主页抓取人物照片",
+      "页眉标志现在链接至 gobi.vc；移除页脚“李佛创投笔记”注释",
+    ],
+  },
+  {
+    version: "5.6",
+    date: "2026-07-22",
+    by: "Fred Li",
+    titleEn: "Advisor actions on top & sector tag control panel",
+    titleCn: "顾问操作按钮置顶与行业标签控制面板",
+    itemsEn: [
+      "Advisor detail dialog — edit, request approval, approve/reject and delete buttons moved from the bottom to the top, right under the header",
+      "Admin → Sector tags upgraded into a control panel — assign a colour to each tag from a preset palette; coloured tags show across advisor and partner pages",
+      "Reorder tags with up/down arrows — the order applies everywhere tags are listed and filtered",
+      "Usage counts per tag — see at a glance how many advisors and partners carry each tag before editing or deleting it",
+    ],
+    itemsCn: [
+      "顾问详情弹窗 — 编辑、发起审批、通过/退回与删除按钮从底部移至顶部，紧贴标题下方",
+      "管理后台 → 行业标签升级为控制面板 — 可从预设色板为每个标签指定颜色，并在顾问与伙伴页面生效",
+      "上下箭头调整标签顺序 — 顺序在所有标签列表与筛选中统一生效",
+      "每个标签显示使用量 — 编辑或删除前一目了然有多少顾问与伙伴使用该标签",
+    ],
+  },
+  {
+    version: "5.5.1",
+    date: "2026-07-22",
+    by: "Ameen Mohd Fairuz",
+    titleEn: "Functional email delivery",
+    titleCn: "邮件发送功能上线",
+    itemsEn: [
+      "Email delivery is now functional — registration confirmations and password-reset links are sent through a configurable SMTP mail server",
+      "Configurable mail settings (MAIL_SERVER, MAIL_PORT, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER); the earlier Gmail settings still work",
+      "When mail is not configured, features still degrade gracefully — registration succeeds without a confirmation email and reset falls back to secret questions",
+    ],
+    itemsCn: [
+      "邮件发送已可用 — 注册确认与密码重置链接现通过可配置的 SMTP 邮件服务器发送",
+      "可配置的邮件设置（MAIL_SERVER、MAIL_PORT、MAIL_USE_TLS、MAIL_USERNAME、MAIL_PASSWORD、MAIL_DEFAULT_SENDER）；原有 Gmail 设置仍然可用",
+      "未配置邮件时功能仍优雅降级 — 注册无需确认邮件即可完成，重置回退到密保问题",
+    ],
+  },
   {
     version: "5.5",
     date: "2026-07-21",

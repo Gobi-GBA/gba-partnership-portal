@@ -505,7 +505,8 @@ const dict = {
   advisorDomains: { en: "Expert domains", cn: "专长领域" },
   advisorBackground: { en: "Detailed background", cn: "详细背景" },
   advisorEngagement: { en: "Engagement history", cn: "合作历程" },
-  advisorProfileUrl: { en: "Official profile URL", cn: "官方主页链接" },
+  advisorProfileUrl: { en: "Profile URL", cn: "主页链接" },
+  advisorProfileUrlPlaceholder: { en: "LinkedIn or official profile URL", cn: "LinkedIn 或官方主页链接" },
   advisorLinkedin: { en: "LinkedIn URL", cn: "LinkedIn 链接" },
   advisorPhoto: { en: "Photo", cn: "照片" },
   advisorPhotoHint: { en: "Upload once — an HD copy and a thumbnail are generated automatically.", cn: "上传一次——系统自动生成高清图与缩略图。" },
@@ -539,6 +540,9 @@ const dict = {
   tagNameCn: { en: "Tag name (Chinese)", cn: "标签名称（中文）" },
   tagAdd: { en: "Add tag", cn: "新增标签" },
   tagConfirmDelete: { en: "Delete this tag? It will be removed from all advisors and partners.", cn: "确定删除该标签？将从所有顾问与伙伴中移除。" },
+  tagAdvisorsSuffix: { en: "advisors", cn: "位顾问" },
+  tagPartnersSuffix: { en: "partners", cn: "个伙伴" },
+  tagColorDefault: { en: "Default colour", cn: "默认颜色" },
   tagNone: { en: "No tags defined yet. Admins can add them in the admin portal.", cn: "暂无标签。管理员可在管理后台新增。" },
   tabTags: { en: "Sector tags", cn: "行业标签" },
   tabSettings: { en: "Settings", cn: "设置" },
@@ -593,6 +597,23 @@ const dict = {
   linkedinSyncFailed: { en: "Could not fetch that page (LinkedIn often blocks robots). Paste the profile text below instead.", cn: "无法抓取该页面（LinkedIn 常拦截机器人）。请改为粘贴主页文本。" },
   linkedinPasteLabel: { en: "Paste profile text", cn: "粘贴主页文本" },
   linkedinPasteRun: { en: "Extract from text", cn: "从文本提取" },
+  // v5.7 — CV / biography AI extract
+  cvExtract: { en: "From CV / bio", cn: "从简历/传记提取" },
+  cvExtractHint: { en: "Paste a CV, biography or profile text and AI fills the form. Review before saving.", cn: "粘贴简历、传记或主页文本，由AI填写表格，保存前请核对。", },
+  cvPasteTitle: { en: "Extract from CV / biography", cn: "从简历/传记提取" },
+  // v5.7 — edit-rights request
+  requestEdit: { en: "Request edit rights", cn: "申请编辑权限" },
+  requestEditHint: { en: "Viewers can ask an administrator for edit (staff) rights.", cn: "查看者可向管理员申请编辑（员工）权限。" },
+  requestEditPending: { en: "Edit rights requested — pending admin review.", cn: "已申请编辑权限，等待管理员审批。" },
+  requestEditSent: { en: "Request sent to administrators.", cn: "申请已发送给管理员。" },
+  requestEditBadge: { en: "Edit rights requested", cn: "申请编辑权限" },
+  // v5.7 — R&D project picker
+  rdProjectPick: { en: "Select a project", cn: "选择项目" },
+  rdProjectNew: { en: "Add new project…", cn: "新建项目…" },
+  rdProjectNewPlaceholder: { en: "New project name", cn: "新项目名称" },
+  // v5.7 — cover recent log
+  heroLogTitle: { en: "Recent partnership log", cn: "最新合作记录" },
+  heroLogAll: { en: "Full log", cn: "完整日志" },
   // v5.5 — workflow
   workflowTitle: { en: "Team workflow", cn: "团队工作流程" },
   workflowHint: { en: "How advisor records move through the portal. More internal workflows will be added here.", cn: "顾问记录在门户中的流转方式。更多内部流程将陆续加入。" },

@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, LayoutGrid, Share2, CalendarRange, Download, Star, SlidersHorizontal } from "lucide-react";
-import type { Partnership } from "@shared/schema";
+import type { Partnership, Stage } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, sortPartnerships, picsOf, levelOfStage, yearsOf } from "@/lib/constants";
 
 type ViewMode = "cards" | "network" | "timeline";
@@ -121,36 +121,98 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   const fmtDay = (iso: string) =>
     new Date(`${iso}T00:00:00`).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-US", { month: "short", day: "numeric" });
 
+  // Recent partnership log — extract of the newest records for the cover
+  const recentLog = useMemo(() => {
+    const logDate = (p: Partnership) => (p.startDate || p.createdAt || "").slice(0, 10);
+    return (partnerships ?? [])
+      .slice()
+      .sort((a, b) => (logDate(a) < logDate(b) ? 1 : logDate(a) > logDate(b) ? -1 : b.id - a.id))
+      .slice(0, 4);
+  }, [partnerships]);
+
+  const fmtLogDay = (p: Partnership) => {
+    const iso = (p.startDate || p.createdAt || "").slice(0, 10);
+    if (!iso) return "";
+    return new Date(`${iso}T00:00:00`).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-US", { day: "numeric", month: "short", year: "numeric" });
+  };
+
   return (
     <Layout>
       {/* Hero */}
       <section className="border-b border-border bg-[hsl(214,68%,15%)]/85 dark:bg-[hsl(218,71%,5%)]/55 backdrop-blur-sm text-white">
         <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[hsl(var(--aqua))] mb-4">
-            {t("heroEyebrow")}
-          </p>
-          <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight max-w-2xl">
-            {t("heroTitle")}
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm md:text-base text-[hsl(210,40%,80%)] leading-relaxed">
-            {t("heroBody")}
-          </p>
+          <div className="flex flex-col lg:flex-row lg:items-start lg:gap-12">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[hsl(var(--aqua))] mb-4">
+                {t("heroEyebrow")}
+              </p>
+              <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight max-w-2xl">
+                {t("heroTitle")}
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm md:text-base text-[hsl(210,40%,80%)] leading-relaxed">
+                {t("heroBody")}
+              </p>
 
-          <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl">
-            <Stat value={stats.total} label={t("statPartners")} loading={isLoading} onClick={() => goDirectory()} />
-            <Stat value={stats.active} label={t("statActive")} loading={isLoading} gold onClick={() => goDirectory({ stage: "active" })} />
-            <Stat value={stats.mou} label={t("statMou")} loading={isLoading} onClick={() => goDirectory({ stage: "s3_agreement" })} />
-            <Stat value={stats.universities} label={t("statUniversities")} loading={isLoading} onClick={() => goDirectory({ category: "university" })} />
+              <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl">
+                <Stat value={stats.total} label={t("statPartners")} loading={isLoading} onClick={() => goDirectory()} />
+                <Stat value={stats.active} label={t("statActive")} loading={isLoading} gold onClick={() => goDirectory({ stage: "active" })} />
+                <Stat value={stats.mou} label={t("statMou")} loading={isLoading} onClick={() => goDirectory({ stage: "s3_agreement" })} />
+                <Stat value={stats.universities} label={t("statUniversities")} loading={isLoading} onClick={() => goDirectory({ category: "university" })} />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => goDirectory()}
+                className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[hsl(var(--aqua))] transition-colors hover:text-[hsl(var(--gold))]"
+                data-testid="button-browse-all"
+              >
+                {t("browseAll")} →
+              </button>
+            </div>
+
+            {/* Recent partnership log — extract on the cover */}
+            {recentLog.length > 0 && (
+              <aside className="mt-10 lg:mt-0 lg:w-[380px] shrink-0" data-testid="hero-recent-log">
+                <div className="rounded-xl border border-white/15 bg-white/[0.06] backdrop-blur-sm p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-bold tracking-wide text-white/90">{t("heroLogTitle")}</h2>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/updates")}
+                      className="text-xs font-semibold text-[hsl(var(--aqua))] transition-colors hover:text-[hsl(var(--gold))]"
+                      data-testid="button-hero-log-all"
+                    >
+                      {t("heroLogAll")} →
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {recentLog.map((p) => (
+                      <div
+                        key={p.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/partner/${p.id}`)}
+                        onKeyDown={(e) => e.key === "Enter" && navigate(`/partner/${p.id}`)}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 transition-all hover:border-[hsl(var(--gold))]/60 hover:bg-white/[0.1]"
+                        data-testid={`hero-log-entry-${p.id}`}
+                      >
+                        <PartnerLogo p={p} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-white truncate">
+                            {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}
+                          </p>
+                          <p className="text-[11px] text-white/55 tabular-nums">
+                            {fmtLogDay(p)} · {p.startDate ? t("partnerLogStarted") : t("partnerLogAdded")}
+                          </p>
+                        </div>
+                        <StageBadge stage={p.stage as Stage} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            )}
           </div>
-
-          <button
-            type="button"
-            onClick={() => goDirectory()}
-            className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[hsl(var(--aqua))] transition-colors hover:text-[hsl(var(--gold))]"
-            data-testid="button-browse-all"
-          >
-            {t("browseAll")} →
-          </button>
         </div>
       </section>
 
