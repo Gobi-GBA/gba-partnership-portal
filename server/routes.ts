@@ -1787,6 +1787,30 @@ www.gobi.vc`,
     const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
     const pasted = typeof req.body?.text === "string" ? req.body.text : "";
 
+    // ---- Rule-based identity preset ----
+    // When the form already identifies the advisor (name, Chinese name, LinkedIn
+    // slug, email), extraction is locked to THAT person: the AI must extract them
+    // specifically, and the result is verified against these tokens before any
+    // field is returned — a multi-person company page can no longer overwrite the
+    // record with whoever is most prominent.
+    const expectedName = typeof req.body?.expectedName === "string" ? req.body.expectedName.trim() : "";
+    const expectedNameCn = (typeof req.body?.expectedNameCn === "string" ? req.body.expectedNameCn : "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
+    const linkedinUrl = typeof req.body?.linkedinUrl === "string" ? req.body.linkedinUrl.trim() : "";
+    const emails = typeof req.body?.emails === "string" ? req.body.emails.trim() : "";
+    const STOP_TOKENS = new Set(["dr", "prof", "professor", "ir", "mr", "ms", "mrs", "the", "and", "www", "com", "hk", "mail", "info", "contact", "linkedin"]);
+    const nameTokens = new Set<string>();
+    const addTokens = (s: string) => {
+      for (const tok of s.toLowerCase().split(/[^a-z]+/)) {
+        if (tok.length >= 2 && !STOP_TOKENS.has(tok) && !/^\d+$/.test(tok)) nameTokens.add(tok);
+      }
+    };
+    if (expectedName) addTokens(expectedName);
+    const liSlug = linkedinUrl.match(/linkedin\.com\/in\/([a-z0-9-]+)/i)?.[1] ?? "";
+    if (liSlug) addTokens(liSlug.replace(/-?[0-9a-f]{5,}$/i, "").replace(/\d+/g, " "));
+    const emailLocal = emails.split(/[,;\s]+/)[0]?.split("@")[0] ?? "";
+    if (emailLocal) addTokens(emailLocal.replace(/\d+/g, " "));
+    const hasIdentity = nameTokens.size > 0 || expectedNameCn.length >= 2;
+
     if (!process.env.DEEPSEEK_API_KEY) {
       return res.status(503).json({
         message: "AI extraction is not configured on this deployment. Set the DEEPSEEK_API_KEY environment variable to enable it.",
@@ -1801,6 +1825,16 @@ www.gobi.vc`,
       if (meta.text && meta.text.trim().length >= 80) pageText = meta.text;
       else fetchFailed = true;
       photoCandidates = meta.photoCandidates;
+      // Identity preset: candidates whose alt text mentions the target person outrank everything else
+      if (hasIdentity) {
+        for (const c of photoCandidates) {
+          const altLc = c.alt.toLowerCase();
+          const cnHit = expectedNameCn.length >= 2 && c.alt.includes(expectedNameCn);
+          const enHit = Array.from(nameTokens).some((tok) => altLc.includes(tok));
+          if (cnHit || enHit) c.score += 4;
+        }
+        photoCandidates.sort((a, b) => b.score - a.score);
+      }
     }
     if (!pageText && pasted.trim().length < 40) {
       return res.status(422).json({
@@ -1812,10 +1846,11 @@ www.gobi.vc`,
     }
 
     try {
-      const instruction = `You are a data-entry assistant for the advisor CRM of Gobi Partners, a venture capital firm. The material below is a professional profile (often LinkedIn or a company "about us" page) — it may be English, Chinese, or mixed. If the page covers several people, extract the person the URL or pasted text is clearly about.
+      const instruction = `You are a data-entry assistant for the advisor CRM of Gobi Partners, a venture capital firm. The material below is a professional profile (often LinkedIn or a company "about us" page) — it may be English, Chinese, or mixed.${hasIdentity ? "" : " If the page covers several people, extract the single most prominent/senior person (never merge two people into one record)."}
 
 Return ONLY a JSON object with these keys (use empty string "" when unknown; never invent facts):
-{
+{${hasIdentity ? `
+  "personFound": true if the TARGET PERSON appears in the material, else false,` : ""}
   "name": "person's name in English",
   "nameCn": "person's name in Chinese if present",
   "background": "2-4 sentence English professional bio",
@@ -1833,11 +1868,20 @@ STANDARDISATION RULES — follow exactly:
 - roles.title: Title Case, e.g. "Co-Founder & Executive Director". roles.organization: official English name without legal suffixes (Limited, Ltd., Inc., Co.). Exactly ONE role has isPrimary 1 (the current main position).
 - cohort: a 4-digit year only, else "".
 - photoIndex: pick ONLY a photo of this person's face/upper body. Company logos, brand marks, buildings, product shots and group photos are WRONG answers — return -1 rather than guess.`;
+      const identityBlock = hasIdentity
+        ? `\nTARGET PERSON — this sync is updating an existing record. Extract ONLY the person identified by: ${[
+            expectedName && `name "${expectedName}"`,
+            expectedNameCn && `Chinese name "${expectedNameCn}"`,
+            liSlug && `LinkedIn slug "${liSlug}"`,
+            emailLocal && `email handle "${emailLocal}"`,
+          ].filter(Boolean).join(", ")}. The page may present several people or a more prominent person — IGNORE everyone else. If this specific person does not appear in the material, set "personFound": false and leave every other field empty. Do NOT substitute a different person.`
+        : "";
       const candidateBlock = photoCandidates.length
         ? `\nCANDIDATE IMAGES:\n${photoCandidates.map((c, i) => `${i}. ${c.url}${c.alt ? ` — alt: "${c.alt}"` : ""}`).join("\n")}`
         : "";
       const textBlock = [
         instruction,
+        identityBlock,
         candidateBlock,
         pageText ? `\nFETCHED PAGE CONTENT (${url}):\n"""\n${pageText.slice(0, 12000)}\n"""` : "",
         pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
@@ -1862,6 +1906,24 @@ STANDARDISATION RULES — follow exactly:
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON in model output");
       const data = JSON.parse(jsonMatch[0]);
+
+      // Identity verification — rule layer on top of the prompt. When the form
+      // identified the advisor, the extracted person must match by English name
+      // token or Chinese name; otherwise nothing is applied.
+      if (hasIdentity) {
+        const foundName = String(data.name ?? "");
+        const foundCn = String(data.nameCn ?? "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
+        const foundLc = foundName.toLowerCase();
+        const enMatch = nameTokens.size > 0 && Array.from(nameTokens).some((tok) => new RegExp(`(^|[^a-z])${tok}([^a-z]|$)`).test(foundLc));
+        const cnMatch = expectedNameCn.length >= 2 && foundCn.length >= 2 && (foundCn.includes(expectedNameCn) || expectedNameCn.includes(foundCn));
+        if (data.personFound === false || (!enMatch && !cnMatch)) {
+          return res.status(409).json({
+            message: "person_mismatch",
+            expected: expectedName || expectedNameCn || liSlug || emailLocal,
+            found: foundName || foundCn || "",
+          });
+        }
+      }
 
       // Photo: AI-selected candidate first; otherwise the best person-hinted
       // candidate (score >= 3). Never fall back to og:image — a missing photo

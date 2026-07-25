@@ -542,6 +542,7 @@ function AdvisorFormDialog({
                 <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
                 <LinkedinSyncControl
                   url={form.profileUrl}
+                  identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
                   onApply={(d: ExtractedAdvisor) => {
                     setForm((f) => ({
                       ...f,

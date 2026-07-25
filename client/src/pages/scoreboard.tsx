@@ -186,7 +186,10 @@ function LedgerDialog({
   );
 }
 
-export default function Scoreboard() {
+// v5.12 — the scoreboard lives inside the admin portal (hidden from other roles).
+// ScoreboardPanel is embedded as an admin tab; the standalone /scoreboard route
+// keeps working for old bookmarks, admin-guarded.
+export function ScoreboardPanel() {
   const { t } = useLang();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -234,12 +237,10 @@ export default function Scoreboard() {
 
   if (!isAdmin) {
     return (
-      <Layout>
-        <div className="mx-auto max-w-md px-4 py-24 text-center">
-          <ShieldAlert className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-          <p className="text-muted-foreground" data-testid="text-scoreboard-denied">{t("sbAdminOnly")}</p>
-        </div>
-      </Layout>
+      <div className="mx-auto max-w-md px-4 py-24 text-center">
+        <ShieldAlert className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
+        <p className="text-muted-foreground" data-testid="text-scoreboard-denied">{t("sbAdminOnly")}</p>
+      </div>
     );
   }
 
@@ -252,7 +253,7 @@ export default function Scoreboard() {
   ];
 
   return (
-    <Layout>
+    <>
       <div className="mx-auto max-w-6xl px-4 py-8" data-testid="page-scoreboard">
         <div>
           <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight" data-testid="text-scoreboard-title">
@@ -400,6 +401,14 @@ export default function Scoreboard() {
       </div>
 
       <LedgerDialog name={ledgerFor} range={range} onClose={() => setLedgerFor(null)} />
+    </>
+  );
+}
+
+export default function Scoreboard() {
+  return (
+    <Layout>
+      <ScoreboardPanel />
     </Layout>
   );
 }

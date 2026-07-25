@@ -6,6 +6,7 @@ import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Layout, PartnerLogo, PicAvatars } from "@/components/shared";
 import { EditPartnershipDialog } from "@/components/edit-partnership";
+import { ScoreboardPanel } from "@/pages/scoreboard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,7 @@ export default function Admin() {
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
             <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
+            <TabsTrigger value="scoreboard" data-testid="tab-admin-scoreboard">{t("sbNavLabel")}</TabsTrigger>
             <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
             <TabsTrigger value="templates" data-testid="tab-admin-templates">{t("tabTemplates")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
@@ -67,6 +69,7 @@ export default function Admin() {
           <TabsContent value="users"><UserAdmin /></TabsContent>
           <TabsContent value="feedback"><FeedbackAdmin /></TabsContent>
           <TabsContent value="tags"><TagAdmin /></TabsContent>
+          <TabsContent value="scoreboard"><ScoreboardPanel /></TabsContent>
           <TabsContent value="exports">
             <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-exports">
               <p className="mb-3 text-sm text-muted-foreground">{t("exportsHint")}</p>

@@ -430,7 +430,17 @@ export interface ExtractedAdvisor {
   roles?: Array<{ title: string; organization?: string | null; isPrimary?: number }>;
 }
 
-export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (data: ExtractedAdvisor) => void }) {
+// Identity hints from the form being edited — the rule-based layer that locks
+// auto-sync onto the advisor the record is about (name first, then LinkedIn
+// slug and email handle).
+export interface SyncIdentity {
+  name?: string;
+  nameCn?: string;
+  linkedinUrl?: string;
+  emails?: string;
+}
+
+export function LinkedinSyncControl({ url, identity, onApply }: { url: string; identity?: SyncIdentity; onApply: (data: ExtractedAdvisor) => void }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -438,7 +448,13 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
 
   const extract = useMutation({
     mutationFn: async (body: { url?: string; text?: string }) => {
-      const res = await apiRequest("POST", "/api/ai/advisor-extract", body);
+      const res = await apiRequest("POST", "/api/ai/advisor-extract", {
+        ...body,
+        expectedName: identity?.name?.trim() || undefined,
+        expectedNameCn: identity?.nameCn?.trim() || undefined,
+        linkedinUrl: identity?.linkedinUrl?.trim() || undefined,
+        emails: identity?.emails?.trim() || undefined,
+      });
       return res.json();
     },
     onSuccess: (data: ExtractedAdvisor) => {
@@ -449,7 +465,15 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
     },
     onError: (e: any) => {
       const msg = String(e?.message ?? e);
-      if (msg.includes("fetchFailed") || msg.includes("422")) {
+      if (msg.includes("person_mismatch")) {
+        let found = "";
+        try { found = JSON.parse(msg.slice(msg.indexOf("{"))).found ?? ""; } catch {}
+        toast({
+          description: `${t("syncMismatch")}${found ? ` — ${found}` : ""}. ${t("syncMismatchHint")}`,
+          variant: "destructive",
+        });
+        setPasteOpen(false);
+      } else if (msg.includes("fetchFailed") || msg.includes("422")) {
         setPasteOpen(true);
       } else {
         toast({ description: msg, variant: "destructive" });

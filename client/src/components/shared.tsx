@@ -307,8 +307,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
-    // v5.9 — the scoreboard endpoint is admin-only, so the nav item follows suit.
-    { href: "/scoreboard", label: t("sbNavLabel"), show: user?.role === "admin" },
+    // v5.12 — the scoreboard moved inside the admin portal (Admin → Scoreboard tab).
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];

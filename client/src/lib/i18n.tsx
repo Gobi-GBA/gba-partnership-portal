@@ -632,6 +632,8 @@ const dict = {
   linkedinSync: { en: "Auto-sync", cn: "自动同步" },
   linkedinSyncHint: { en: "Fetch the profile page and fill the form with AI. Review before saving.", cn: "抓取主页并由AI填写表格，保存前请核对。" },
   linkedinSyncApplied: { en: "Profile fields updated — review before saving.", cn: "资料已更新——保存前请核对。" },
+  syncMismatch: { en: "Auto-sync stopped — that page is about a different person", cn: "自动同步已停止——该页面是另一个人的资料" },
+  syncMismatchHint: { en: "Nothing was changed. Check the profile URL, or clear the name field to extract from this page.", cn: "未修改任何内容。请检查资料链接，或清空姓名后再从此页面提取。" },
   linkedinSyncFailed: { en: "Could not fetch that page (LinkedIn often blocks robots). Paste the profile text below instead.", cn: "无法抓取该页面（LinkedIn 常拦截机器人）。请改为粘贴主页文本。" },
   linkedinPasteLabel: { en: "Paste profile text", cn: "粘贴主页文本" },
   linkedinPasteRun: { en: "Extract from text", cn: "从文本提取" },
