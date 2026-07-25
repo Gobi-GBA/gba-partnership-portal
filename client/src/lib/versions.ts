@@ -9,9 +9,34 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.9";
+export const CURRENT_VERSION = "5.10";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.10",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Official invitation letter in Word and print formats, copyable emails, and AI auto-sync fixes",
+    titleCn: "正式邀请函 Word 与打印版、邮件一键复制与 AI 自动同步修复",
+    itemsEn: [
+      "The invitation letter now follows the firm's official template — Gobi letterhead, Strictly Private & Confidential, the standard five paragraphs with the advisor's expertise filled in, and a second-page Acknowledgment Receipt for countersigning",
+      "Admins can download the letter as an editable Word document or open the print view to save it as a PDF; both record the letter-issued stage automatically",
+      "The onboarding cover email now asks the advisor to countersign the attached Acknowledgment Receipt and return a copy",
+      "Every recipient row in the outreach send step has a new copy-text button that copies the fully resolved email — addresses, subject and body — for pasting into any mail client",
+      "The approval email dialog's copy button now includes the To and Cc lines and works inside embedded previews where the clipboard is restricted",
+      "Fixed AI auto-sync from profile links, which failed after the DeepSeek platform retired the model name the portal was calling",
+      "Fixed two-finger trackpad scrolling in the origin-staff and PIC picker lists inside dialogs",
+    ],
+    itemsCn: [
+      "邀请函改用公司正式模板 — 戈壁信头、Strictly Private & Confidential、标准五段正文并自动填入顾问专长，第二页为待会签的确认回执",
+      "管理员可下载可编辑的 Word 版邀请函，或打开打印视图另存为 PDF，两者均自动记录“已发函”进度",
+      "入职邀请邮件现会提醒顾问会签随函的确认回执并寄回副本",
+      "联络工具发送步骤的每位收件人新增复制文本按钮，一键复制已解析的收件人、主题与正文，可粘贴到任意邮件客户端",
+      "审批邮件弹窗的复制按钮现包含收件人与抄送行，并在剪贴板受限的内嵌预览中也能正常工作",
+      "修复了从主页链接 AI 自动同步失败的问题 — 原因是 DeepSeek 平台停用了旧模型名称",
+      "修复了弹窗内引荐人与对接人选择列表无法双指触控滚动的问题",
+    ],
+  },
   {
     version: "5.9",
     date: "2026-07-25",

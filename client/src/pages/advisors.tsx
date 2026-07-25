@@ -25,7 +25,7 @@ import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
   LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
-  FileText, Download, Loader2, Phone, MessageCircle, ChevronDown,
+  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
@@ -259,6 +259,17 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
+  // v5.10 — same letter as an editable Word document; also records the letter stage
+  const letterDocx = useMutation({
+    mutationFn: async () => {
+      await downloadWithAuth(`/api/advisors/${a.id}/invitation-letter.docx`, `Gobi-Advisory-Network-Letter.docx`);
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, { stage: "letter_issued" });
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
   const doneAt = (field: (typeof WORKFLOW_STEPS)[number]["field"]) => a[field] ?? null;
   // The most recently completed step is the only one that can be undone.
   let lastDone = -1;
@@ -331,6 +342,18 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
           >
             {letter.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
             {t("wfGenerateLetter")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="ml-2"
+            disabled={letterDocx.isPending}
+            onClick={() => letterDocx.mutate()}
+            data-testid="button-issue-letter-docx"
+          >
+            {letterDocx.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileDown className="mr-1.5 h-3.5 w-3.5" />}
+            {t("wfLetterDocx")}
           </Button>
         </div>
       )}

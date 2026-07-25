@@ -25,6 +25,7 @@ import {
 } from "../shared/schema.js";
 import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag } from "../shared/schema.js";
 import mammoth from "mammoth";
+import { invitationLetterHtml, invitationLetterDocx, letterFilename } from "./letter.js";
 import { z } from "zod";
 
 // Single source of truth: collaboration level is always derived from the stage.
@@ -302,86 +303,6 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // ~10MB per file (base64 inflate
 
 function attachmentTooLarge(b64: string) {
   return b64.length > MAX_ATTACHMENT_BYTES * 1.4;
-}
-
-function esc(s: string): string {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
-  );
-}
-
-// v5.8 — Advisor invitation letter, styled on Gobi letterhead. Rendered as a
-// self-contained HTML page the client opens and prints/saves to PDF (Ctrl/Cmd-P).
-function invitationLetterHtml(advisor: Advisor, role: AdvisorRole | null): string {
-  const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const honorific = advisor.name;
-  const title = role?.title ? esc(role.title) : "";
-  const org = role?.organization ? esc(role.organization) : "";
-  const roleLine = [title, org].filter(Boolean).join(", ");
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Advisor Invitation Letter — ${esc(advisor.name)}</title>
-<style>
-  @page { size: A4; margin: 22mm 24mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Georgia, "Times New Roman", "Noto Serif SC", serif; color: #14213d; line-height: 1.7; font-size: 12.5pt; margin: 0; }
-  .sheet { max-width: 760px; margin: 0 auto; padding: 40px 44px; }
-  .head { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #D4A843; padding-bottom: 16px; margin-bottom: 8px; }
-  .brand { font-family: "Plus Jakarta Sans", Arial, sans-serif; }
-  .brand .name { font-size: 19pt; font-weight: 800; letter-spacing: .04em; color: #0C2340; }
-  .brand .sub { font-size: 9pt; letter-spacing: .22em; text-transform: uppercase; color: #8a6d1f; margin-top: 2px; }
-  .addr { text-align: right; font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 8.5pt; color: #5b6472; line-height: 1.5; }
-  .date { margin: 26px 0 18px; font-size: 11pt; color: #3a4252; }
-  h1 { font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 15pt; color: #0C2340; margin: 0 0 18px; }
-  p { margin: 0 0 13px; }
-  .to { margin-bottom: 18px; }
-  .to .n { font-weight: 700; }
-  ul { margin: 0 0 14px; padding-left: 20px; }
-  li { margin-bottom: 6px; }
-  .sig { margin-top: 40px; display: flex; justify-content: space-between; gap: 40px; }
-  .sig .block { flex: 1; }
-  .sig .line { border-bottom: 1px solid #14213d; height: 42px; margin-bottom: 6px; }
-  .sig .lbl { font-size: 9.5pt; color: #5b6472; }
-  .foot { margin-top: 34px; border-top: 1px solid #e3e6ec; padding-top: 10px; font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 8pt; color: #8a93a3; text-align: center; }
-  .print-hint { background: #0C2340; color: #fff; text-align: center; padding: 10px; font-family: Arial, sans-serif; font-size: 10pt; }
-  @media print { .print-hint { display: none; } .sheet { padding: 0; } }
-</style></head>
-<body>
-<div class="print-hint">Press Ctrl/Cmd + P to save this invitation letter as a PDF.</div>
-<div class="sheet">
-  <div class="head">
-    <div class="brand"><div class="name">GOBI PARTNERS</div><div class="sub">Gobi Advisory Network &middot; Global</div></div>
-    <div class="addr">4209-11, Hopewell Centre<br>183 Queen's Road East, Wanchai<br>Hong Kong<br>www.gobi.vc</div>
-  </div>
-  <div class="date">${esc(today)}</div>
-  <div class="to">
-    <div class="n">${esc(honorific)}</div>
-    ${roleLine ? `<div>${roleLine}</div>` : ""}
-  </div>
-  <h1>Invitation to the Gobi Advisory Network</h1>
-  <p>Dear ${esc(advisor.name)},</p>
-  <p>On behalf of Gobi Partners, it is our pleasure to invite you to join the <b>Gobi Advisory Network (Global)</b>. This network connects universities, academics, and industry experts to foster the growth of technology startups with a positive global impact.</p>
-  <p>As a member of the Gobi Advisory Network, you will have the opportunity to:</p>
-  <ul>
-    <li>Attend exclusive, invitation-only events hosted by Gobi and our affiliates.</li>
-    <li>Participate in project-based professional engagements focused on cutting-edge technologies.</li>
-    <li>Connect with founders from promising next-generation companies and explore innovative technologies from around the world.</li>
-    <li>Benefit from Gobi's extensive network and resources, as well as those of our investors.</li>
-  </ul>
-  <p>We would be honoured to have you as part of our advisory community. To confirm your participation, kindly countersign this letter where indicated below and return a copy to us at your convenience.</p>
-  <p>Thank you for your ongoing support and partnership, and for your dedication to the development of the innovation ecosystem.</p>
-  <div class="sig">
-    <div class="block">
-      <div class="line"></div>
-      <div class="lbl"><b>Fred Li</b><br>Managing Director, Gobi Partners</div>
-    </div>
-    <div class="block">
-      <div class="line"></div>
-      <div class="lbl"><b>${esc(advisor.name)}</b><br>Accepted &amp; agreed &nbsp;|&nbsp; Date: ____________</div>
-    </div>
-  </div>
-  <div class="foot">Gobi Partners &middot; 4209-11 Hopewell Centre, 183 Queen's Road East, Wanchai, Hong Kong &middot; www.gobi.vc</div>
-</div>
-</body></html>`;
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -1236,6 +1157,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send(html);
   });
 
+  // v5.10 — same letter as a Word document (for signing workflows / manual edits)
+  app.get("/api/advisors/:id/invitation-letter.docx", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const roles = (await storage.listAdvisorRoles())
+      .filter((r) => r.advisorId === advisor.id)
+      .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    try {
+      const buf = await invitationLetterDocx(advisor, roles[0] ?? null);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${letterFilename(advisor, "docx")}"`);
+      res.send(buf);
+    } catch (err) {
+      console.error("Letter DOCX generation failed:", err);
+      res.status(500).json({ message: "Letter generation failed" });
+    }
+  });
+
   // ---------- CSV export (v5.8 — contacts for other teams) ----------
   // Staff-only (contact emails are staff-visible). LP status respects IR visibility.
   const csvCell = (v: unknown): string => {
@@ -1461,13 +1400,15 @@ As a member you will be able to:
 - Connect with founders of promising next-generation companies;
 - Benefit from Gobi's network and resources, and those of our investors.
 
-To help us complete your profile, we would be grateful if you could share a short bio (English and Chinese) and a portrait photo. A signed invitation letter is attached for your reference.
+The formal invitation letter is attached. To confirm your participation, kindly countersign the Acknowledgment Receipt where indicated and return a copy to us at your convenience.
+
+To help us complete your profile, we would also be grateful if you could share a short bio (English and Chinese) and a portrait photo.
 
 We look forward to welcoming you.
 
 Warm regards,
 Fred Li
-Managing Director, Gobi Partners
+Managing Director & Head of University Ventures, Gobi Partners
 www.gobi.vc`,
     },
     general_update: {
@@ -1481,7 +1422,7 @@ Thank you for your continued support of the Gobi Advisory Network.
 
 Warm regards,
 Fred Li
-Managing Director, Gobi Partners
+Managing Director & Head of University Ventures, Gobi Partners
 www.gobi.vc`,
     },
   };
@@ -1732,7 +1673,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
           Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
           max_tokens: 1200,
@@ -1885,7 +1826,7 @@ ${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`
           Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
           max_tokens: 2200,

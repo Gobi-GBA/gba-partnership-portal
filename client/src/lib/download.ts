@@ -39,6 +39,32 @@ export function preopenTab(): Window | null {
   return window.open("", "_blank");
 }
 
+/**
+ * Copy text to the clipboard (v5.10). navigator.clipboard is blocked in some
+ * embedded/preview iframes, so fall back to a hidden textarea + execCommand.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 /** Fetch an HTML document with auth and show it in a tab for printing to PDF. */
 export async function openHtmlWithAuth(url: string, target?: Window | null): Promise<boolean> {
   const res = await apiRequest("GET", url);

@@ -20,7 +20,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AdvisorWithRoles } from "@shared/schema";
-import { Mail, Send, Loader2, Users, Check, Braces } from "lucide-react";
+import { Mail, Send, Loader2, Users, Check, Braces, Copy } from "lucide-react";
+import { copyText } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 type OutreachTemplate = "onboarding_invite" | "general_update";
@@ -151,6 +152,13 @@ export function OutreachDialog({
 
   const mailtoFor = (r: Recipient) =>
     `mailto:${r.to.join(",")}?subject=${encodeURIComponent(resolve(subject, r))}&body=${encodeURIComponent(resolve(body, r))}`;
+
+  // v5.10 — copy the fully resolved email as plain text (fallback when no mail client is set up)
+  const copyFor = async (r: Recipient) => {
+    const text = `To: ${r.to.join(", ")}\nSubject: ${resolve(subject, r)}\n\n${resolve(body, r)}`;
+    const ok = await copyText(text);
+    toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
+  };
 
   const templateLabel = template === "onboarding_invite" ? t("outreachTplOnboarding") : t("outreachTplUpdate");
   const summary = t("outreachSummary").replace("{n}", String(chosen.length)).replace("{t}", templateLabel);
@@ -368,6 +376,14 @@ export function OutreachDialog({
                             {t("outreachFailedRow")}
                           </Badge>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => copyFor(r)}
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary"
+                          data-testid={`button-copy-outreach-${r.advisorId}`}
+                        >
+                          <Copy className="h-3 w-3" /> {t("outreachCopyText")}
+                        </button>
                         <a
                           href={mailtoFor(r)}
                           className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary"

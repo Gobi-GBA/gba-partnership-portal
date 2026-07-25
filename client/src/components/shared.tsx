@@ -649,8 +649,9 @@ export function PicChecklist({
   const { t } = useLang();
   const toggle = (name: string) =>
     onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
+  // modal — required for wheel/trackpad scrolling when the popover opens inside a Dialog (Radix scroll-lock)
   return (
-    <Popover>
+    <Popover modal>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" className="w-full justify-between font-normal" data-testid={testid}>
           <span className="truncate text-left">

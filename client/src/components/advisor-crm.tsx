@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
+import { copyText } from "@/lib/download";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -360,12 +361,8 @@ export function ApprovalEmailDialog({ advisor, open, onOpenChange }: {
   });
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${plain}`);
-      toast({ description: t("copiedToClipboard") });
-    } catch {
-      toast({ description: "Copy failed", variant: "destructive" });
-    }
+    const ok = await copyText(`To: ${cooEmail}\nCc: ${CC_EMAIL}\nSubject: ${subject}\n\n${plain}`);
+    toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
   };
 
   return (
