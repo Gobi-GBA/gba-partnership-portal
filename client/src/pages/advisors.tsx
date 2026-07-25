@@ -25,7 +25,7 @@ import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
   LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
-  FileText, Download, Loader2,
+  FileText, Download, Loader2, Phone, MessageCircle, ChevronDown,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
@@ -34,9 +34,14 @@ import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
   ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OutreachDialog } from "@/components/advisor-outreach";
 import { downloadWithAuth, openHtmlWithAuth, preopenTab } from "@/lib/download";
 import { cn } from "@/lib/utils";
+
+// ---------- Grouping (v5.9) ----------
+type GroupBy = "none" | "pillar" | "tag" | "lifecycle" | "track" | "cohort";
+interface AdvisorGroup { key: string; label: string; items: AdvisorWithRoles[] }
 
 // ---------- Pillar & track styling ----------
 const PILLAR_STYLES: Record<Pillar, string> = {
@@ -119,23 +124,93 @@ function PillarBadge({ pillar }: { pillar: Pillar }) {
   );
 }
 
-// ---------- Lifecycle status (v5.8) ----------
-const LIFECYCLE_STYLES: Record<string, string> = {
-  proposed: "border-amber-500/40 bg-amber-500/10 text-amber-600",
-  onboarded: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
-  terminated: "border-red-500/40 bg-red-500/10 text-red-600",
+// ---------- Lifecycle status (v5.8, restyled v5.9) ----------
+// Deliberately unlike the sector tags: transparent background, status-coloured
+// outline and a leading dot, so the lifecycle state reads as record status
+// rather than as another taxonomy chip.
+const LIFECYCLE_OUTLINE: Record<string, string> = {
+  proposed: "border-slate-400/70 text-slate-600 dark:border-slate-500/70 dark:text-slate-300",
+  onboarded: "border-emerald-500/70 text-emerald-700 dark:text-emerald-400",
+  terminated: "border-rose-500/70 text-rose-700 dark:text-rose-400",
+};
+
+const LIFECYCLE_DOT: Record<string, string> = {
+  proposed: "bg-slate-400",
+  onboarded: "bg-emerald-500",
+  terminated: "bg-rose-500",
 };
 
 function LifecyclePill({ status, advisorId, className }: { status: string; advisorId?: number; className?: string }) {
   const { t } = useLang();
   return (
-    <Badge
-      variant="outline"
-      className={cn("text-[11px] font-semibold", LIFECYCLE_STYLES[status] ?? LIFECYCLE_STYLES.proposed, className)}
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-transparent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        LIFECYCLE_OUTLINE[status] ?? LIFECYCLE_OUTLINE.proposed,
+        className,
+      )}
       data-testid={advisorId ? `badge-lifecycle-${advisorId}` : "badge-lifecycle"}
     >
+      <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", LIFECYCLE_DOT[status] ?? LIFECYCLE_DOT.proposed)} />
       {t(`lifecycle_${status}` as any)}
-    </Badge>
+    </span>
+  );
+}
+
+// ---------- Mobile country codes (v5.9) ----------
+const MOBILE_CODES: Array<{ code: string; region: string }> = [
+  { code: "+852", region: "HK" },
+  { code: "+86", region: "CN" },
+  { code: "+853", region: "MO" },
+  { code: "+886", region: "TW" },
+  { code: "+65", region: "SG" },
+  { code: "+60", region: "MY" },
+  { code: "+62", region: "ID" },
+  { code: "+66", region: "TH" },
+  { code: "+84", region: "VN" },
+  { code: "+63", region: "PH" },
+  { code: "+81", region: "JP" },
+  { code: "+82", region: "KR" },
+  { code: "+91", region: "IN" },
+  { code: "+971", region: "UAE" },
+  { code: "+966", region: "KSA" },
+  { code: "+1", region: "US/CA" },
+  { code: "+44", region: "UK" },
+  { code: "+33", region: "FR" },
+  { code: "+49", region: "DE" },
+  { code: "+61", region: "AU" },
+];
+
+const DEFAULT_MOBILE_CC = "+852";
+
+/** Split a stored "+852 9123 4567" into picker + number. Unknown codes fall back to the default. */
+function parseMobile(value: string | null | undefined): { cc: string; number: string } {
+  const raw = (value ?? "").trim();
+  if (!raw) return { cc: DEFAULT_MOBILE_CC, number: "" };
+  const match = MOBILE_CODES
+    .filter((c) => raw.startsWith(c.code))
+    .sort((a, b) => b.code.length - a.code.length)[0];
+  if (match) return { cc: match.code, number: raw.slice(match.code.length).trim() };
+  return { cc: DEFAULT_MOBILE_CC, number: raw };
+}
+
+function joinMobile(cc: string, number: string): string | null {
+  const n = number.trim();
+  return n ? `${cc} ${n}` : null;
+}
+
+// ---------- Form section wrapper (v5.9) ----------
+function FormSection({ id, step, title, children }: { id: string; step: number; title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-lg border border-border p-3" data-testid={`section-adv-${id}`}>
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--gold))]/15 text-[10px] font-bold text-[hsl(var(--gold))]">
+          {step}
+        </span>
+        {title}
+      </p>
+      {children}
+    </section>
   );
 }
 
@@ -302,6 +377,8 @@ const EMPTY_FORM = {
   pillar: "other" as Pillar, emailsText: "", domains: "", background: "", profileUrl: "", linkedinUrl: "",
   cohort: "", engagement: "", gobiPics: [] as string[], photoUrl: "", photoThumbUrl: "",
   publicClearance: false, birthDay: "", birthMonth: "", birthYear: "", tagIds: [] as number[],
+  // v5.9 CRM additions
+  mobileCc: DEFAULT_MOBILE_CC, mobileNumber: "", wechatId: "", originStaff: [] as string[],
 };
 
 function AdvisorFormDialog({
@@ -345,6 +422,10 @@ function AdvisorFormDialog({
         birthMonth: target.birthMonth ? String(target.birthMonth) : "",
         birthYear: target.birthYear ? String(target.birthYear) : "",
         tagIds: (target.tags ?? []).map((tg) => tg.id),
+        mobileCc: parseMobile(target.mobile).cc,
+        mobileNumber: parseMobile(target.mobile).number,
+        wechatId: target.wechatId ?? "",
+        originStaff: target.originStaff ?? [],
       });
       setRoles((target.roles ?? []).map((r) => ({ key: keyRef.current++, title: r.title, organization: r.organization ?? "", partnershipId: r.partnershipId, isPrimary: r.isPrimary })));
     } else {
@@ -375,8 +456,13 @@ function AdvisorFormDialog({
         photoThumbUrl: form.photoThumbUrl || null,
         profileUrl: form.profileUrl.trim() || null,
         // Single profile link now; keep linkedinUrl consistent for legacy records
-        linkedinUrl: /linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null,
+        linkedinUrl: form.linkedinUrl.trim()
+          || (/linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null),
         gobiPics: form.gobiPics,
+        // v5.9 — staff-only CRM fields; origin staff is a permanent sourcing record
+        mobile: joinMobile(form.mobileCc, form.mobileNumber),
+        wechatId: form.wechatId.trim() || null,
+        originStaff: form.originStaff.length > 0 ? form.originStaff : null,
         cohort: form.cohort.trim() || null,
         engagement: form.engagement.trim() || null,
         publicClearance: form.publicClearance ? 1 : 0,
@@ -424,110 +510,119 @@ function AdvisorFormDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* Profile URL — first, so the team can sync before filling anything */}
-          <div className="space-y-1">
-            <Label>{t("advisorProfileUrl")}</Label>
-            <div className="flex gap-2">
-              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
-              <LinkedinSyncControl
-                url={form.profileUrl}
-                onApply={(d: ExtractedAdvisor) => {
-                  setForm((f) => ({
-                    ...f,
-                    name: d.name?.trim() || f.name,
-                    nameCn: d.nameCn?.trim() || f.nameCn,
-                    background: d.background?.trim() || f.background,
-                    domains: d.domains?.trim() || f.domains,
-                    cohort: d.cohort?.trim() || f.cohort,
-                    photoUrl: d.photoUrl?.trim() || f.photoUrl,
-                    photoThumbUrl: d.photoUrl?.trim() || f.photoThumbUrl,
-                  }));
-                  if (d.roles && d.roles.length > 0) {
-                    setRoles(d.roles.map((r, i) => ({
-                      key: keyRef.current++,
-                      title: r.title,
-                      organization: r.organization ?? "",
-                      partnershipId: null,
-                      isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
-                    })));
-                  }
-                }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
-          </div>
-
-          {/* Photo */}
-          <div className="flex items-center gap-4">
-            <AdvisorAvatar a={{ name: form.name || "?", nameCn: null, photoThumbUrl: form.photoThumbUrl || null }} size="lg" />
-            <div className="space-y-1.5">
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" data-testid="input-advisor-photo"
-                onChange={(e) => onPhoto(e.target.files?.[0])} />
+          {/* 1. Source — the profile link and auto-sync come first so the team can
+              populate the record before typing anything by hand. */}
+          <FormSection id="source" step={1} title={t("advSectionSource")}>
+            <div className="space-y-1">
+              <Label>{t("advisorProfileUrl")}</Label>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant="outline" disabled={photoBusy} onClick={() => fileRef.current?.click()} data-testid="button-upload-photo">
-                  <ImagePlus className="h-3.5 w-3.5 mr-1.5" /> {photoBusy ? "…" : t("advisorPhoto")}
-                </Button>
-                {form.photoThumbUrl && (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setForm((f) => ({ ...f, photoUrl: "", photoThumbUrl: "" }))} data-testid="button-remove-photo">
-                    <X className="h-3.5 w-3.5 mr-1" /> {t("advisorPhotoRemove")}
-                  </Button>
-                )}
+                <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+                <LinkedinSyncControl
+                  url={form.profileUrl}
+                  onApply={(d: ExtractedAdvisor) => {
+                    setForm((f) => ({
+                      ...f,
+                      name: d.name?.trim() || f.name,
+                      nameCn: d.nameCn?.trim() || f.nameCn,
+                      background: d.background?.trim() || f.background,
+                      domains: d.domains?.trim() || f.domains,
+                      cohort: d.cohort?.trim() || f.cohort,
+                      photoUrl: d.photoUrl?.trim() || f.photoUrl,
+                      photoThumbUrl: d.photoUrl?.trim() || f.photoThumbUrl,
+                    }));
+                    if (d.roles && d.roles.length > 0) {
+                      setRoles(d.roles.map((r, i) => ({
+                        key: keyRef.current++,
+                        title: r.title,
+                        organization: r.organization ?? "",
+                        partnershipId: null,
+                        isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
+                      })));
+                    }
+                  }}
+                />
               </div>
-              <p className="text-[11px] text-muted-foreground">{t("advisorPhotoHint")}</p>
+              <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
             </div>
-          </div>
+            <div className="space-y-1">
+              <Label>LinkedIn URL</Label>
+              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
+            </div>
+          </FormSection>
 
-          {/* Names */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 2. Contact */}
+          <FormSection id="contact" step={2} title={t("advSectionContact")}>
             <div className="space-y-1">
-              <Label>{t("advisorNameEn")}</Label>
-              <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
+              <Label>{t("advisorEmails")}</Label>
+              <Input value={form.emailsText} onChange={set("emailsText")} data-testid="input-adv-emails" />
             </div>
             <div className="space-y-1">
-              <Label>{t("advisorNameCn")}</Label>
-              <Input value={form.nameCn} onChange={set("nameCn")} data-testid="input-adv-name-cn" />
+              <Label>{t("advisorMobile")}</Label>
+              <div className="flex gap-2">
+                <Select value={form.mobileCc} onValueChange={(v) => setForm((f) => ({ ...f, mobileCc: v }))}>
+                  <SelectTrigger className="w-40 shrink-0" aria-label={t("advisorMobileCc")} data-testid="select-mobile-cc">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {MOBILE_CODES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={form.mobileNumber}
+                  onChange={set("mobileNumber")}
+                  inputMode="tel"
+                  placeholder="9123 4567"
+                  data-testid="input-mobile"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("advisorMobileHint")}</p>
             </div>
-          </div>
+            <div className="space-y-1">
+              <Label>{t("advisorWechat")}</Label>
+              <Input value={form.wechatId} onChange={set("wechatId")} data-testid="input-wechat" />
+            </div>
+          </FormSection>
 
-          {/* Classification */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label>{t("advisorRoleLabel")}</Label>
-              <Select value={form.advisorType} onValueChange={(v) => setForm((f) => ({ ...f, advisorType: v as AdvisorRoleType }))}>
-                <SelectTrigger data-testid="select-adv-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ADVISOR_ROLE_TYPES.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`advisorRole_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* 3. Identity */}
+          <FormSection id="identity" step={3} title={t("advSectionIdentity")}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{t("advisorNameEn")}</Label>
+                <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("advisorNameCn")}</Label>
+                <Input value={form.nameCn} onChange={set("nameCn")} data-testid="input-adv-name-cn" />
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <AdvisorAvatar a={{ name: form.name || "?", nameCn: null, photoThumbUrl: form.photoThumbUrl || null }} size="lg" />
+              <div className="space-y-1.5">
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" data-testid="input-advisor-photo"
+                  onChange={(e) => onPhoto(e.target.files?.[0])} />
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={photoBusy} onClick={() => fileRef.current?.click()} data-testid="button-upload-photo">
+                    <ImagePlus className="h-3.5 w-3.5 mr-1.5" /> {photoBusy ? "…" : t("advisorPhoto")}
+                  </Button>
+                  {form.photoThumbUrl && (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setForm((f) => ({ ...f, photoUrl: "", photoThumbUrl: "" }))} data-testid="button-remove-photo">
+                      <X className="h-3.5 w-3.5 mr-1" /> {t("advisorPhotoRemove")}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{t("advisorPhotoHint")}</p>
+              </div>
             </div>
             <div className="space-y-1">
-              <Label>{t("trackLabel")}</Label>
-              <Select value={form.track} onValueChange={(v) => setForm((f) => ({ ...f, track: v as AdvisorTrack }))}>
-                <SelectTrigger data-testid="select-adv-track"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ADVISOR_TRACKS.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`track_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>{t("advisorBackground")}</Label>
+              <Textarea rows={4} value={form.background} onChange={set("background")} data-testid="input-adv-background" />
             </div>
-            <div className="space-y-1">
-              <Label>{t("pillarLabel")}</Label>
-              <Select value={form.pillar} onValueChange={(v) => setForm((f) => ({ ...f, pillar: v as Pillar }))}>
-                <SelectTrigger data-testid="select-adv-pillar"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PILLARS.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`pillar_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          </FormSection>
 
-          {/* Roles editor */}
-          <div className="space-y-2 rounded-lg border border-border p-3">
+          {/* 4. Roles */}
+          <FormSection id="roles" step={4} title={t("advSectionRoles")}>
             <div className="flex items-center justify-between">
               <Label className="font-semibold">{t("rolesLabel")}</Label>
               <Button type="button" size="sm" variant="outline" data-testid="button-add-role"
@@ -570,64 +665,103 @@ function AdvisorFormDialog({
                 </div>
               </div>
             ))}
-          </div>
+          </FormSection>
 
-          {/* Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 5. Classification */}
+          <FormSection id="classification" step={5} title={t("advSectionClassification")}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label>{t("advisorRoleLabel")}</Label>
+                <Select value={form.advisorType} onValueChange={(v) => setForm((f) => ({ ...f, advisorType: v as AdvisorRoleType }))}>
+                  <SelectTrigger data-testid="select-adv-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ADVISOR_ROLE_TYPES.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`advisorRole_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>{t("trackLabel")}</Label>
+                <Select value={form.track} onValueChange={(v) => setForm((f) => ({ ...f, track: v as AdvisorTrack }))}>
+                  <SelectTrigger data-testid="select-adv-track"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ADVISOR_TRACKS.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`track_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>{t("pillarLabel")}</Label>
+                <Select value={form.pillar} onValueChange={(v) => setForm((f) => ({ ...f, pillar: v as Pillar }))}>
+                  <SelectTrigger data-testid="select-adv-pillar"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PILLARS.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`pillar_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-1">
-              <Label>{t("advisorEmails")}</Label>
-              <Input value={form.emailsText} onChange={set("emailsText")} data-testid="input-adv-emails" />
+              <Label>{t("advisorDomains")}</Label>
+              <Input value={form.domains} onChange={set("domains")} data-testid="input-adv-domains" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("sectorTags")}</Label>
+              <TagPicker selected={form.tagIds} onChange={(ids) => setForm((f) => ({ ...f, tagIds: ids }))} />
+            </div>
+          </FormSection>
+
+          {/* 6. Internal */}
+          <FormSection id="internal" step={6} title={t("advSectionInternal")}>
+            <div className="space-y-1" data-testid="control-origin-staff">
+              <Label>{t("originStaffLabel")}</Label>
+              <PicChecklist
+                value={form.originStaff}
+                onChange={(v) => setForm((f) => ({ ...f, originStaff: v }))}
+                testid="button-origin-staff-checklist"
+                optionPrefix="origin-staff"
+                placeholderKey="selectOriginStaff"
+              />
+              <p className="text-[11px] text-muted-foreground">{t("originStaffHint")}</p>
             </div>
             <div className="space-y-1">
-              <Label>{t("cohortLabel")}</Label>
-              <Input value={form.cohort} onChange={set("cohort")} placeholder="2025" data-testid="input-adv-cohort" />
+              <Label>{t("currentPicLabel")}</Label>
+              <PicChecklist value={form.gobiPics} onChange={(v) => setForm((f) => ({ ...f, gobiPics: v }))} />
             </div>
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorDomains")}</Label>
-            <Input value={form.domains} onChange={set("domains")} data-testid="input-adv-domains" />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorBackground")}</Label>
-            <Textarea rows={4} value={form.background} onChange={set("background")} data-testid="input-adv-background" />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorEngagement")}</Label>
-            <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
-          </div>
-          {/* Sector tags */}
-          <div className="space-y-1.5">
-            <Label>{t("sectorTags")}</Label>
-            <TagPicker selected={form.tagIds} onChange={(ids) => setForm((f) => ({ ...f, tagIds: ids }))} />
-          </div>
-
-          {/* CRM: date of birth */}
-          <div className="space-y-1">
-            <Label>{t("birthdayLabel")}</Label>
-            <div className="flex gap-2">
-              <Input className="w-20" inputMode="numeric" placeholder="DD" maxLength={2} value={form.birthDay} onChange={set("birthDay")} data-testid="input-adv-birth-day" />
-              <Input className="w-20" inputMode="numeric" placeholder="MM" maxLength={2} value={form.birthMonth} onChange={set("birthMonth")} data-testid="input-adv-birth-month" />
-              <Input className="w-28" inputMode="numeric" placeholder="YYYY" maxLength={4} value={form.birthYear} onChange={set("birthYear")} data-testid="input-adv-birth-year" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{t("cohortLabel")}</Label>
+                <Input value={form.cohort} onChange={set("cohort")} placeholder="2025" data-testid="input-adv-cohort" />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("birthdayLabel")}</Label>
+                <div className="flex gap-2">
+                  <Input className="w-20" inputMode="numeric" placeholder="DD" maxLength={2} value={form.birthDay} onChange={set("birthDay")} data-testid="input-adv-birth-day" />
+                  <Input className="w-20" inputMode="numeric" placeholder="MM" maxLength={2} value={form.birthMonth} onChange={set("birthMonth")} data-testid="input-adv-birth-month" />
+                  <Input className="w-28" inputMode="numeric" placeholder="YYYY" maxLength={4} value={form.birthYear} onChange={set("birthYear")} data-testid="input-adv-birth-year" />
+                </div>
+              </div>
             </div>
-          </div>
-
-          {/* Public clearance */}
-          <div className="flex items-start gap-2 rounded-lg border border-border p-3">
-            <Checkbox
-              id="adv-clearance"
-              checked={form.publicClearance}
-              onCheckedChange={(v) => setForm((f) => ({ ...f, publicClearance: v === true }))}
-              data-testid="checkbox-adv-clearance"
-            />
-            <div className="space-y-0.5">
-              <Label htmlFor="adv-clearance" className="cursor-pointer">{t("publicClearance")}</Label>
-              <p className="text-[11px] text-muted-foreground">{t("publicClearanceHint")}</p>
+            <div className="space-y-1">
+              <Label>{t("advisorEngagement")}</Label>
+              <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
             </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Gobi PIC</Label>
-            <PicChecklist value={form.gobiPics} onChange={(v) => setForm((f) => ({ ...f, gobiPics: v }))} />
-          </div>
+            <div className="flex items-start gap-2 rounded-lg border border-border p-3">
+              <Checkbox
+                id="adv-clearance"
+                checked={form.publicClearance}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, publicClearance: v === true }))}
+                data-testid="checkbox-adv-clearance"
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor="adv-clearance" className="cursor-pointer">{t("publicClearance")}</Label>
+                <p className="text-[11px] text-muted-foreground">{t("publicClearanceHint")}</p>
+              </div>
+            </div>
+          </FormSection>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-advisor">{t("cancel")}</Button>
@@ -879,6 +1013,33 @@ function AdvisorDetailDialog({
                       ))}
                     </div>
                   )}
+                  {/* v5.9 — mobile and WeChat are staff-only; the server nulls them for other roles */}
+                  {(a.mobile || a.wechatId) && (
+                    <div className="flex flex-wrap gap-2">
+                      {a.mobile && (
+                        <a
+                          href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
+                          data-testid="link-advisor-mobile"
+                        >
+                          <Phone className="h-3 w-3" /> {a.mobile}
+                        </a>
+                      )}
+                      {a.wechatId && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(a.wechatId ?? "");
+                            toast({ description: t("advisorWechatCopied") });
+                          }}
+                          data-testid="text-advisor-wechat"
+                        >
+                          <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {a.engagement && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground mb-1">{t("advisorEngagement")}</p>
@@ -896,9 +1057,16 @@ function AdvisorDetailDialog({
                 <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
               )}
 
+              {isStaff && (a.originStaff ?? []).length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("originStaffLabel")}</p>
+                  <p className="text-sm" data-testid="text-advisor-origin-staff">{(a.originStaff ?? []).join(", ")}</p>
+                </div>
+              )}
+
               {(a.gobiPics ?? []).length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">Gobi PIC</p>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("currentPicLabel")}</p>
                   <p className="text-sm">{(a.gobiPics ?? []).join(", ")}</p>
                 </div>
               )}
@@ -944,6 +1112,8 @@ export default function Advisors() {
   const [lifecycle, setLifecycle] = useState<string[]>([]);
   const [outreachOpen, setOutreachOpen] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "activity">("name");
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [collapsed, setCollapsed] = useState<string[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [showTags, setShowTags] = useState(true);
   const [showMomentum, setShowMomentum] = useState(true);
@@ -992,6 +1162,36 @@ export default function Advisors() {
       });
   }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, lifecycle, sortBy]);
 
+  // v5.9 — optional grouping of the filtered set. Sector tags can place an
+  // advisor in several groups; everything else is single-valued.
+  const groups = useMemo<AdvisorGroup[]>(() => {
+    if (groupBy === "none") return [{ key: "all", label: "", items: filtered }];
+    const buckets = new Map<string, { label: string; items: AdvisorWithRoles[] }>();
+    const push = (key: string, label: string, a: AdvisorWithRoles) => {
+      const b = buckets.get(key);
+      if (b) b.items.push(a);
+      else buckets.set(key, { label, items: [a] });
+    };
+    for (const a of filtered) {
+      if (groupBy === "pillar") push(a.pillar, t(`pillar_${a.pillar}` as any), a);
+      else if (groupBy === "track") push(a.track, t(`track_${a.track}` as any), a);
+      else if (groupBy === "lifecycle") push(a.lifecycleStatus, t(`lifecycle_${a.lifecycleStatus}` as any), a);
+      else if (groupBy === "cohort") push(a.cohort || "__none", a.cohort || t("groupUngrouped"), a);
+      else if (groupBy === "tag") {
+        const tags = a.tags ?? [];
+        if (tags.length === 0) push("__none", t("groupUngrouped"), a);
+        else for (const tg of tags) push(`tag-${tg.id}`, lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn, a);
+      }
+    }
+    return Array.from(buckets.entries())
+      .map(([key, v]) => ({ key, label: v.label, items: v.items }))
+      .sort((x, y) => {
+        if (x.key === "__none") return 1;
+        if (y.key === "__none") return -1;
+        return x.label.localeCompare(y.label);
+      });
+  }, [filtered, groupBy, lang, t]);
+
   const dkpOrgs = useMemo(
     () => (partnerships ?? []).filter((p) => p.isDomainKnowledgePartner === 1 && p.status === "approved")
       .sort((a, b) => a.nameEn.localeCompare(b.nameEn)),
@@ -1019,6 +1219,88 @@ export default function Advisors() {
 
   const displayName = (a: AdvisorWithRoles) => (lang === "cn" && a.nameCn ? a.nameCn : a.name);
   const primaryRole = (a: AdvisorWithRoles) => a.roles.find((r) => r.isPrimary === 1) ?? a.roles[0];
+  // v5.9 — one renderer shared by the ungrouped roster and every group section.
+  const renderRoster = (items: AdvisorWithRoles[]) =>
+    view === "grid" ? (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map((a) => {
+          const pr = primaryRole(a);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => navigate(`/advisors/${a.id}`)}
+              className="group relative rounded-xl border border-border bg-card/80 p-4 text-left backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[hsl(var(--gold))]/50 hover:shadow-lg"
+              data-testid={`card-advisor-${a.id}`}
+            >
+              {/* Lifecycle state anchors the card corner so it never competes with the sector tags */}
+              <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} className="absolute right-3 top-3" />
+              <div className="flex items-start gap-3">
+                <AdvisorAvatar a={a} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 pr-24">
+                    <p className="min-w-0 truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
+                    {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                  </div>
+                  {pr && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      {pr.title}{orgSuffix(pr)}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <PillarBadge pillar={a.pillar as Pillar} />
+                    {a.status === "pending" && (
+                      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
+                    )}
+                  </div>
+                  {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="divide-y divide-border rounded-xl border border-border bg-card/80 backdrop-blur">
+        {items.map((a) => {
+          const pr = primaryRole(a);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => navigate(`/advisors/${a.id}`)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
+              data-testid={`row-advisor-${a.id}`}
+            >
+              <AdvisorAvatar a={a} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold">{displayName(a)}</p>
+                  {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                  {a.status === "pending" && (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">{t("advisorPendingBadge")}</Badge>
+                  )}
+                </div>
+                {pr && (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {pr.title}{orgSuffix(pr)}
+                  </p>
+                )}
+              </div>
+              <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[40%]">
+                {showTags && <TagBadges tags={a.tags} />}
+                <PillarBadge pillar={a.pillar as Pillar} />
+              </div>
+              {/* Lifecycle gets its own trailing column so the column reads top to bottom */}
+              <div className="flex w-28 shrink-0 justify-end">
+                <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+
   const orgSuffix = (r: { title: string; organization: string | null }) => {
     if (!r.organization) return "";
     const base = r.organization.split(/[(\uFF08\u2014\u2013]/)[0].trim().toLowerCase();
@@ -1110,6 +1392,19 @@ export default function Advisors() {
               {canSubmit && <SelectItem value="activity">{t("sortByActivity")}</SelectItem>}
             </SelectContent>
           </Select>
+          <Select value={groupBy} onValueChange={(v) => { setGroupBy(v as GroupBy); setCollapsed([]); }}>
+            <SelectTrigger className="h-9 w-48" data-testid="select-group-by">
+              <span className="mr-1 text-xs text-muted-foreground">{t("groupByLabel")}:</span> <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t("groupByNone")}</SelectItem>
+              <SelectItem value="pillar">{t("groupByPillar")}</SelectItem>
+              <SelectItem value="tag">{t("groupByTag")}</SelectItem>
+              <SelectItem value="lifecycle">{t("groupByLifecycle")}</SelectItem>
+              <SelectItem value="track">{t("groupByTrack")}</SelectItem>
+              <SelectItem value="cohort">{t("groupByCohort")}</SelectItem>
+            </SelectContent>
+          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9" data-testid="button-display-options">
@@ -1130,84 +1425,39 @@ export default function Advisors() {
           </DropdownMenu>
         </div>
 
-        {/* Grid */}
+        {/* Roster — grid or list, optionally grouped */}
         {isLoading ? (
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
           </div>
         ) : filtered.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground" data-testid="text-advisors-empty">{t("advisorEmpty")}</p>
-        ) : view === "grid" ? (
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((a) => {
-              const pr = primaryRole(a);
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => navigate(`/advisors/${a.id}`)}
-                  className="group rounded-xl border border-border bg-card/80 p-4 text-left backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[hsl(var(--gold))]/50 hover:shadow-lg"
-                  data-testid={`card-advisor-${a.id}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <AdvisorAvatar a={a} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
-                        {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
-                      </div>
-                      {pr && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                          {pr.title}{orgSuffix(pr)}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <PillarBadge pillar={a.pillar as Pillar} />
-                        <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
-                        {a.status === "pending" && (
-                          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
-                        )}
-                      </div>
-                      {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+        ) : groupBy === "none" ? (
+          <div className="mt-6">{renderRoster(filtered)}</div>
         ) : (
-          <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-card/80 backdrop-blur">
-            {filtered.map((a) => {
-              const pr = primaryRole(a);
+          <div className="mt-6 space-y-3">
+            {groups.map((g) => {
+              const isOpen = !collapsed.includes(g.key);
               return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => navigate(`/advisors/${a.id}`)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
-                  data-testid={`row-advisor-${a.id}`}
+                <Collapsible
+                  key={g.key}
+                  open={isOpen}
+                  onOpenChange={(o) => setCollapsed((c) => (o ? c.filter((k) => k !== g.key) : [...c, g.key]))}
+                  data-testid={`group-${g.key}`}
                 >
-                  <AdvisorAvatar a={a} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="min-w-0 truncate text-sm font-semibold">{displayName(a)}</p>
-                      {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
-                      {a.status === "pending" && (
-                        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">{t("advisorPendingBadge")}</Badge>
-                      )}
-                    </div>
-                    {pr && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {pr.title}{orgSuffix(pr)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[45%]">
-                    {showTags && <TagBadges tags={a.tags} />}
-                    <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
-                    <PillarBadge pillar={a.pillar as Pillar} />
-                  </div>
-                </button>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-left transition-colors hover:bg-secondary/50"
+                      data-testid={`button-group-toggle-${g.key}`}
+                    >
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !isOpen && "-rotate-90")} />
+                      <span className="text-sm font-semibold">{g.label}</span>
+                      <span className="text-xs text-muted-foreground" data-testid={`text-group-count-${g.key}`}>{g.items.length}</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">{renderRoster(g.items)}</CollapsibleContent>
+                </Collapsible>
               );
             })}
           </div>

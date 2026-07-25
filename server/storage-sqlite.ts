@@ -161,6 +161,11 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "letter_issued_at", "letter_issued_at TEXT");
   ensureColumn("advisors", "signed_back_at", "signed_back_at TEXT");
   try { sqlite.exec(`UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`); } catch {}
+  // ---- v5.9 advisor CRM basics + origin staff ----
+  ensureColumn("advisors", "mobile", "mobile TEXT");
+  ensureColumn("advisors", "wechat_id", "wechat_id TEXT");
+  ensureColumn("advisors", "origin_staff", "origin_staff TEXT");
+  try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}
   sqlite.exec(`CREATE TABLE IF NOT EXISTS sector_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name_en TEXT NOT NULL,

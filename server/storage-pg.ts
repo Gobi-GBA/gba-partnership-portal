@@ -152,6 +152,11 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS signed_back_at TEXT`,
   // Backfill: any already-approved advisor is considered onboarded
   `UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`,
+  // ---- v5.9 advisor CRM basics + origin staff ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS mobile TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS wechat_id TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS origin_staff JSONB`,
+  `UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
     id SERIAL PRIMARY KEY,
     name_en TEXT NOT NULL,

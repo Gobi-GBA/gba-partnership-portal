@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword } from "./storage.js";
-import { mailEnabled, sendMail, sendOutreach, registrationEmail, resetEmail } from "./mailer.js";
+import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
@@ -982,7 +982,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
     isStaffUser(user)
       ? a
-      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null };
+      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, wechatId: null, originStaff: null };
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
   async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
@@ -1076,6 +1076,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       birthDay: data.birthDay ?? null,
       birthMonth: data.birthMonth ?? null,
       birthYear: data.birthYear ?? null,
+      mobile: data.mobile ?? null,
+      wechatId: data.wechatId ?? null,
+      originStaff: data.originStaff ?? data.gobiPics ?? null, // default: origin = initial PIC
       lifecycleStatus: data.lifecycleStatus ?? "proposed",
       onboardedAt: data.lifecycleStatus === "onboarded" ? new Date().toISOString().slice(0, 10) : null,
       approvalEmailedAt: null,
@@ -1247,7 +1250,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const roles = await storage.listAdvisorRoles();
     const rolesBy = new Map<number, AdvisorRole[]>();
     for (const r of roles) { const l = rolesBy.get(r.advisorId) ?? []; l.push(r); rolesBy.set(r.advisorId, l); }
-    const header = ["Name (EN)", "Name (CN)", "Lifecycle status", "Type", "Track", "Pillar", "Primary title", "Primary organization", "Emails", "Domains", "Gobi PIC", "Cohort", "Onboarded date", "Profile URL"];
+    const header = ["Name (EN)", "Name (CN)", "Lifecycle status", "Type", "Track", "Pillar", "Primary title", "Primary organization", "Emails", "Mobile", "WeChat ID", "Domains", "Origin staff", "Gobi PIC", "Cohort", "Onboarded date", "Profile URL"];
     const lines = [csvRow(header)];
     advisors.sort((a, b) => a.name.localeCompare(b.name));
     for (const a of advisors) {
@@ -1256,7 +1259,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       lines.push(csvRow([
         a.name, a.nameCn ?? "", a.lifecycleStatus, a.advisorType, a.track, a.pillar,
         primary?.title ?? "", primary?.organization ?? "",
-        (a.emails ?? []).join("; "), a.domains ?? "", (a.gobiPics ?? []).join("; "),
+        (a.emails ?? []).join("; "), a.mobile ?? "", a.wechatId ?? "", a.domains ?? "",
+        (a.originStaff ?? []).join("; "), (a.gobiPics ?? []).join("; "),
         a.cohort ?? "", a.onboardedAt ?? "", a.profileUrl ?? a.linkedinUrl ?? "",
       ]));
     }
@@ -1285,14 +1289,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send("\uFEFF" + lines.join("\n"));
   });
 
-  // ---------- Team scoreboard / PIC matrix (v5.8) ----------
-  // Counts partners & advisors by Gobi PIC. Time factor = onboarded date for advisors,
-  // start date for partners. Non-admin staff see only their own row.
-  app.get("/api/scoreboard", requireAuth("submit"), async (req: AuthedRequest, res) => {
-    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
-    const isAdmin = req.user!.role === "admin";
-    const from = typeof req.query.from === "string" ? req.query.from : ""; // YYYY-MM-DD inclusive
-    const to = typeof req.query.to === "string" ? req.query.to : "";       // YYYY-MM-DD inclusive
+  // ---------- Team scoreboard (v5.9: staff-list base, admin-only) ----------
+  // Rows are anchored to team accounts so PIC label variants ("Fred" vs
+  // "Fred Li") roll up to one person. PIC labels that match no account are
+  // kept as "former / unmatched" rows so departed-staff credit is never lost.
+  type ScoreRow = {
+    name: string; userId: number | null; role: string | null; isFormer: boolean;
+    partners: number; partnersInPeriod: number;
+    advOriginated: number; advManaging: number;
+    advProposed: number; advOnboarded: number; advTerminated: number;
+    advOnboardedInPeriod: number; advOriginatedInPeriod: number;
+  };
+  type LedgerAdvisor = { id: number; name: string; nameCn: string | null; lifecycleStatus: string; onboardedAt: string | null; relation: "originated" | "managing" | "both" };
+  type LedgerPartner = { id: number; nameEn: string; nameCn: string | null; category: string; startDate: string | null; collabLevel: number };
+
+  async function buildScoreboard(from: string, to: string): Promise<{ rows: ScoreRow[]; ledgers: Map<string, { advisors: LedgerAdvisor[]; partners: LedgerPartner[] }> }> {
     const inRange = (d: string | null | undefined): boolean => {
       if (!from && !to) return true;
       if (!d) return false;
@@ -1301,51 +1312,146 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (to && day > to) return false;
       return true;
     };
+    const staff = (await storage.listUsers()).filter((u) => u.status === "approved" && (u.role === "admin" || u.role === "staff"));
+    const byFull = new Map<string, User>();
+    const byFirst = new Map<string, User | null>(); // null = ambiguous first name
+    staff.forEach((u) => {
+      byFull.set(u.name.trim().toLowerCase(), u);
+      const first = u.name.trim().split(/\s+/)[0]?.toLowerCase();
+      if (first) byFirst.set(first, byFirst.has(first) ? null : u);
+    });
+    // Resolve a free-text PIC label to a canonical staff account (or keep as former/unmatched).
+    const resolve = (label: string): { name: string; user: User | null } => {
+      const trimmed = label.trim();
+      if (!trimmed) return { name: "", user: null };
+      const full = byFull.get(trimmed.toLowerCase());
+      if (full) return { name: full.name, user: full };
+      const first = byFirst.get(trimmed.toLowerCase());
+      if (first) return { name: first.name, user: first };
+      return { name: trimmed, user: null };
+    };
+    const rows = new Map<string, ScoreRow>();
+    const ledgers = new Map<string, { advisors: LedgerAdvisor[]; partners: LedgerPartner[] }>();
+    const ensure = (name: string, user: User | null): ScoreRow => {
+      if (!rows.has(name)) {
+        rows.set(name, {
+          name, userId: user?.id ?? null, role: user?.role ?? null, isFormer: !user,
+          partners: 0, partnersInPeriod: 0, advOriginated: 0, advManaging: 0,
+          advProposed: 0, advOnboarded: 0, advTerminated: 0,
+          advOnboardedInPeriod: 0, advOriginatedInPeriod: 0,
+        });
+        ledgers.set(name, { advisors: [], partners: [] });
+      }
+      return rows.get(name)!;
+    };
+    // Every current staff member gets a base row even with zero records.
+    staff.forEach((u) => ensure(u.name, u));
+
     const advisors = (await storage.listAdvisors()).filter((a) => a.status === "approved");
     const partners = (await storage.listPartnerships()).filter((p) => p.status === "approved");
-    // Build a row per staff member found on any PIC field.
-    const rows = new Map<string, {
-      pic: string; partners: number; advisorsTotal: number;
-      advProposed: number; advOnboarded: number; advTerminated: number;
-      advOnboardedInPeriod: number; partnersInPeriod: number;
-    }>();
-    const ensure = (pic: string) => {
-      if (!rows.has(pic)) rows.set(pic, { pic, partners: 0, advisorsTotal: 0, advProposed: 0, advOnboarded: 0, advTerminated: 0, advOnboardedInPeriod: 0, partnersInPeriod: 0 });
-      return rows.get(pic)!;
-    };
-    for (const a of advisors) {
-      for (const pic of a.gobiPics ?? []) {
-        const r = ensure(pic);
-        r.advisorsTotal++;
-        if (a.lifecycleStatus === "proposed") r.advProposed++;
-        else if (a.lifecycleStatus === "onboarded") r.advOnboarded++;
-        else if (a.lifecycleStatus === "terminated") r.advTerminated++;
-        if (a.lifecycleStatus === "onboarded" && inRange(a.onboardedAt)) r.advOnboardedInPeriod++;
+
+    advisors.forEach((a) => {
+      const managing = new Set<string>();
+      const originated = new Set<string>();
+      (a.gobiPics ?? []).forEach((l) => { const r = resolve(l); if (r.name) managing.add(r.name); });
+      (a.originStaff ?? []).forEach((l) => { const r = resolve(l); if (r.name) originated.add(r.name); });
+      managing.forEach((name) => {
+        const row = ensure(name, byFull.get(name.toLowerCase()) ?? null);
+        row.advManaging++;
+        if (a.lifecycleStatus === "proposed") row.advProposed++;
+        else if (a.lifecycleStatus === "onboarded") row.advOnboarded++;
+        else if (a.lifecycleStatus === "terminated") row.advTerminated++;
+        if (a.lifecycleStatus === "onboarded" && inRange(a.onboardedAt)) row.advOnboardedInPeriod++;
+      });
+      originated.forEach((name) => {
+        const row = ensure(name, byFull.get(name.toLowerCase()) ?? null);
+        row.advOriginated++;
+        if (a.lifecycleStatus === "onboarded" && inRange(a.onboardedAt)) row.advOriginatedInPeriod++;
+      });
+      const all = new Set<string>(); managing.forEach((n) => all.add(n)); originated.forEach((n) => all.add(n));
+      all.forEach((name) => {
+        const relation: "originated" | "managing" | "both" =
+          managing.has(name) && originated.has(name) ? "both" : managing.has(name) ? "managing" : "originated";
+        ledgers.get(name)!.advisors.push({ id: a.id, name: a.name, nameCn: a.nameCn, lifecycleStatus: a.lifecycleStatus, onboardedAt: a.onboardedAt, relation });
+      });
+    });
+
+    partners.forEach((p) => {
+      const credited = new Set<string>();
+      (p.picNames ?? []).forEach((l) => { const r = resolve(l); if (r.name) credited.add(r.name); });
+      credited.forEach((name) => {
+        const row = ensure(name, byFull.get(name.toLowerCase()) ?? null);
+        row.partners++;
+        if (inRange(p.startDate ?? p.createdAt)) row.partnersInPeriod++;
+        ledgers.get(name)!.partners.push({ id: p.id, nameEn: p.nameEn, nameCn: p.nameCn, category: p.category, startDate: p.startDate ?? null, collabLevel: p.collabLevel });
+      });
+    });
+
+    const list = Array.from(rows.values()).sort((a, b) =>
+      (Number(a.isFormer) - Number(b.isFormer)) ||
+      (b.advOnboardedInPeriod - a.advOnboardedInPeriod) ||
+      (b.advManaging - a.advManaging) ||
+      (b.partners - a.partners) ||
+      a.name.localeCompare(b.name));
+    list.forEach((r) => {
+      const l = ledgers.get(r.name);
+      if (l) {
+        l.advisors.sort((x, y) => (y.onboardedAt ?? "").localeCompare(x.onboardedAt ?? "") || x.name.localeCompare(y.name));
+        l.partners.sort((x, y) => (y.collabLevel - x.collabLevel) || x.nameEn.localeCompare(y.nameEn));
       }
-    }
-    for (const p of partners) {
-      for (const pic of p.picNames ?? []) {
-        const r = ensure(pic);
-        r.partners++;
-        if (inRange(p.startDate ?? p.createdAt)) r.partnersInPeriod++;
-      }
-    }
-    let list = Array.from(rows.values()).sort((a, b) =>
-      (b.advOnboardedInPeriod - a.advOnboardedInPeriod) || (b.advisorsTotal - a.advisorsTotal) || a.pic.localeCompare(b.pic));
-    // Non-admins only see their own contribution.
-    if (!isAdmin) list = list.filter((r) => r.pic === req.user!.name);
-    res.json({ rows: list, isAdmin, from, to });
+    });
+    return { rows: list, ledgers };
+  }
+
+  app.get("/api/scoreboard", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : ""; // YYYY-MM-DD inclusive
+    const to = typeof req.query.to === "string" ? req.query.to : "";       // YYYY-MM-DD inclusive
+    const { rows } = await buildScoreboard(from, to);
+    res.json({ rows, isAdmin: true, from, to });
+  });
+
+  // Click-through ledger: every record credited to one scoreboard row.
+  app.get("/api/scoreboard/ledger", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const name = typeof req.query.name === "string" ? req.query.name.trim() : "";
+    if (!name) return res.status(400).json({ message: "Missing name" });
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    const { ledgers } = await buildScoreboard(from, to);
+    const ledger = ledgers.get(name);
+    if (!ledger) return res.status(404).json({ message: "No such row" });
+    res.json({ name, from, to, ...ledger });
+  });
+
+  app.get("/api/export/scoreboard.csv", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    const { rows } = await buildScoreboard(from, to);
+    const header = ["Staff", "Role", "Status", "Partners", "Partners in period", "Advisors originated", "Advisors managing", "Proposed", "Onboarded", "Terminated", "Onboarded in period", "Originated in period"];
+    const lines = [csvRow(header)];
+    rows.forEach((r) => {
+      lines.push(csvRow([
+        r.name, r.role ?? "", r.isFormer ? "former/unmatched" : "active",
+        r.partners, r.partnersInPeriod, r.advOriginated, r.advManaging,
+        r.advProposed, r.advOnboarded, r.advTerminated, r.advOnboardedInPeriod, r.advOriginatedInPeriod,
+      ]));
+    });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="gobi-scoreboard-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send("\uFEFF" + lines.join("\n"));
   });
 
   // ---------- CRM outreach to advisors (v5.8) ----------
   // Compose a per-advisor draft the caller reviews before sending. Sending is
   // done one advisor at a time (confirm-before-send on the client), either via
   // the browser mail client (mailto, built client-side) or the server SMTP.
-  const OUTREACH_TEMPLATES: Record<string, { subject: string; body: (name: string) => string }> = {
+  // v5.9 — single editable template with placeholders. The client edits the
+  // subject/body ONCE; {{name}}, {{first_name}}, {{organization}} are resolved
+  // per recipient (live preview client-side, defensively re-resolved on send).
+  const OUTREACH_TEMPLATES: Record<string, { subject: string; body: string }> = {
     onboarding_invite: {
       subject: "Invitation to join the Gobi Advisory Network",
-      body: (name) =>
-`Dear ${name},
+      body:
+`Dear {{name}},
 
 On behalf of Gobi Partners, it is our pleasure to invite you to join the Gobi Advisory Network (Global). This network connects universities, academics, and industry experts to foster the growth of technology startups with positive global impact.
 
@@ -1366,8 +1472,8 @@ www.gobi.vc`,
     },
     general_update: {
       subject: "An update from Gobi Partners",
-      body: (name) =>
-`Dear ${name},
+      body:
+`Dear {{name}},
 
 Thank you for your continued support of the Gobi Advisory Network.
 
@@ -1379,6 +1485,16 @@ Managing Director, Gobi Partners
 www.gobi.vc`,
     },
   };
+  // {{first_name}} helper — skip honorifics so "Prof. Nancy Kwan" → "Nancy".
+  const firstNameOf = (full: string): string => {
+    const parts = full.trim().split(/\s+/).filter((p) => !/^(prof\.?|dr\.?|mr\.?|mrs\.?|ms\.?|ir\.?|sir|dato'?|tan\s?sri)$/i.test(p));
+    return parts[0] ?? full.trim();
+  };
+  const fillPlaceholders = (text: string, r: { name: string; firstName: string; organization: string }) =>
+    text
+      .replace(/\{\{\s*name\s*\}\}/gi, r.name)
+      .replace(/\{\{\s*first_name\s*\}\}/gi, r.firstName)
+      .replace(/\{\{\s*organization\s*\}\}/gi, r.organization);
 
   app.post("/api/advisors/outreach/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
     if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
@@ -1387,20 +1503,28 @@ www.gobi.vc`,
       template: z.string().optional(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid request" });
-    const tpl = OUTREACH_TEMPLATES[parsed.data.template ?? "onboarding_invite"] ?? OUTREACH_TEMPLATES.onboarding_invite;
-    const drafts: { advisorId: number; name: string; to: string[]; subject: string; body: string }[] = [];
+    const key = parsed.data.template ?? "onboarding_invite";
+    const tpl = OUTREACH_TEMPLATES[key] ?? OUTREACH_TEMPLATES.onboarding_invite;
+    const rolesByAdvisor = new Map<number, AdvisorRole[]>();
+    (await storage.listAdvisorRoles()).forEach((r) => {
+      const list = rolesByAdvisor.get(r.advisorId) ?? [];
+      list.push(r);
+      rolesByAdvisor.set(r.advisorId, list);
+    });
+    const recipients: { advisorId: number; name: string; firstName: string; organization: string; to: string[] }[] = [];
     for (const idv of parsed.data.advisorIds) {
       const a = await storage.getAdvisor(idv);
       if (!a) continue;
-      drafts.push({
+      const roles = (rolesByAdvisor.get(a.id) ?? []).sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+      recipients.push({
         advisorId: a.id,
         name: a.name,
+        firstName: firstNameOf(a.name),
+        organization: roles[0]?.organization ?? "",
         to: a.emails ?? [],
-        subject: tpl.subject,
-        body: tpl.body(a.name),
       });
     }
-    res.json({ drafts, mailEnabled });
+    res.json({ template: { key, subject: tpl.subject, body: tpl.body }, recipients, mailEnabled });
   });
 
   app.post("/api/advisors/outreach/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
@@ -1415,9 +1539,23 @@ www.gobi.vc`,
     if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured. Use the mail-client option instead." });
     const advisor = await storage.getAdvisor(parsed.data.advisorId);
     if (!advisor) return res.status(404).json({ message: "Advisor not found" });
-    const ok = await sendOutreach(parsed.data.to, parsed.data.subject, parsed.data.body, {
-      fromName: "Fred Li · Gobi Partners",
-      replyTo: "fred@gobi.vc",
+    // Defensively resolve any placeholders the client left in, then send with
+    // the Gobi-branded HTML wrapper (v5.9). Sender identity = signed-in staff.
+    const roles0 = (await storage.listAdvisorRoles())
+      .filter((r) => r.advisorId === advisor.id)
+      .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    const rctx = {
+      name: advisor.name,
+      firstName: firstNameOf(advisor.name),
+      organization: roles0[0]?.organization ?? "",
+    };
+    const subject = fillPlaceholders(parsed.data.subject, rctx);
+    const body = fillPlaceholders(parsed.data.body, rctx);
+    const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
+    const ok = await sendOutreach(parsed.data.to, subject, outreachHtml(body), {
+      fromName: `${req.user!.name} · Gobi Partners`,
+      replyTo: senderEmail,
+      isHtml: true,
     });
     if (!ok) return res.status(502).json({ message: "Send failed" });
     // Log the outreach into the advisor's activity feed.
@@ -1426,7 +1564,7 @@ www.gobi.vc`,
         advisorId: advisor.id,
         date: new Date().toISOString().slice(0, 10),
         type: "email",
-        note: `[CRM] Sent "${parsed.data.subject}" to ${parsed.data.to}`,
+        note: `[CRM] Sent "${subject}" to ${parsed.data.to}`,
         createdBy: req.user!.id,
         createdByName: req.user!.name,
         createdAt: new Date().toISOString(),

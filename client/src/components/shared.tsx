@@ -307,7 +307,8 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
-    { href: "/scoreboard", label: t("sbNavLabel"), show: user?.role === "admin" || user?.role === "staff" },
+    // v5.9 — the scoreboard endpoint is admin-only, so the nav item follows suit.
+    { href: "/scoreboard", label: t("sbNavLabel"), show: user?.role === "admin" },
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
@@ -635,16 +636,25 @@ export function PicAvatar({ name, size = "sm", withName = false }: { name?: stri
 }
 
 // Checklist picker for multiple Gobi PICs, grouped by office
-export function PicChecklist({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function PicChecklist({
+  value, onChange, testid = "button-pic-checklist", optionPrefix = "pic", placeholderKey = "selectPics",
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  /** Overrides so several checklists can coexist in one form (v5.9: origin staff + PIC). */
+  testid?: string;
+  optionPrefix?: string;
+  placeholderKey?: "selectPics" | "selectOriginStaff";
+}) {
   const { t } = useLang();
   const toggle = (name: string) =>
     onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="w-full justify-between font-normal" data-testid="button-pic-checklist">
+        <Button type="button" variant="outline" className="w-full justify-between font-normal" data-testid={testid}>
           <span className="truncate text-left">
-            {value.length > 0 ? value.join(", ") : t("selectPics")}
+            {value.length > 0 ? value.join(", ") : t(placeholderKey)}
           </span>
           <span className="ml-2 shrink-0 text-xs text-muted-foreground">
             {value.length > 0 ? `${value.length} ${t("picsSelected")}` : ""}
@@ -671,7 +681,7 @@ export function PicChecklist({ value, onChange }: { value: string[]; onChange: (
                   <label
                     key={s.name}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-muted"
-                    data-testid={`check-pic-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                    data-testid={`check-${optionPrefix}-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                   >
                     <Checkbox checked={value.includes(s.name)} onCheckedChange={() => toggle(s.name)} />
                     <span className="min-w-0 flex-1 truncate">{s.name}</span>

@@ -9,9 +9,42 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.8";
+export const CURRENT_VERSION = "5.9";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.9",
+    date: "2026-07-25",
+    by: "Fred Li",
+    titleEn: "Admin scoreboard with ledger, advisor CRM fields, grouping and a branded outreach editor",
+    titleCn: "管理员专属积分榜与明细、顾问 CRM 字段、分组视图与品牌化联络编辑器",
+    itemsEn: [
+      "The scoreboard is now open to admin accounts only and is hidden from the menu for everyone else",
+      "Scoreboard rows are anchored to team accounts, so name variants roll up to one person and colleagues who have left keep their credit under a former-staff label",
+      "New scoreboard columns separate advisors originated from advisors managed, with proposed, onboarded and terminated shown underneath",
+      "Scoreboard filters add a show-former-staff toggle and a role filter, and the whole table can be exported to CSV for the selected period",
+      "Selecting a scoreboard row opens a ledger listing every advisor and partner credited to that person, with an originated or managing marker on each advisor",
+      "The advisor form is reordered into six labelled sections — source, contact, identity, roles, classification and internal — so the profile link and auto-sync come first",
+      "Advisors now carry a mobile number with a country-code picker and a WeChat ID, both staff-visible only and shown in the contact block of the detail page",
+      "New origin staff field records who sourced an advisor as a permanent entry, kept after the colleague leaves, alongside the current PIC",
+      "New group-by selector on the advisors page groups cards and rows by pillar, sector tag, lifecycle status, track or cohort in collapsible sections",
+      "The lifecycle pill moved to the top-right corner of each advisor card in an outlined dot style so it is no longer mistaken for a sector tag",
+      "The outreach tool is now a three-step editor — edit one template with placeholders, preview the resolved message per recipient, then send — with Gobi Calibri email styling",
+    ],
+    itemsCn: [
+      "积分榜现仅向管理员账号开放，其余账号菜单中不再显示",
+      "积分榜以团队账号为基准，姓名写法差异自动归并到同一人，已离职同事的贡献以“已离职·未匹配”标签保留",
+      "积分榜新增列将引荐顾问与在管顾问分开统计，下方附带提名中、已加入与已终止的拆分",
+      "积分榜筛选新增“显示离职员工”开关与角色筛选，并可按所选期间将整张表导出为 CSV",
+      "点选积分榜中的任一行可打开明细，列出计入该同事的全部顾问与合作方，每位顾问标注引荐或在管",
+      "顾问表单重排为六个分区 — 来源、联系方式、身份、职务、分类与内部 — 主页链接与自动同步置于最前",
+      "顾问新增带国家/地区代码选择的手机号与微信号，仅同事可见，并在详情页联系区块中显示",
+      "新增“引荐人”字段永久记录顾问的引荐来源，人员离职后仍保留，与现任对接人并列",
+      "顾问页新增分组选择器，可按重点领域、行业标签、生命周期状态、背景类型或批次将卡片与列表分组，分区可折叠",
+      "生命周期标签移至顾问卡片右上角，改为带状态圆点的描边样式，不再与行业标签混淆",
+      "联络工具改为三步编辑器 — 编辑单一模板并使用占位符、按收件人预览实际内容、再行发送 — 邮件采用戈壁 Calibri 品牌样式",
+    ],
+  },
   {
     version: "5.8",
     date: "2026-07-25",

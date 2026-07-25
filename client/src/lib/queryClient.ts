@@ -2,7 +2,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 export const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
-// Auth token kept in memory (cookies/localStorage are blocked in the sandboxed iframe)
+// Auth token kept in memory (cookies and browser storage are blocked in the sandboxed iframe)
 let authToken: string | null = null;
 export function getAuthToken() {
   return authToken;

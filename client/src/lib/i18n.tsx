@@ -694,6 +694,82 @@ const dict = {
   sbOwnOnly: { en: "Showing your own contribution", cn: "仅显示您的贡献" },
   sbNavLabel: { en: "Scoreboard", cn: "积分榜" },
   sbStaffOnly: { en: "The scoreboard is available to staff accounts.", cn: "积分榜仅向员工账号开放。" },
+
+  // v5.9 — admin-only staff scoreboard, ledger and export
+  sbAdminOnly: { en: "The scoreboard is available to admin accounts.", cn: "积分榜仅向管理员账号开放。" },
+  sbStaffColumn: { en: "Staff", cn: "员工" },
+  sbFormerBadge: { en: "Former", cn: "已离职·未匹配" },
+  sbOriginated: { en: "Advisors originated", cn: "引荐顾问" },
+  sbManaging: { en: "Advisors managing", cn: "在管顾问" },
+  sbOriginatedPeriod: { en: "Originated (period)", cn: "引荐(期间)" },
+  sbShowFormer: { en: "Show former staff", cn: "显示离职员工" },
+  sbRoleFilter: { en: "Role", cn: "角色" },
+  sbRoleAll: { en: "All roles", cn: "全部角色" },
+  sbRoleAdmin: { en: "Admin", cn: "管理员" },
+  sbRoleStaff: { en: "Staff", cn: "员工" },
+  sbRowHint: { en: "Select a row to open the underlying records.", cn: "点击行查看对应的明细记录。" },
+  exportScoreboardCsv: { en: "Export scoreboard (CSV)", cn: "导出积分榜(CSV)" },
+  sbLedgerTitle: { en: "Contribution ledger", cn: "贡献明细" },
+  sbLedgerHint: { en: "Every record credited to this person for the selected period.", cn: "该同事在所选期间内的全部记录。" },
+  sbLedgerAdvisors: { en: "Advisors", cn: "顾问" },
+  sbLedgerPartners: { en: "Partners", cn: "合作方" },
+  sbLedgerEmpty: { en: "No records credited.", cn: "暂无记录。" },
+  sbLedgerFailed: { en: "Could not load the ledger.", cn: "无法加载明细。" },
+  sbRelOriginated: { en: "Originated", cn: "引荐" },
+  sbRelManaging: { en: "Managing", cn: "在管" },
+  sbRelBoth: { en: "Originated and managing", cn: "引荐并在管" },
+  sbLedgerLevel: { en: "Level", cn: "合作等级" },
+
+  // v5.9 — advisor form sections
+  advSectionSource: { en: "Source", cn: "来源" },
+  advSectionContact: { en: "Contact", cn: "联系方式" },
+  advSectionIdentity: { en: "Identity", cn: "身份" },
+  advSectionRoles: { en: "Roles", cn: "职务" },
+  advSectionClassification: { en: "Classification", cn: "分类" },
+  advSectionInternal: { en: "Internal", cn: "内部" },
+
+  // v5.9 — CRM contact fields
+  advisorMobile: { en: "Mobile", cn: "手机" },
+  advisorMobileCc: { en: "Country code", cn: "国家/地区代码" },
+  advisorMobileHint: { en: "Pick the country code, then type the number.", cn: "先选择国家/地区代码，再填写号码。" },
+  advisorWechat: { en: "WeChat ID", cn: "微信号" },
+  advisorWechatCopied: { en: "WeChat ID copied", cn: "微信号已复制" },
+
+  // v5.9 — origin staff vs current PIC
+  originStaffLabel: { en: "Origin staff", cn: "引荐人" },
+  originStaffHint: {
+    en: "Who sourced this advisor — permanent record, kept after the colleague leaves. Left empty on creation, the chosen PICs are used.",
+    cn: "引荐来源，人员离职后保留。新建时留空则默认使用所选对接人。",
+  },
+  currentPicLabel: { en: "Current PIC", cn: "现任对接人" },
+  selectOriginStaff: { en: "Select origin staff", cn: "选择引荐人" },
+
+  // v5.9 — group by
+  groupByLabel: { en: "Group by", cn: "分组" },
+  groupByNone: { en: "None", cn: "不分组" },
+  groupByPillar: { en: "Pillar", cn: "重点领域" },
+  groupByTag: { en: "Sector tag", cn: "行业标签" },
+  groupByLifecycle: { en: "Lifecycle status", cn: "生命周期状态" },
+  groupByTrack: { en: "Track", cn: "背景类型" },
+  groupByCohort: { en: "Cohort", cn: "批次" },
+  groupUngrouped: { en: "Ungrouped", cn: "未分组" },
+
+  // v5.9 — outreach editor
+  outreachStepTemplate: { en: "Template and message", cn: "模板与内容" },
+  outreachStepPreview: { en: "Preview", cn: "预览" },
+  outreachStepSend: { en: "Send", cn: "发送" },
+  outreachPlaceholderHint: { en: "Placeholders are filled per recipient.", cn: "占位符将按收件人自动填充。" },
+  outreachInsertPlaceholder: { en: "Insert placeholder", cn: "插入占位符" },
+  outreachNext: { en: "Next", cn: "下一步" },
+  outreachPrev: { en: "Back", cn: "上一步" },
+  outreachPreviewFor: { en: "Preview for", cn: "预览对象" },
+  outreachSummary: { en: "{n} recipients · {t}", cn: "{n} 位收件人 · {t}" },
+  outreachSendAll: { en: "Send all", cn: "全部发送" },
+  outreachSendProgress: { en: "Sent {a} of {b}", cn: "已发送 {a}/{b}" },
+  outreachFailedRow: { en: "Failed", cn: "发送失败" },
+  outreachToLabel: { en: "To", cn: "收件地址" },
+  outreachResolvedBody: { en: "Resolved message", cn: "实际发送内容" },
+  outreachNoRecipients: { en: "No recipients with an email address.", cn: "没有可用邮箱的收件人。" },
 } as const;
 
 export type DictKey = keyof typeof dict;
