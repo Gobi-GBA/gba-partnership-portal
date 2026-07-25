@@ -91,6 +91,7 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS photos JSONB`,
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS lp_status TEXT NOT NULL DEFAULT 'na'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_ir INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_dev INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_dev = 1 WHERE email = 'fred@gobi.vc'`,
@@ -379,7 +380,7 @@ export function createPgStorage(): IStorage {
           User,
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-          | "resetTokenHash" | "resetExpires"
+          | "resetTokenHash" | "resetExpires" | "mustChangePassword"
         >
       >
     ) {

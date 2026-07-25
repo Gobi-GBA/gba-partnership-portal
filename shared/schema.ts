@@ -27,6 +27,7 @@ export const users = sqliteTable("users", {
   resetTokenHash: text("reset_token_hash"), // sha256 of the emailed reset token
   resetExpires: text("reset_expires"), // ISO timestamp
   editRequestedAt: text("edit_requested_at"), // ISO timestamp — viewer asked an admin for edit rights
+  mustChangePassword: integer("must_change_password").notNull().default(0), // 0 | 1 — set by admin force-reset; cleared on next password change
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

@@ -21,6 +21,7 @@ export const usersPg = pgTable("users", {
   resetTokenHash: text("reset_token_hash"),
   resetExpires: text("reset_expires"),
   editRequestedAt: text("edit_requested_at"),
+  mustChangePassword: integer("must_change_password").notNull().default(0),
 });
 
 export const sessionsPg = pgTable("sessions", {

@@ -153,25 +153,73 @@ async function fetchPageText(url: string): Promise<string | null> {
   }
 }
 
-// Fetch a page and return both the visible text and a best-guess portrait photo URL.
-// Prefers Open Graph / Twitter card images, then a prominent profile/headshot <img>.
-async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null }> {
+// Fetch a page and return the visible text, a best-guess portrait photo URL, and
+// the scored list of image candidates (for AI-assisted portrait selection).
+async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null; photoCandidates: ImageCandidate[] }> {
   try {
     const resp = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
       signal: AbortSignal.timeout(10_000),
       redirect: "follow",
     });
-    if (!resp.ok) return { text: null, photoUrl: null };
+    if (!resp.ok) return { text: null, photoUrl: null, photoCandidates: [] };
     const type = resp.headers.get("content-type") ?? "";
-    if (!type.includes("html") && !type.includes("text")) return { text: null, photoUrl: null };
+    if (!type.includes("html") && !type.includes("text")) return { text: null, photoUrl: null, photoCandidates: [] };
     const html = await resp.text();
     const text = htmlToText(html).slice(0, 10_000);
     const photoUrl = extractPhotoUrl(html, resp.url || url);
-    return { text, photoUrl };
+    const photoCandidates = collectImageCandidates(html, resp.url || url);
+    return { text, photoUrl, photoCandidates };
   } catch {
-    return { text: null, photoUrl: null };
+    return { text: null, photoUrl: null, photoCandidates: [] };
   }
+}
+
+// ---------- Portrait photo selection preset ----------
+// Auto-sync previously trusted og:image, which on company pages is usually the
+// company LOGO, not the person. We now collect every plausible <img> with its
+// alt/class context, hard-exclude anything that looks like a logo or decoration,
+// score the rest by portrait hints, and let the AI pick the person's photo from
+// the shortlist (falling back to the best-scored person-hinted candidate).
+interface ImageCandidate {
+  url: string;
+  alt: string;
+  score: number;
+}
+
+const IMG_EXCLUDE_RE = /(logo|icon|favicon|sprite|placeholder|blank|spacer|banner|footer|header-img|qrcode|qr-code|wordmark|brandmark|watermark|badge|seal|flag|map|arrow|button|bg[-_.]|background|pattern|divider)/i;
+
+function collectImageCandidates(html: string, base: string): ImageCandidate[] {
+  const seen = new Set<string>();
+  const out: ImageCandidate[] = [];
+  const personHintRe = /(headshot|portrait|avatar|profile|person|people|member|team|staff|founder|leadership|management|speaker|bio|about|dr[-_]|prof[-_])/i;
+
+  const push = (rawUrl: string | undefined, alt: string, context: string, baseScore: number) => {
+    if (!rawUrl) return;
+    const abs = absolutize(rawUrl, base);
+    if (!abs || seen.has(abs)) return;
+    // Hard exclusions: vector/animated assets and anything logo-like in URL, alt, or class context
+    if (/\.(svg|gif|ico)(\?|#|$)/i.test(abs)) return;
+    if (IMG_EXCLUDE_RE.test(abs) || IMG_EXCLUDE_RE.test(alt) || IMG_EXCLUDE_RE.test(context)) return;
+    seen.add(abs);
+    let score = baseScore;
+    if (personHintRe.test(abs) || personHintRe.test(context)) score += 3;
+    // alt text that looks like a person's name ("Percy Cheng", "Dr. Nancy Man", CJK names)
+    if (/([A-Z][a-z]+\s+[A-Z][A-Za-z]+)|(^(Dr|Prof|Ir|Mr|Ms|Mrs)\.?\s)/.test(alt) || /^[\u4e00-\u9fff\u00b7\s]{2,8}$/.test(alt.trim())) score += 2;
+    out.push({ url: abs, alt: alt.slice(0, 120), score });
+  };
+
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1] || tag.match(/\bdata-src=["']([^"']+)["']/i)?.[1];
+    const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1] ?? "";
+    push(src, alt, tag, 1);
+  }
+  // og:image joins the pool as a low-priority candidate — never the automatic winner
+  const og = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i)?.[1];
+  push(og, "page share image (often the company logo)", "og:image", 0);
+
+  return out.sort((a, b) => b.score - a.score).slice(0, 12);
 }
 
 function absolutize(candidate: string, base: string): string | null {
@@ -416,6 +464,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const session = await storage.createSession(user.id);
     res.json({ token: session.token, user: safe(user) });
+  });
+
+  // v5.12 — change own password. Requires the current password, except when an
+  // admin force-reset flagged the account (the user just proved the temp
+  // password at login, and does not keep it around).
+  app.post("/api/auth/password", requireAuth(), async (req: AuthedRequest, res) => {
+    const parsed = z.object({
+      currentPassword: z.string().optional(),
+      newPassword: z.string().min(6).max(100),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Password must be at least 6 characters" });
+    const user = req.user!;
+    if (!user.mustChangePassword) {
+      if (!parsed.data.currentPassword || !verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+        return res.status(400).json({ message: "wrong_current_password" });
+      }
+    }
+    if (parsed.data.currentPassword && parsed.data.currentPassword === parsed.data.newPassword) {
+      return res.status(400).json({ message: "same_password" });
+    }
+    const updated = await storage.updateUser(user.id, {
+      passwordHash: hashPassword(parsed.data.newPassword),
+      mustChangePassword: 0,
+      resetTokenHash: null,
+      resetExpires: null,
+    });
+    res.json({ user: safe(updated!) });
   });
 
   app.post("/api/auth/logout", async (req, res) => {
@@ -907,9 +982,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
   async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
-    const tagById = new Map((await storage.listSectorTags()).map((t) => [t.id, t]));
+    const [allTags, allLinks] = await Promise.all([storage.listSectorTags(), storage.listAdvisorTagIds()]);
+    const tagById = new Map(allTags.map((t) => [t.id, t]));
     const map = new Map<number, SectorTag[]>();
-    for (const at of await storage.listAdvisorTagIds()) {
+    for (const at of allLinks) {
       const tag = tagById.get(at.tagId);
       if (!tag) continue;
       const list = map.get(at.advisorId) ?? [];
@@ -923,25 +999,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // List — thumbnails only (HD photos load on demand via the detail endpoint)
   app.get("/api/advisors", requireAuth(), async (req: AuthedRequest, res) => {
     const isAdmin = req.user!.role === "admin";
-    const all = await storage.listAdvisors();
+    const staff = isStaffUser(req.user);
+    // One parallel round-trip to the database instead of four sequential ones.
+    const [all, roles, tagsByAdvisor, activities] = await Promise.all([
+      storage.listAdvisors(),
+      storage.listAdvisorRoles(),
+      advisorTagMap(),
+      staff ? storage.listAdvisorActivities() : Promise.resolve([]),
+    ]);
     const visible = all.filter(
       (a) => a.status === "approved" || isAdmin || a.submittedBy === req.user!.id,
     );
-    const roles = await storage.listAdvisorRoles();
     const byAdvisor = new Map<number, AdvisorRole[]>();
     for (const r of roles) {
       const list = byAdvisor.get(r.advisorId) ?? [];
       list.push(r);
       byAdvisor.set(r.advisorId, list);
     }
-    const tagsByAdvisor = await advisorTagMap();
-    const staff = isStaffUser(req.user);
     const lastByAdvisor = new Map<number, string>();
-    if (staff) {
-      for (const act of await storage.listAdvisorActivities()) {
-        const prev = lastByAdvisor.get(act.advisorId);
-        if (!prev || act.date > prev) lastByAdvisor.set(act.advisorId, act.date);
-      }
+    for (const act of activities) {
+      const prev = lastByAdvisor.get(act.advisorId);
+      if (!prev || act.date > prev) lastByAdvisor.set(act.advisorId, act.date);
     }
     res.json(
       visible.map((a) => ({
@@ -956,16 +1034,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Detail — full record including the HD photo
   app.get("/api/advisors/:id", requireAuth(), async (req: AuthedRequest, res) => {
-    const a = await storage.getAdvisor(Number(req.params.id));
+    const [a, allRoles, tagMap] = await Promise.all([
+      storage.getAdvisor(Number(req.params.id)),
+      storage.listAdvisorRoles(),
+      advisorTagMap(),
+    ]);
     if (!a) return res.status(404).json({ message: "Not found" });
     const isAdmin = req.user!.role === "admin";
     if (a.status !== "approved" && !isAdmin && a.submittedBy !== req.user!.id) {
       return res.status(404).json({ message: "Not found" });
     }
-    const roles = (await storage.listAdvisorRoles())
+    const roles = allRoles
       .filter((r) => r.advisorId === a.id)
       .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
-    const tags = (await advisorTagMap()).get(a.id) ?? [];
+    const tags = tagMap.get(a.id) ?? [];
     res.json({ ...redactAdvisor(a, req.user), roles, tags });
   });
 
@@ -1616,6 +1698,28 @@ www.gobi.vc`,
     res.json({ ok: true });
   });
 
+  // v5.12 — admin force-reset: issues a one-time temporary password and flags
+  // the account so the owner must set a new password at next sign-in.
+  app.post("/api/admin/users/:id/reset-password", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const target = await storage.getUser(id);
+    if (!target) return res.status(404).json({ message: "Not found" });
+    if (target.id === req.user!.id) {
+      return res.status(400).json({ message: "own_account" });
+    }
+    // Readable, unambiguous alphabet (no 0/O/1/l/I) — ~47 bits of entropy.
+    const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+    const chunk = () => Array.from(randomBytes(4)).map((b) => alphabet[b % alphabet.length]).join("");
+    const tempPassword = `gobi-${chunk()}-${chunk()}`;
+    await storage.updateUser(id, {
+      passwordHash: hashPassword(tempPassword),
+      mustChangePassword: 1,
+      resetTokenHash: null,
+      resetExpires: null,
+    });
+    res.json({ tempPassword });
+  });
+
   // ---------- Settings (v5.5 — approval workflow configuration) ----------
   // Read: any signed-in staff member needs the COO address for the approval email button.
   app.get("/api/settings", requireAuth(), async (_req, res) => {
@@ -1690,13 +1794,13 @@ www.gobi.vc`,
     }
 
     let pageText = "";
-    let photoUrl = "";
+    let photoCandidates: { url: string; alt: string; score: number }[] = [];
     let fetchFailed = false;
     if (url && /^https?:\/\//i.test(url)) {
       const meta = await fetchPageMeta(url);
       if (meta.text && meta.text.trim().length >= 80) pageText = meta.text;
       else fetchFailed = true;
-      if (meta.photoUrl) photoUrl = meta.photoUrl;
+      photoCandidates = meta.photoCandidates;
     }
     if (!pageText && pasted.trim().length < 40) {
       return res.status(422).json({
@@ -1708,19 +1812,33 @@ www.gobi.vc`,
     }
 
     try {
-      const instruction = `You are a data-entry assistant for the advisor CRM of Gobi Partners, a venture capital firm. The material below is a professional profile (often LinkedIn) — it may be English, Chinese, or mixed.
+      const instruction = `You are a data-entry assistant for the advisor CRM of Gobi Partners, a venture capital firm. The material below is a professional profile (often LinkedIn or a company "about us" page) — it may be English, Chinese, or mixed. If the page covers several people, extract the person the URL or pasted text is clearly about.
 
 Return ONLY a JSON object with these keys (use empty string "" when unknown; never invent facts):
 {
-  "name": "person's full name in English",
+  "name": "person's name in English",
   "nameCn": "person's name in Chinese if present",
-  "background": "2-4 sentence English professional bio: current position, prior experience, education, notable achievements",
-  "domains": "comma-separated expertise areas, e.g. 'Biotech, University tech transfer, AI'",
+  "background": "2-4 sentence English professional bio",
+  "domains": "comma-separated expertise areas",
   "roles": [{ "title": "job title", "organization": "organisation name", "isPrimary": 1 for the current main role else 0 }],
-  "cohort": "graduation year or notable cohort if evident, else empty"
-}`;
+  "cohort": "graduation year if evident, else empty",
+  "photoIndex": index number of the CANDIDATE IMAGE that is a portrait/headshot of THIS person, or -1 if none clearly is
+}
+
+STANDARDISATION RULES — follow exactly:
+- name: "[Honorific ]Given-name SURNAME" with the family name in CAPITALS, keeping Prof./Dr./Ir. honorifics when evident, e.g. "Percy CHENG", "Prof. Nancy Kwan MAN". No nicknames in quotes.
+- nameCn: Chinese characters only, no spaces or punctuation, e.g. "王宇新". Empty if not stated — never transliterate.
+- background: 2-4 factual third-person sentences — current position first, then prior experience, education, notable achievements. No marketing language ("visionary", "world-class"), no bullet points, no first person.
+- domains: 2-5 items, comma-separated, each 1-3 words in Title Case with acronyms in capitals, e.g. "Biotech, University Tech Transfer, AI". Use sector names, not job titles.
+- roles.title: Title Case, e.g. "Co-Founder & Executive Director". roles.organization: official English name without legal suffixes (Limited, Ltd., Inc., Co.). Exactly ONE role has isPrimary 1 (the current main position).
+- cohort: a 4-digit year only, else "".
+- photoIndex: pick ONLY a photo of this person's face/upper body. Company logos, brand marks, buildings, product shots and group photos are WRONG answers — return -1 rather than guess.`;
+      const candidateBlock = photoCandidates.length
+        ? `\nCANDIDATE IMAGES:\n${photoCandidates.map((c, i) => `${i}. ${c.url}${c.alt ? ` — alt: "${c.alt}"` : ""}`).join("\n")}`
+        : "";
       const textBlock = [
         instruction,
+        candidateBlock,
         pageText ? `\nFETCHED PAGE CONTENT (${url}):\n"""\n${pageText.slice(0, 12000)}\n"""` : "",
         pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
       ].join("\n");
@@ -1744,22 +1862,48 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON in model output");
       const data = JSON.parse(jsonMatch[0]);
+
+      // Photo: AI-selected candidate first; otherwise the best person-hinted
+      // candidate (score >= 3). Never fall back to og:image — a missing photo
+      // beats a company logo.
+      let photoUrl = "";
+      const idx = Number(data.photoIndex);
+      if (Number.isInteger(idx) && idx >= 0 && idx < photoCandidates.length) {
+        photoUrl = photoCandidates[idx].url;
+      } else {
+        const best = photoCandidates.find((c) => c.score >= 3);
+        if (best) photoUrl = best.url;
+      }
+
+      // Autofill standardisation (server-side, belt and braces over the prompt)
+      const clean = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+      const nameCn = clean(data.nameCn).replace(/[^\u4e00-\u9fff\u00b7]/g, "");
+      const domains = Array.from(new Set(
+        clean(data.domains).split(/[,\uff0c\u3001;\uff1b/]+/).map((d) => d.trim()).filter(Boolean),
+      )).slice(0, 5).join(", ");
+      const cohort = clean(data.cohort).match(/(19|20)\d{2}/)?.[0] ?? "";
+      const stripLegal = (s: string) => s.replace(/[,\s]+(Limited|Ltd\.?|Inc\.?|Co\.?|LLC|Corp\.?)\s*$/i, "").trim();
+      let roles = Array.isArray(data.roles)
+        ? data.roles
+            .filter((r: any) => r && typeof r.title === "string" && r.title.trim())
+            .slice(0, 8)
+            .map((r: any) => ({
+              title: clean(r.title),
+              organization: r.organization ? stripLegal(clean(r.organization)) : null,
+              isPrimary: r.isPrimary === 1 || r.isPrimary === true ? 1 : 0,
+            }))
+        : [];
+      // exactly one primary role
+      const firstPrimary = roles.findIndex((r: any) => r.isPrimary === 1);
+      roles = roles.map((r: any, i: number) => ({ ...r, isPrimary: i === (firstPrimary === -1 ? 0 : firstPrimary) ? 1 : 0 }));
+
       res.json({
-        name: String(data.name ?? ""),
-        nameCn: String(data.nameCn ?? ""),
-        background: String(data.background ?? ""),
-        domains: String(data.domains ?? ""),
-        cohort: String(data.cohort ?? ""),
-        roles: Array.isArray(data.roles)
-          ? data.roles
-              .filter((r: any) => r && typeof r.title === "string" && r.title.trim())
-              .slice(0, 8)
-              .map((r: any) => ({
-                title: String(r.title),
-                organization: r.organization ? String(r.organization) : null,
-                isPrimary: r.isPrimary === 1 || r.isPrimary === true ? 1 : 0,
-              }))
-          : [],
+        name: clean(data.name),
+        nameCn,
+        background: clean(data.background),
+        domains,
+        cohort,
+        roles,
         photoUrl: photoUrl || null,
         sourceUrl: url || null,
         fetched: !!pageText,

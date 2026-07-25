@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.11";
+export const CURRENT_VERSION = "5.12";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.12",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Password self-service, smarter auto-sync, and faster advisor profiles",
+    titleCn: "密码自助管理、更智能的自动同步与更快的顾问资料加载",
+    itemsEn: [
+      "Auto-sync photo selection rebuilt — the AI now picks the person's portrait from the page's images and company logos, icons and banners are excluded; when no clear portrait exists the photo is left blank instead of guessing",
+      "Auto-sync now standardises what it fills in — names as 'Given SURNAME' with honorifics, Chinese names in characters only, factual 2-4 sentence bios, 2-5 Title-Case expertise domains, organisation names without legal suffixes, and exactly one primary role",
+      "New Security section in your profile — change your password with your current one, or request a reset link by email (email delivery arrives with the Gmail integration)",
+      "Admins can force-reset any team account from Team accounts — a one-time temporary password is generated and the owner must set a new password at next sign-in",
+      "Advisor profiles now open instantly — the card renders from already-loaded data while the HD photo loads in the background, and the server fetches profile data in parallel",
+      "Header cleanup — the duplicated subtitle line is gone and clicking the logo returns to the portal home page",
+    ],
+    itemsCn: [
+      "自动同步照片选择重建 — AI 从页面图片中识别人物肖像，自动排除公司标志、图标与横幅；无法确认肖像时留空而不会错取",
+      "自动同步填充内容标准化 — 英文名按“名 + 姓（大写）”含尊称，中文名仅汉字，简历为 2-4 句客观描述，专长领域 2-5 项规范大写，机构名称去除公司后缀，且仅一个主要职位",
+      "个人资料新增安全区块 — 可用当前密码修改密码，或申请邮件重置链接（邮件发送将随 Gmail 集成上线）",
+      "管理员可在团队账号页强制重置任何账号密码 — 系统生成一次性临时密码，用户下次登录时必须设置新密码",
+      "顾问资料卡片现在即时打开 — 先用已加载数据渲染，高清照片后台加载，服务器并行获取资料数据",
+      "页眉优化 — 移除重复的副标题，点击标志返回门户首页",
+    ],
+  },
   {
     version: "5.11",
     date: "2026-07-26",

@@ -55,7 +55,7 @@ export interface IStorage {
         User,
         | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-        | "resetTokenHash" | "resetExpires"
+        | "resetTokenHash" | "resetExpires" | "mustChangePassword"
       >
     >
   ): Promise<User | undefined>;

@@ -816,9 +816,15 @@ function AdvisorDetailDialog({
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  // v5.12 — render instantly from the cached list row (thumbnail, roles, tags);
+  // the detail fetch only tops up the HD photo when it arrives.
   const { data: a, isLoading } = useQuery<AdvisorWithRoles>({
     queryKey: ["/api/advisors", id ?? 0],
     enabled: id !== null,
+    placeholderData: () =>
+      queryClient
+        .getQueryData<AdvisorWithRoles[]>(["/api/advisors"])
+        ?.find((row) => row.id === id),
   });
   const isStaff = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";

@@ -20,7 +20,7 @@ import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STA
 import { useQuery } from "@tanstack/react-query";
 import { API_BASE, getAuthToken } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { VersionLogDialog, ProfileDialog, UserAvatar } from "@/components/user-panels";
+import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
 
 // Auto-open the version log once per browser session after login (memory only — no storage APIs).
@@ -318,7 +318,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
-          <a href="https://www.gobi.vc" target="_blank" rel="noopener noreferrer" data-testid="link-home" className="flex items-center gap-3 shrink-0">
+          <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
               alt="Gobi Partners"
@@ -327,9 +327,8 @@ export function Layout({ children }: { children: ReactNode }) {
             />
             <span className="leading-tight border-l border-border pl-3 hidden sm:block">
               <span className="block text-sm font-bold tracking-tight">{t("brandTitle")}</span>
-              <span className="block text-[11px] text-muted-foreground">{t("brandSub")}</span>
             </span>
-          </a>
+          </Link>
 
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {links.filter((l) => l.show).map((l) => (
@@ -479,6 +478,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
       {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
+      {user && !!user.mustChangePassword && <ForcedPasswordDialog />}
 
       <footer className="border-t border-border bg-background/70 backdrop-blur-sm py-8 mt-16">
         <div className="mx-auto max-w-6xl px-4 flex flex-col gap-3">

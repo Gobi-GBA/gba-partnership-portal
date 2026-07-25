@@ -14,14 +14,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ArrowUp, ArrowDown } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ArrowUp, ArrowDown, KeyRound, Copy } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
 import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus, SectorTag } from "@shared/schema";
@@ -364,6 +364,25 @@ function UserAdmin() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<SafeUser | null>(null);
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
+  // v5.12 — force password reset
+  const [resetTarget, setResetTarget] = useState<SafeUser | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const forceReset = async () => {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    try {
+      const res = await apiRequest("POST", `/api/admin/users/${resetTarget.id}/reset-password`);
+      const data: { tempPassword: string } = await res.json();
+      setTempPassword(data.tempPassword);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    } catch {
+      toast({ title: "Failed / 失败", variant: "destructive" });
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   // Local draft of rights per user id. Checkboxes update the draft instantly
   // (color changes right away); the admin then commits all changes in one PATCH.
@@ -523,6 +542,17 @@ function UserAdmin() {
       >
         <Pencil className="h-4 w-4" />
       </Button>
+      {u.id !== me?.id && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => { setTempPassword(null); setResetTarget(u); }}
+          title={t("pwResetAction")}
+          data-testid={`button-reset-pwd-${u.id}`}
+        >
+          <KeyRound className="h-4 w-4" />
+        </Button>
+      )}
       {u.status === "pending" && (
         <>
           <Button size="sm" onClick={() => mutation.mutate({ id: u.id, status: "approved" })} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-user-${u.id}`}>
@@ -587,6 +617,41 @@ function UserAdmin() {
       </div>
       <AddAccountDialog open={showAdd} onClose={() => setShowAdd(false)} />
       <EditAccountDialog u={editing} onClose={() => setEditing(null)} />
+      {/* v5.12 — force password reset: confirm, then show the one-time temp password */}
+      <Dialog open={resetTarget !== null} onOpenChange={(o) => { if (!o) { setResetTarget(null); setTempPassword(null); } }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-reset-password">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <KeyRound className="h-4 w-4" /> {t("pwResetAction")}
+            </DialogTitle>
+            <DialogDescription>{resetTarget?.name} · {resetTarget?.email}</DialogDescription>
+          </DialogHeader>
+          {tempPassword ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("pwResetDone")}</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md border border-border bg-secondary px-3 py-2 font-mono text-sm" data-testid="text-temp-password">{tempPassword}</code>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(tempPassword).then(() => toast({ title: t("pwCopied") })); }} data-testid="button-copy-temp-password">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("pwResetOnce")}</p>
+              <Button className="w-full" variant="outline" onClick={() => { setResetTarget(null); setTempPassword(null); }} data-testid="button-close-reset-dialog">{t("close")}</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("pwResetConfirm")}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setResetTarget(null)} data-testid="button-cancel-reset">{t("cancel")}</Button>
+                <Button className="flex-1 bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" onClick={forceReset} disabled={resetBusy} data-testid="button-confirm-reset">
+                  {resetBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t("pwResetAction")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
