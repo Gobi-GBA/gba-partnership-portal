@@ -593,6 +593,19 @@ const dict = {
   settingsCooEmail: { en: "COO office email", cn: "COO办公室邮箱" },
   settingsCooEmailHint: { en: "Approval request emails are addressed to this mailbox (cc fred@gobi.vc). Leave blank until confirmed.", cn: "审批申请邮件将发送至此邮箱（抄送 fred@gobi.vc）。确认前可留空。" },
   settingsSaved: { en: "Settings saved.", cn: "设置已保存。" },
+  // v5.11 — template editor
+  tabTemplates: { en: "Templates", cn: "模板" },
+  tplHint: { en: "Edit the outreach email templates and the invitation letter text used across the portal. Placeholders in double braces are filled per advisor automatically.", cn: "编辑门户中使用的邮件模板与邀请函文本。双花括号占位符会按顾问自动填充。" },
+  tplOnboardingEmail: { en: "Outreach email — onboarding invitation", cn: "拓展邮件——入网邀请" },
+  tplUpdateEmail: { en: "Outreach email — general update", cn: "拓展邮件——常规更新" },
+  tplLetter: { en: "Invitation letter", cn: "邀请函" },
+  tplLetterBody: { en: "Letter body (blank line = new paragraph)", cn: "信函正文（空行分段）" },
+  tplLetterAck: { en: "Acknowledgment receipt (page 2)", cn: "签收回执（第二页）" },
+  tplSubject: { en: "Subject", cn: "主题" },
+  tplBody: { en: "Body", cn: "正文" },
+  tplEmailPlaceholders: { en: "Placeholders: {{name}}, {{first_name}}, {{organization}}", cn: "占位符：{{name}}、{{first_name}}、{{organization}}" },
+  tplLetterPlaceholders: { en: "Placeholders: {{name}}, {{salutation}}, {{organization}}, {{domains}}, {{date}}", cn: "占位符：{{name}}、{{salutation}}、{{organization}}、{{domains}}、{{date}}" },
+  tplReset: { en: "Reset to default", cn: "恢复默认" },
   // v5.5 — LinkedIn sync
   linkedinSync: { en: "Auto-sync", cn: "自动同步" },
   linkedinSyncHint: { en: "Fetch the profile page and fill the form with AI. Review before saving.", cn: "抓取主页并由AI填写表格，保存前请核对。" },
@@ -668,7 +681,7 @@ const dict = {
   outreachNoEmail: { en: "No email on file", cn: "暂无邮箱" },
   outreachConfirm: { en: "Send to {n}?", cn: "确定发送给 {n}？" },
   outreachSent: { en: "Sent", cn: "已发送" },
-  outreachMailDisabled: { en: "Server email is not configured — use Open in mail client", cn: "服务器邮件未配置 — 请改用邮件客户端" },
+  outreachMailDisabled: { en: "Sending directly from the system is coming soon — for now, use Copy text or Open in mail client", cn: "系统直接发送功能即将推出 — 目前请使用复制文本或邮件客户端" },
   outreachNoneSelected: { en: "Select at least one advisor.", cn: "请至少选择一位顾问。" },
   outreachEmptyDrafts: { en: "No drafts yet.", cn: "暂无草稿。" },
 

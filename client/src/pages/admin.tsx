@@ -59,6 +59,7 @@ export default function Admin() {
             <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
             <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
+            <TabsTrigger value="templates" data-testid="tab-admin-templates">{t("tabTemplates")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
           </TabsList>
           <TabsContent value="partnerships"><PartnershipAdmin /></TabsContent>
@@ -72,6 +73,7 @@ export default function Admin() {
               <ExportCsvButtons />
             </div>
           </TabsContent>
+          <TabsContent value="templates"><TemplatesAdmin /></TabsContent>
           <TabsContent value="settings"><SettingsAdmin /></TabsContent>
         </Tabs>
       </div>
@@ -1056,6 +1058,135 @@ function TagAdmin() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------- Templates (v5.11) ----------------
+// Admin editor for the outreach email templates and the invitation letter
+// text. Values equal to the built-in default are stored as "no override"
+// server-side, so unedited templates keep receiving default improvements.
+type TemplateFields = {
+  outreachOnboardingSubject: string;
+  outreachOnboardingBody: string;
+  outreachUpdateSubject: string;
+  outreachUpdateBody: string;
+  letterBody: string;
+  letterAck: string;
+};
+
+function TemplatesAdmin() {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [fields, setFields] = useState<TemplateFields | null>(null);
+
+  const { data, isLoading } = useQuery<{ current: TemplateFields; defaults: TemplateFields }>({
+    queryKey: ["/api/admin/templates"],
+  });
+  if (data && fields === null) setFields(data.current);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/admin/templates", fields);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/templates"] });
+      toast({ description: t("settingsSaved") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  if (isLoading || !fields || !data) {
+    return <div className="py-10 text-center text-sm text-muted-foreground">…</div>;
+  }
+
+  const set = (k: keyof TemplateFields) => (v: string) => setFields((f) => (f ? { ...f, [k]: v } : f));
+  const isDefault = (keys: (keyof TemplateFields)[]) => keys.every((k) => fields[k] === data.defaults[k]);
+  const resetSection = (keys: (keyof TemplateFields)[]) =>
+    setFields((f) => (f ? { ...f, ...Object.fromEntries(keys.map((k) => [k, data.defaults[k]])) } : f));
+
+  // Called as a plain function (not JSX component) so React keeps the child
+  // tree identity across renders — an inline component type would remount the
+  // textareas on every keystroke and drop focus.
+  const Section = ({ title, hint, keys, children, testid }: { title: string; hint: string; keys: (keyof TemplateFields)[]; children: JSX.Element[]; testid: string }) => (
+    <div className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={testid}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        </div>
+        <Button type="button" size="sm" variant="outline" disabled={isDefault(keys)} onClick={() => resetSection(keys)} data-testid={`button-reset-${testid}`}>
+          <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> {t("tplReset")}
+        </Button>
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="max-w-3xl space-y-4" data-testid="admin-templates">
+      <div className="flex items-start gap-2">
+        <Settings2 className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
+        <p className="text-sm text-muted-foreground">{t("tplHint")}</p>
+      </div>
+
+      {Section({
+        title: t("tplOnboardingEmail"),
+        hint: t("tplEmailPlaceholders"),
+        keys: ["outreachOnboardingSubject", "outreachOnboardingBody"],
+        testid: "section-tpl-onboarding",
+        children: [
+          <div key="s" className="space-y-1.5">
+            <Label>{t("tplSubject")}</Label>
+            <Input value={fields.outreachOnboardingSubject} onChange={(e) => set("outreachOnboardingSubject")(e.target.value)} data-testid="input-tpl-onboarding-subject" />
+          </div>,
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplBody")}</Label>
+            <Textarea rows={12} className="font-mono text-xs leading-relaxed" value={fields.outreachOnboardingBody} onChange={(e) => set("outreachOnboardingBody")(e.target.value)} data-testid="textarea-tpl-onboarding-body" />
+          </div>,
+        ],
+      })}
+
+      {Section({
+        title: t("tplUpdateEmail"),
+        hint: t("tplEmailPlaceholders"),
+        keys: ["outreachUpdateSubject", "outreachUpdateBody"],
+        testid: "section-tpl-update",
+        children: [
+          <div key="s" className="space-y-1.5">
+            <Label>{t("tplSubject")}</Label>
+            <Input value={fields.outreachUpdateSubject} onChange={(e) => set("outreachUpdateSubject")(e.target.value)} data-testid="input-tpl-update-subject" />
+          </div>,
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplBody")}</Label>
+            <Textarea rows={8} className="font-mono text-xs leading-relaxed" value={fields.outreachUpdateBody} onChange={(e) => set("outreachUpdateBody")(e.target.value)} data-testid="textarea-tpl-update-body" />
+          </div>,
+        ],
+      })}
+
+      {Section({
+        title: t("tplLetter"),
+        hint: t("tplLetterPlaceholders"),
+        keys: ["letterBody", "letterAck"],
+        testid: "section-tpl-letter",
+        children: [
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplLetterBody")}</Label>
+            <Textarea rows={14} className="font-mono text-xs leading-relaxed" value={fields.letterBody} onChange={(e) => set("letterBody")(e.target.value)} data-testid="textarea-tpl-letter-body" />
+          </div>,
+          <div key="a" className="space-y-1.5">
+            <Label>{t("tplLetterAck")}</Label>
+            <Textarea rows={8} className="font-mono text-xs leading-relaxed" value={fields.letterAck} onChange={(e) => set("letterAck")(e.target.value)} data-testid="textarea-tpl-letter-ack" />
+          </div>,
+        ],
+      })}
+
+      <div className="flex justify-end">
+        <Button onClick={() => save.mutate()} disabled={save.isPending} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-save-templates">
+          <Save className="h-4 w-4 mr-1.5" /> {save.isPending ? "…" : t("save")}
+        </Button>
+      </div>
     </div>
   );
 }

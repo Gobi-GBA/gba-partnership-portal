@@ -357,7 +357,7 @@ export function OutreachDialog({
                     data-testid="button-outreach-send-all"
                   >
                     {sendingId !== null ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-                    {t("outreachSendAll")}
+                    {mailEnabled ? t("outreachSendAll") : `${t("outreachSendAll")} · ${t("comingSoon")}`}
                   </Button>
                 </div>
                 <div className="divide-y divide-border rounded-lg border border-border">
@@ -400,7 +400,7 @@ export function OutreachDialog({
                           onClick={() => sendOne(r)}
                           data-testid={`button-draft-send-${r.advisorId}`}
                         >
-                          {sendingId === r.advisorId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("outreachSendServer")}
+                          {sendingId === r.advisorId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : mailEnabled ? t("outreachSendServer") : `${t("outreachSendServer")} · ${t("comingSoon")}`}
                         </Button>
                       </div>
                     </div>

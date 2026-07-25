@@ -48,6 +48,32 @@ export function salutationOf(name: string): string {
   return `${hon} ${surname}`;
 }
 
+// v5.11 — admin-editable templates. The letter body and acknowledgment are
+// stored as plain text (blank-line separated paragraphs) with placeholders
+// resolved per advisor. Empty/absent override falls back to these defaults,
+// which reproduce the firm's official template verbatim.
+export const LETTER_PLACEHOLDERS = ["{{name}}", "{{salutation}}", "{{organization}}", "{{domains}}", "{{date}}"] as const;
+
+export const DEFAULT_LETTER_BODY = [
+  "On behalf of Gobi Partners, I write to cordially invite you to join as a member of the Gobi Advisory Network.",
+  "Gobi Partners is a leading Asia-focused venture capital firm headquartered in Kuala Lumpur and Hong Kong. Founded in 2002, Gobi now has a network of over 16 locations and has invested in over 380 technology startups in the region. The firm supports entrepreneurs from the early to growth stages, with a particular focus on emerging markets, and is a frontier to groom university spin-offs from research to high-growth start-ups.",
+  "With achievements in areas of your expertise, the Gobi team hopes to draw from your wealth of knowledge, experience, and network to assist Gobi in pursuing our ambitious goals to empower aspiring startup founders.",
+  "We are assembling a team of distinguished experts across different sectors to join the Gobi Partners Advisory Network. Your expertise would be invaluable in providing guidance and strategic advice to our board of directors, particularly in areas such as {{domains}}.",
+  "The role of our Gobi Advisory Network (\u201CAdvisor\u201D) is to shape Gobi's overall development strategy and mutually exchange domain-specific knowledge. The initial term of engagement is set for one year and will automatically renew annually until further written notice.",
+  "Thank you for taking the time to consider our invitation. We look forward to working with you soon.",
+].join("\n\n");
+
+export const DEFAULT_LETTER_ACK = [
+  "I, {{name}}, have received a copy of \u201CGOBI PARTNERS - INVITATION TO GOBI ADVISORY NETWORK\u201D and acknowledge receipt of this document.",
+  "I, {{name}}, understand and agree that this copy of the document supersedes and negates all previous versions of the document, if any.",
+  "I understand my engagement with Gobi Partners entailed in the document does not constitute any employment relationship nor any monetary implications, and I understand that either Gobi or I can terminate the engagement at any time for any reason in the form of a written notice.",
+].join("\n\n");
+
+export interface LetterOverrides {
+  body?: string; // blank-line separated paragraphs; "" or undefined -> default
+  ack?: string;
+}
+
 interface LetterText {
   dateStr: string;
   addressee: string;
@@ -60,30 +86,33 @@ interface LetterText {
   ackLines: { label: string; value: string }[];
 }
 
-function letterText(advisor: Advisor, role: AdvisorRole | null): LetterText {
+function fillLetterPlaceholders(text: string, advisor: Advisor, role: AdvisorRole | null): string {
   const name = advisor.name.trim();
-  const domains = (advisor.domains ?? "").trim().replace(/\.+$/, "");
-  const expertiseClause = domains ? `, particularly in areas such as ${domains}` : "";
+  const domains = (advisor.domains ?? "").trim().replace(/\.+$/, "") || "your areas of expertise";
+  return text
+    .replace(/\{\{\s*name\s*\}\}/gi, name)
+    .replace(/\{\{\s*salutation\s*\}\}/gi, salutationOf(name))
+    .replace(/\{\{\s*organization\s*\}\}/gi, role?.organization?.trim() || "")
+    .replace(/\{\{\s*domains\s*\}\}/gi, domains)
+    .replace(/\{\{\s*date\s*\}\}/gi, letterDate());
+}
+
+const splitParagraphs = (text: string): string[] =>
+  text.split(/\n{2,}/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+
+function letterText(advisor: Advisor, role: AdvisorRole | null, overrides?: LetterOverrides): LetterText {
+  const name = advisor.name.trim();
+  const bodyTpl = overrides?.body?.trim() ? overrides.body : DEFAULT_LETTER_BODY;
+  const ackTpl = overrides?.ack?.trim() ? overrides.ack : DEFAULT_LETTER_ACK;
   return {
     dateStr: letterDate(),
     addressee: name,
     orgLine: role?.organization?.trim() || null,
     salutation: salutationOf(name),
     reLine: "Re: GOBI PARTNERS - INVITATION TO GOBI ADVISORY NETWORK",
-    paragraphs: [
-      "On behalf of Gobi Partners, I write to cordially invite you to join as a member of the Gobi Advisory Network.",
-      "Gobi Partners is a leading Asia-focused venture capital firm headquartered in Kuala Lumpur and Hong Kong. Founded in 2002, Gobi now has a network of over 16 locations and has invested in over 380 technology startups in the region. The firm supports entrepreneurs from the early to growth stages, with a particular focus on emerging markets, and is a frontier to groom university spin-offs from research to high-growth start-ups.",
-      "With achievements in areas of your expertise, the Gobi team hopes to draw from your wealth of knowledge, experience, and network to assist Gobi in pursuing our ambitious goals to empower aspiring startup founders.",
-      `We are assembling a team of distinguished experts across different sectors to join the Gobi Partners Advisory Network. Your expertise would be invaluable in providing guidance and strategic advice to our board of directors${expertiseClause}.`,
-      "The role of our Gobi Advisory Network (\u201CAdvisor\u201D) is to shape Gobi's overall development strategy and mutually exchange domain-specific knowledge. The initial term of engagement is set for one year and will automatically renew annually until further written notice.",
-      "Thank you for taking the time to consider our invitation. We look forward to working with you soon.",
-    ],
+    paragraphs: splitParagraphs(fillLetterPlaceholders(bodyTpl, advisor, role)),
     ackTitle: "Acknowledgment Receipt",
-    ackParagraphs: [
-      `I, ${name}, have received a copy of \u201CGOBI PARTNERS - INVITATION TO GOBI ADVISORY NETWORK\u201D and acknowledge receipt of this document.`,
-      `I, ${name}, understand and agree that this copy of the document supersedes and negates all previous versions of the document, if any.`,
-      "I understand my engagement with Gobi Partners entailed in the document does not constitute any employment relationship nor any monetary implications, and I understand that either Gobi or I can terminate the engagement at any time for any reason in the form of a written notice.",
-    ],
+    ackParagraphs: splitParagraphs(fillLetterPlaceholders(ackTpl, advisor, role)),
     ackLines: [
       { label: "Advisor Name:", value: name },
       { label: "Advisor signature:", value: "" },
@@ -100,8 +129,8 @@ export function letterFilename(advisor: Advisor, ext: "docx"): string {
 
 // ---------- HTML print view (client saves to PDF via Ctrl/Cmd-P) ----------
 
-export function invitationLetterHtml(advisor: Advisor, role: AdvisorRole | null): string {
-  const t = letterText(advisor, role);
+export function invitationLetterHtml(advisor: Advisor, role: AdvisorRole | null, overrides?: LetterOverrides): string {
+  const t = letterText(advisor, role, overrides);
   const paras = t.paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join("\n  ");
   const ackParas = t.ackParagraphs.map((p) => `<p>${escHtml(p)}</p>`).join("\n  ");
   return `<!doctype html>
@@ -176,8 +205,8 @@ function bodyPara(text: string, opts: { bold?: boolean; underline?: boolean; jus
   });
 }
 
-export async function invitationLetterDocx(advisor: Advisor, role: AdvisorRole | null): Promise<Buffer> {
-  const t = letterText(advisor, role);
+export async function invitationLetterDocx(advisor: Advisor, role: AdvisorRole | null, overrides?: LetterOverrides): Promise<Buffer> {
+  const t = letterText(advisor, role, overrides);
   const logo = Buffer.from(GOBI_LOGO_B64, "base64");
   // Letterhead logo repeats on every page via the section header (816x242 source).
   const header = new Header({

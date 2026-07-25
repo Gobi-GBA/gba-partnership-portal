@@ -25,7 +25,7 @@ import {
 } from "../shared/schema.js";
 import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag } from "../shared/schema.js";
 import mammoth from "mammoth";
-import { invitationLetterHtml, invitationLetterDocx, letterFilename } from "./letter.js";
+import { invitationLetterHtml, invitationLetterDocx, letterFilename, DEFAULT_LETTER_BODY, DEFAULT_LETTER_ACK } from "./letter.js";
 import { z } from "zod";
 
 // Single source of truth: collaboration level is always derived from the stage.
@@ -1144,6 +1144,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...updated, roles });
   });
 
+  // v5.11 — admin-editable letter template overrides (empty meta -> firm default)
+  const letterOverrides = async () => ({
+    body: (await storage.getMeta("tpl_letter_body")) ?? "",
+    ack: (await storage.getMeta("tpl_letter_ack")) ?? "",
+  });
+
   // Generate the advisor invitation letter as an HTML document (client prints to PDF).
   app.get("/api/advisors/:id/invitation-letter", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const advisor = await storage.getAdvisor(Number(req.params.id));
@@ -1152,7 +1158,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .filter((r) => r.advisorId === advisor.id)
       .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
     const primaryRole = roles[0];
-    const html = invitationLetterHtml(advisor, primaryRole ?? null);
+    const html = invitationLetterHtml(advisor, primaryRole ?? null, await letterOverrides());
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   });
@@ -1165,7 +1171,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .filter((r) => r.advisorId === advisor.id)
       .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
     try {
-      const buf = await invitationLetterDocx(advisor, roles[0] ?? null);
+      const buf = await invitationLetterDocx(advisor, roles[0] ?? null, await letterOverrides());
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
       res.setHeader("Content-Disposition", `attachment; filename="${letterFilename(advisor, "docx")}"`);
       res.send(buf);
@@ -1444,8 +1450,12 @@ www.gobi.vc`,
       template: z.string().optional(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid request" });
-    const key = parsed.data.template ?? "onboarding_invite";
-    const tpl = OUTREACH_TEMPLATES[key] ?? OUTREACH_TEMPLATES.onboarding_invite;
+    const key = OUTREACH_TEMPLATES[parsed.data.template ?? ""] ? (parsed.data.template as string) : "onboarding_invite";
+    // v5.11 — admin-saved overrides take precedence over the built-in defaults
+    const tpl = {
+      subject: (await storage.getMeta(`tpl_outreach_${key}_subject`)) || OUTREACH_TEMPLATES[key].subject,
+      body: (await storage.getMeta(`tpl_outreach_${key}_body`)) || OUTREACH_TEMPLATES[key].body,
+    };
     const rolesByAdvisor = new Map<number, AdvisorRole[]>();
     (await storage.listAdvisorRoles()).forEach((r) => {
       const list = rolesByAdvisor.get(r.advisorId) ?? [];
@@ -1617,6 +1627,55 @@ www.gobi.vc`,
     if (!parsed.success) return res.status(400).json({ message: "Invalid email address" });
     await storage.setMeta("coo_email", parsed.data.cooEmail);
     res.json({ cooEmail: parsed.data.cooEmail });
+  });
+
+  // ---------- Templates (v5.11 — admin-editable email + letter text) ----------
+  // Effective values are returned alongside the built-in defaults so the editor
+  // can show a reset-to-default action. Saving a value identical to the default
+  // clears the override (keeps future default improvements flowing through).
+  const TEMPLATE_DEFAULTS = () => ({
+    outreachOnboardingSubject: OUTREACH_TEMPLATES.onboarding_invite.subject,
+    outreachOnboardingBody: OUTREACH_TEMPLATES.onboarding_invite.body,
+    outreachUpdateSubject: OUTREACH_TEMPLATES.general_update.subject,
+    outreachUpdateBody: OUTREACH_TEMPLATES.general_update.body,
+    letterBody: DEFAULT_LETTER_BODY,
+    letterAck: DEFAULT_LETTER_ACK,
+  });
+  const TEMPLATE_META_KEYS: Record<string, string> = {
+    outreachOnboardingSubject: "tpl_outreach_onboarding_invite_subject",
+    outreachOnboardingBody: "tpl_outreach_onboarding_invite_body",
+    outreachUpdateSubject: "tpl_outreach_general_update_subject",
+    outreachUpdateBody: "tpl_outreach_general_update_body",
+    letterBody: "tpl_letter_body",
+    letterAck: "tpl_letter_ack",
+  };
+
+  app.get("/api/admin/templates", requireAuth("admin"), async (_req, res) => {
+    const defaults = TEMPLATE_DEFAULTS();
+    const current: Record<string, string> = {};
+    for (const [field, metaKey] of Object.entries(TEMPLATE_META_KEYS)) {
+      current[field] = (await storage.getMeta(metaKey)) || (defaults as Record<string, string>)[field];
+    }
+    res.json({ current, defaults });
+  });
+
+  app.put("/api/admin/templates", requireAuth("admin"), async (req, res) => {
+    const field = z.string().trim().min(1).max(20000);
+    const parsed = z.object({
+      outreachOnboardingSubject: field,
+      outreachOnboardingBody: field,
+      outreachUpdateSubject: field,
+      outreachUpdateBody: field,
+      letterBody: field,
+      letterAck: field,
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "All template fields are required" });
+    const defaults = TEMPLATE_DEFAULTS() as Record<string, string>;
+    for (const [fieldName, metaKey] of Object.entries(TEMPLATE_META_KEYS)) {
+      const value = (parsed.data as Record<string, string>)[fieldName];
+      await storage.setMeta(metaKey, value === defaults[fieldName] ? "" : value);
+    }
+    res.json({ ok: true });
   });
 
   // ---------- AI: sync advisor profile from a URL (e.g. LinkedIn) or pasted text (DeepSeek) ----------

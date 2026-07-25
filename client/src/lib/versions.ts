@@ -9,9 +9,30 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.10";
+export const CURRENT_VERSION = "5.11";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.11",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Editable email and letter templates in the admin portal",
+    titleCn: "管理后台可编辑邮件与邀请函模板",
+    itemsEn: [
+      "New Templates tab in the admin portal for editing the two outreach email templates — onboarding invitation and general update — subject and body, with per-advisor placeholders such as {{name}}, {{first_name}} and {{organization}}",
+      "The invitation letter body and the page-two Acknowledgment Receipt are now editable in the same tab; blank lines separate paragraphs and placeholders such as {{name}} and {{domains}} are filled per advisor in both the Word and print versions",
+      "Each template section has a reset-to-default action that restores the firm's standard wording",
+      "Saved template changes apply immediately to the outreach composer and to newly generated letters — no redeploy needed",
+      "Direct system sending remains labelled coming soon and will be enabled once the Gmail integration is ready — copy text and mail-client options are the interim path",
+    ],
+    itemsCn: [
+      "管理后台新增模板页，可编辑两封拓展邮件模板（入网邀请与常规更新）的主题与正文，支持 {{name}}、{{first_name}}、{{organization}} 等按顾问填充的占位符",
+      "邀请函正文与第二页签收回执现在同页可编辑 — 空行分段，{{name}}、{{domains}} 等占位符在 Word 版与打印版中均按顾问自动填充",
+      "每个模板区块均设恢复默认按钮，一键还原公司标准文本",
+      "模板保存后立即生效于联络编辑器与新生成的邀请函，无需重新部署",
+      "系统直接发送仍标注为即将推出，将在 Gmail 集成完成后启用 — 过渡期请使用复制文本或邮件客户端",
+    ],
+  },
   {
     version: "5.10",
     date: "2026-07-26",
