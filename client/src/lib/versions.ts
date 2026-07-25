@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.12";
+export const CURRENT_VERSION = "5.13";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.13",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Multi-factor auto-sync for advisors and partners",
+    titleCn: "顾问与合作方的多因子自动同步",
+    itemsEn: [
+      "Advisor auto-sync now harvests every link on the record — the profile URL and the LinkedIn URL are fetched together, readable pages are merged into one material set, photo candidates are pooled across pages, and the AI produces a single best-of answer",
+      "Advisor auto-sync works from any factor — a profile URL, a LinkedIn URL, or pasted text alone is enough; whatever combination exists is used and the identity lock (name, LinkedIn, email) still applies",
+      "Partner records now have their own auto-sync — an Auto-sync button next to the website field in the edit dialog fetches the organisation's website and enriches the profile fields (Chinese name, category, region, descriptions, contacts, type, background)",
+      "Partner auto-sync is anchored to the organisation — the form's name and website are the extraction criteria, and if the material turns out to be about a different organisation the sync stops and changes nothing",
+      "Partner sync never touches relationship fields — stage, start date and PICs stay as your team recorded them; only public-profile fields are enriched",
+      "Register page AI quick-fill upgraded — it accepts a website alone (no pasted text needed), fetches the form's website as an extra source, and anchors extraction to the organisation once the form names one",
+    ],
+    itemsCn: [
+      "顾问自动同步现会汇集记录中的所有链接 — 资料链接与 LinkedIn 链接同时抓取，可读页面合并为同一材料集，照片候选跨页面汇总，AI 输出单一最优结果",
+      "顾问自动同步支持任意因子 — 仅有资料链接、LinkedIn 链接或粘贴文本均可运行；系统使用现有的任意组合，身份锁定（姓名、LinkedIn、邮箱）仍然生效",
+      "合作方记录新增自动同步 — 编辑对话框官网字段旁的自动同步按钮会抓取机构官网并补充资料字段（中文名、类别、地区、简介、联系人、类型、背景）",
+      "合作方自动同步锁定机构 — 以表单中的名称与官网作为提取条件；若材料属于另一个机构，同步会停止且不作任何修改",
+      "合作方同步不触碰合作关系字段 — 阶段、开始日期与负责人保持团队记录不变，仅补充公开资料字段",
+      "登记页 AI 快速填充升级 — 仅填官网即可运行（无需粘贴文本），表单官网作为额外来源抓取，表单已命名机构时提取会锁定该机构",
+    ],
+  },
   {
     version: "5.12",
     date: "2026-07-26",

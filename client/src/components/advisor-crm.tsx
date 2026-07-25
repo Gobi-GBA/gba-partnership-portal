@@ -487,8 +487,8 @@ export function LinkedinSyncControl({ url, identity, onApply }: { url: string; i
         type="button"
         size="sm"
         variant="outline"
-        disabled={!url.trim() || extract.isPending}
-        onClick={() => extract.mutate({ url: url.trim() })}
+        disabled={(!url.trim() && !identity?.linkedinUrl?.trim()) || extract.isPending}
+        onClick={() => extract.mutate({ url: url.trim() || undefined })}
         title={t("linkedinSyncHint")}
         data-testid="button-linkedin-sync"
       >

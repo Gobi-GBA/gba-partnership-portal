@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Paperclip, Loader2 } from "lucide-react";
+import { Trash2, Paperclip, Loader2, Sparkles } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PicChecklist } from "@/components/shared";
 import { TagPicker } from "@/components/advisor-crm";
@@ -70,6 +70,50 @@ export function EditPartnershipDialog({
   }
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  // v5.13 — org-anchored auto-sync: fetches the organisation's website and
+  // enriches the profile fields. Identity (name + website) locks extraction to
+  // this organisation; relationship fields (stage, start date, PICs) are never
+  // touched — a public website knows the org, not the relationship.
+  const orgSync = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/extract", {
+        text: "",
+        expectedOrg: {
+          nameEn: String(form.nameEn ?? "").trim(),
+          nameCn: String(form.nameCn ?? "").trim(),
+          website: String(form.website ?? "").trim(),
+        },
+      });
+      return res.json();
+    },
+    onSuccess: (d: any) => {
+      setForm((f) => ({
+        ...f,
+        nameCn: d.nameCn?.trim() || f.nameCn,
+        category: d.category || f.category,
+        region: d.region || f.region,
+        website: d.website?.trim() || f.website,
+        descriptionEn: d.descriptionEn?.trim() || f.descriptionEn,
+        descriptionCn: d.descriptionCn?.trim() || f.descriptionCn,
+        contactName: d.contactName?.trim() || f.contactName,
+        contactEmail: d.contactEmail?.trim() || f.contactEmail,
+        partnershipType: d.partnershipType?.trim() || f.partnershipType,
+        context: d.context?.trim() || f.context,
+      }));
+      toast({ description: t("linkedinSyncApplied") });
+    },
+    onError: (e: any) => {
+      const msg = String(e?.message ?? e);
+      if (msg.includes("org_mismatch")) {
+        let found = "";
+        try { found = JSON.parse(msg.slice(msg.indexOf("{"))).found ?? ""; } catch {}
+        toast({ description: `${t("orgMismatch")}${found ? ` — ${found}` : ""}. ${t("orgMismatchHint")}`, variant: "destructive" });
+      } else {
+        toast({ description: msg, variant: "destructive" });
+      }
+    },
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -186,7 +230,24 @@ export function EditPartnershipDialog({
               </Select>
             </EField>
             <EField label={t("partnershipType")}><Input value={form.partnershipType ?? ""} onChange={(e) => set("partnershipType", e.target.value)} data-testid="edit-type" /></EField>
-            <EField label={t("website")}><Input value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} data-testid="edit-website" /></EField>
+            <EField label={t("website")}>
+              <div className="flex gap-2">
+                <Input value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} data-testid="edit-website" />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={!String(form.website ?? "").trim() || orgSync.isPending}
+                  onClick={() => orgSync.mutate()}
+                  title={t("partnerSyncHint")}
+                  data-testid="button-partner-sync"
+                >
+                  {orgSync.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1.5" />}
+                  {t("linkedinSync")}
+                </Button>
+              </div>
+            </EField>
             <EField label={t("logoUrl")}><Input value={form.logoUrl ?? ""} onChange={(e) => set("logoUrl", e.target.value)} data-testid="edit-logo" /></EField>
             <EField label={t("contactName")}><Input value={form.contactName ?? ""} onChange={(e) => set("contactName", e.target.value)} data-testid="edit-contact-name" /></EField>
             <EField label={t("contactEmail")}><Input value={form.contactEmail ?? ""} onChange={(e) => set("contactEmail", e.target.value)} data-testid="edit-contact-email" /></EField>

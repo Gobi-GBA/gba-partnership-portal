@@ -169,7 +169,17 @@ export default function Submit() {
           data: await fileToBase64(f),
         })),
       );
-      const res = await apiRequest("POST", "/api/ai/extract", { text: aiText, files });
+      const res = await apiRequest("POST", "/api/ai/extract", {
+        text: aiText,
+        files,
+        // v5.13 — when the form already names the partner org, extraction is
+        // anchored to it (and the website is fetched as an extra source).
+        expectedOrg: {
+          nameEn: form.nameEn.trim(),
+          nameCn: form.nameCn.trim(),
+          website: form.website.trim(),
+        },
+      });
       return res.json();
     },
     onSuccess: (data) => {
@@ -200,7 +210,16 @@ export default function Submit() {
       }));
       toast({ title: t("aiDone") });
     },
-    onError: () => toast({ title: t("aiFailed"), variant: "destructive" }),
+    onError: (e: any) => {
+      const msg = String(e?.message ?? e);
+      if (msg.includes("org_mismatch")) {
+        let found = "";
+        try { found = JSON.parse(msg.slice(msg.indexOf("{"))).found ?? ""; } catch {}
+        toast({ title: `${t("orgMismatch")}${found ? ` — ${found}` : ""}. ${t("orgMismatchHint")}`, variant: "destructive" });
+      } else {
+        toast({ title: t("aiFailed"), variant: "destructive" });
+      }
+    },
   });
 
   const submitMutation = useMutation({
@@ -372,7 +391,7 @@ export default function Submit() {
               </div>
               <Button
                 onClick={() => extractMutation.mutate()}
-                disabled={extractMutation.isPending || (aiText.trim().length < 20 && aiFiles.length === 0)}
+                disabled={extractMutation.isPending || (aiText.trim().length < 20 && aiFiles.length === 0 && !form.website.trim())}
                 data-testid="button-ai-extract"
               >
                 {extractMutation.isPending ? (

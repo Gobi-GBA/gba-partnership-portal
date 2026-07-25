@@ -1817,26 +1817,35 @@ www.gobi.vc`,
       });
     }
 
-    let pageText = "";
-    let photoCandidates: { url: string; alt: string; score: number }[] = [];
-    let fetchFailed = false;
-    if (url && /^https?:\/\//i.test(url)) {
-      const meta = await fetchPageMeta(url);
-      if (meta.text && meta.text.trim().length >= 80) pageText = meta.text;
-      else fetchFailed = true;
-      photoCandidates = meta.photoCandidates;
-      // Identity preset: candidates whose alt text mentions the target person outrank everything else
-      if (hasIdentity) {
-        for (const c of photoCandidates) {
-          const altLc = c.alt.toLowerCase();
-          const cnHit = expectedNameCn.length >= 2 && c.alt.includes(expectedNameCn);
-          const enHit = Array.from(nameTokens).some((tok) => altLc.includes(tok));
-          if (cnHit || enHit) c.score += 4;
-        }
-        photoCandidates.sort((a, b) => b.score - a.score);
+    // ---- Multi-source harvest (v5.13) ----
+    // Every link the form knows about is fetched (profile URL + LinkedIn URL),
+    // the readable pages are merged into one material block, and photo
+    // candidates are pooled across pages — the AI then produces one best-of
+    // answer instead of relying on a single source.
+    const sourceUrls = Array.from(new Set(
+      [url, linkedinUrl].filter((u) => u && /^https?:\/\//i.test(u)),
+    )).slice(0, 3);
+    const pageSections: { url: string; text: string }[] = [];
+    const photoCandidates: { url: string; alt: string; score: number }[] = [];
+    const metas = await Promise.all(sourceUrls.map(async (su) => ({ su, meta: await fetchPageMeta(su) })));
+    for (const { su, meta } of metas) {
+      if (meta.text && meta.text.trim().length >= 80) pageSections.push({ url: su, text: meta.text });
+      for (const c of meta.photoCandidates) {
+        if (!photoCandidates.some((p) => p.url === c.url)) photoCandidates.push(c);
       }
     }
-    if (!pageText && pasted.trim().length < 40) {
+    const fetchFailed = sourceUrls.length > 0 && pageSections.length === 0;
+    // Identity preset: candidates whose alt text mentions the target person outrank everything else
+    if (hasIdentity) {
+      for (const c of photoCandidates) {
+        const altLc = c.alt.toLowerCase();
+        const cnHit = expectedNameCn.length >= 2 && c.alt.includes(expectedNameCn);
+        const enHit = Array.from(nameTokens).some((tok) => altLc.includes(tok));
+        if (cnHit || enHit) c.score += 4;
+      }
+    }
+    photoCandidates.sort((a, b) => b.score - a.score);
+    if (pageSections.length === 0 && pasted.trim().length < 40) {
       return res.status(422).json({
         message: fetchFailed
           ? "Could not read that page — LinkedIn and some sites block automated access. Open the profile, copy the text, and paste it instead."
@@ -1879,11 +1888,12 @@ STANDARDISATION RULES — follow exactly:
       const candidateBlock = photoCandidates.length
         ? `\nCANDIDATE IMAGES:\n${photoCandidates.map((c, i) => `${i}. ${c.url}${c.alt ? ` — alt: "${c.alt}"` : ""}`).join("\n")}`
         : "";
+      const perSectionCap = pageSections.length > 1 ? 7000 : 12000;
       const textBlock = [
         instruction,
         identityBlock,
         candidateBlock,
-        pageText ? `\nFETCHED PAGE CONTENT (${url}):\n"""\n${pageText.slice(0, 12000)}\n"""` : "",
+        ...pageSections.map((s) => `\nFETCHED PAGE CONTENT (${s.url}):\n"""\n${s.text.slice(0, perSectionCap)}\n"""`),
         pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
       ].join("\n");
 
@@ -1967,8 +1977,8 @@ STANDARDISATION RULES — follow exactly:
         cohort,
         roles,
         photoUrl: photoUrl || null,
-        sourceUrl: url || null,
-        fetched: !!pageText,
+        sourceUrl: url || sourceUrls[0] || null,
+        fetched: pageSections.length > 0,
       });
     } catch (err: any) {
       console.error("AI advisor extract failed:", err);
@@ -1991,7 +2001,23 @@ STANDARDISATION RULES — follow exactly:
       .filter((r: any) => r.success)
       .map((r: any) => r.data as z.infer<typeof aiFileSchema>);
 
-    if (text.trim().length < 20 && files.length === 0) {
+    // ---- Rule-based org identity preset (v5.13) ----
+    // When the form already identifies the partner organisation (name, Chinese
+    // name, website), extraction is anchored to THAT organisation and verified
+    // before any field is returned — mirroring the advisor identity lock.
+    const orgRaw = req.body?.expectedOrg ?? {};
+    const expOrgEn = typeof orgRaw?.nameEn === "string" ? orgRaw.nameEn.trim() : "";
+    const expOrgCn = (typeof orgRaw?.nameCn === "string" ? orgRaw.nameCn : "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
+    let orgWebsite = typeof orgRaw?.website === "string" ? orgRaw.website.trim() : "";
+    if (orgWebsite && !/^https?:\/\//i.test(orgWebsite)) orgWebsite = `https://${orgWebsite}`;
+    const ORG_STOP = new Set(["the", "and", "of", "for", "co", "ltd", "limited", "inc", "corp", "corporation", "company", "group", "holdings", "international", "global"]);
+    const orgTokens = new Set<string>();
+    for (const tok of expOrgEn.toLowerCase().split(/[^a-z0-9]+/)) {
+      if (tok.length >= 3 && !ORG_STOP.has(tok)) orgTokens.add(tok);
+    }
+    const hasOrgIdentity = orgTokens.size > 0 || expOrgCn.length >= 2;
+
+    if (text.trim().length < 20 && files.length === 0 && !orgWebsite) {
       return res.status(400).json({ message: "Paste text or upload a PDF or DOCX" });
     }
 
@@ -2014,15 +2040,25 @@ STANDARDISATION RULES — follow exactly:
       const sources: { kind: "pdf" | "docx" | "link" | "text"; label: string; fetched?: boolean }[] = [];
 
       // Detect links in the pasted text and fetch their content server-side.
-      const urls = Array.from(new Set(text.match(URL_RE) ?? [])).slice(0, 3);
+      // The form's website (org identity preset) is fetched first, so a
+      // website-only auto-sync works without any pasted material.
+      const urls = Array.from(new Set([...(orgWebsite ? [orgWebsite] : []), ...(text.match(URL_RE) ?? [])])).slice(0, 4);
       let webText = "";
-      for (const url of urls) {
-        const pageText = await fetchPageText(url);
+      const pages = await Promise.all(urls.map(async (url) => ({ url, pageText: await fetchPageText(url) })));
+      for (const { url, pageText } of pages) {
         sources.push({ kind: "link", label: url, fetched: pageText !== null });
         if (pageText) webText += `\n\n--- WEB PAGE: ${url} ---\n${pageText}`;
       }
       const plainText = text.replace(URL_RE, " ").trim();
       if (plainText.length >= 20) sources.push({ kind: "text", label: "pasted text" });
+
+      // Website-only sync with an unreadable site — nothing to extract from.
+      if (!webText.trim() && plainText.length < 20 && files.length === 0) {
+        return res.status(422).json({
+          message: "Could not read the organisation's website — paste some material about the partnership instead.",
+          fetchFailed: true,
+        });
+      }
 
       for (const f of files) {
         if (attachmentTooLarge(f.data)) continue;
@@ -2050,7 +2086,8 @@ STEP 3 — RELATIONSHIP: Describe the relationship between Gobi Partners and the
 STEP 4 — EXTRACT: Then fill the CRM fields.
 
 Return ONLY a JSON object with these keys (use empty string "" when unknown):
-{
+{${hasOrgIdentity ? `
+  "orgFound": true if the TARGET ORGANISATION appears in the material, else false,` : ""}
   "materialType": "very short label for what the material is, e.g. 'Email thread', 'Press release', 'MOU document', 'News article', 'Meeting notes'",
   "materialTypeCn": "the same label in Chinese",
   "understandingEn": "2-3 sentences in English: what this material is and what it says about the partnership",
@@ -2077,10 +2114,19 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
 GOBI PARTNERS STAFF LIST (name — title — office):
 ${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`;
 
+      const orgIdentityBlock = hasOrgIdentity
+        ? `\nTARGET ORGANISATION — this sync is updating an existing partner record. The partner organisation is: ${[
+            expOrgEn && `"${expOrgEn}"`,
+            expOrgCn && `Chinese name "${expOrgCn}"`,
+            orgWebsite && `website ${orgWebsite}`,
+          ].filter(Boolean).join(", ")}. Fill every field for the partnership between Gobi Partners and THIS organisation only — the material may mention other organisations, IGNORE them as the partner. If the material is not about this organisation at all, set "orgFound": false and leave every other field empty. Do NOT substitute a different organisation.`
+        : "";
+
       const textBlock = [
         instruction,
+        orgIdentityBlock,
         text.trim() ? `\nPASTED TEXT:\n"""\n${text.slice(0, 12000)}\n"""` : "",
-        webText ? `\nFETCHED WEB PAGE CONTENT (from links in the pasted text):\n"""\n${webText.slice(0, 20000)}\n"""` : "",
+        webText ? `\nFETCHED WEB PAGE CONTENT (from the organisation's website and links in the pasted text):\n"""\n${webText.slice(0, 20000)}\n"""` : "",
         docText ? `\nDOCUMENT CONTENT:\n"""\n${docText}\n"""` : "",
       ].join("\n");
 
@@ -2103,6 +2149,29 @@ ${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON in model output");
       const data = JSON.parse(jsonMatch[0]);
+
+      // Org identity verification — rule layer on top of the prompt.
+      if (hasOrgIdentity) {
+        const foundEn = String(data.nameEn ?? "");
+        const foundCn = String(data.nameCn ?? "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const acr = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !["the", "of", "and", "for"].includes(w)).map((w) => w[0]).join("");
+        const eN = norm(expOrgEn);
+        const fN = norm(foundEn);
+        const foundLc = foundEn.toLowerCase();
+        const tokMatch = Array.from(orgTokens).some((tok) => foundLc.includes(tok));
+        const contain = eN.length >= 4 && fN.length >= 4 && (eN.includes(fN) || fN.includes(eN));
+        const acrMatch = (eN.length >= 3 && acr(foundEn) === eN) || (fN.length >= 3 && acr(expOrgEn) === fN);
+        const cnMatch = expOrgCn.length >= 2 && foundCn.length >= 2 && (foundCn.includes(expOrgCn) || expOrgCn.includes(foundCn));
+        if (data.orgFound === false || (!tokMatch && !contain && !acrMatch && !cnMatch)) {
+          return res.status(409).json({
+            message: "org_mismatch",
+            expected: expOrgEn || expOrgCn,
+            found: foundEn || foundCn || "",
+          });
+        }
+      }
+
       const stage = (STAGES as readonly string[]).includes(data.stage) ? data.stage : "s2_engaged";
       const cleaned = {
         materialType: String(data.materialType ?? ""),
