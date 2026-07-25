@@ -283,6 +283,8 @@ function buildApprovalEmail(a: AdvisorWithRoles, requesterName: string, lang: st
         ["主要职务", roleLine],
         ["行业标签", tagsLine],
         ["专长领域", a.domains ?? "—"],
+        ["背景简介", a.background ?? "—"],
+        ["建议合作方式与可能项目", a.engagement ?? "—"],
         ["公开展示许可", clearance],
         ["申请人", requesterName],
       ]
@@ -292,13 +294,15 @@ function buildApprovalEmail(a: AdvisorWithRoles, requesterName: string, lang: st
         ["Primary role", roleLine],
         ["Sector tags", tagsLine],
         ["Expert domains", a.domains ?? "—"],
+        ["Background", a.background ?? "—"],
+        ["Suggested engagement and potential projects", a.engagement ?? "—"],
         ["Public listing clearance", clearance],
         ["Requested by", requesterName],
       ];
 
   const intro = cn
-    ? "您好，\n\n现提请审批以下顾问任命，详情如下："
-    : "Dear COO Office,\n\nI would like to request approval for the following advisor appointment:";
+    ? "您好，\n\n现提请审批以下顾问任命。该人选的背景、专长领域与建议的合作方式如下，请审阅："
+    : "Dear COO Office,\n\nI would like to request approval for the following advisor appointment. The candidate's background, expertise and the engagement we propose are summarised below for your review:";
   const outro = cn
     ? `此申请由 Gobi Partners 合作伙伴门户生成。\n\n此致\n${requesterName}`
     : `This request was generated from the Gobi Partners Partnership Portal.\n\nBest regards,\n${requesterName}`;
@@ -340,6 +344,20 @@ export function ApprovalEmailDialog({ advisor, open, onOpenChange }: {
 
   const { subject, plain, html } = buildApprovalEmail(advisor, user?.name ?? "", lang, t);
   const mailtoHref = `mailto:${encodeURIComponent(cooEmail)}?cc=${encodeURIComponent(CC_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plain)}`;
+
+  // v5.8 — handing the draft to the mail client records the workflow stage so the
+  // onboarding tracker in the detail dialog stays in step with reality.
+  const recordStage = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/workflow`, { stage: "approval_emailed" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id, "activities"] });
+    },
+  });
 
   const copy = async () => {
     try {
@@ -389,7 +407,10 @@ export function ApprovalEmailDialog({ advisor, open, onOpenChange }: {
               size="sm"
               className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
               disabled={!cooEmail}
-              onClick={() => { window.location.href = mailtoHref; }}
+              onClick={() => {
+                recordStage.mutate();
+                window.location.href = mailtoHref;
+              }}
               data-testid="button-open-mail"
             >
               <Mail className="h-3.5 w-3.5 mr-1.5" /> {t("openInMail")}

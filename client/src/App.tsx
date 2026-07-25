@@ -17,6 +17,7 @@ import Admin from "@/pages/admin";
 import Updates from "@/pages/updates";
 import Advisors from "@/pages/advisors";
 import RdPlanner from "@/pages/rd-planner";
+import Scoreboard from "@/pages/scoreboard";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -46,6 +47,7 @@ function AppRouter() {
       <Route path="/updates" component={Updates} />
       <Route path="/advisors" component={Advisors} />
       <Route path="/advisors/:id" component={Advisors} />
+      <Route path="/scoreboard" component={Scoreboard} />
       <Route path="/rd" component={RdPlanner} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />

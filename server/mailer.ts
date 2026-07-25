@@ -62,6 +62,31 @@ export async function sendMail(to: string, subject: string, bodyHtml: string): P
   }
 }
 
+// v5.8 — Raw outreach send (CRM). No automated/do-not-reply chrome: this is a
+// person-to-person email (e.g. Fred → advisor). Body may be plain text or HTML.
+export async function sendOutreach(
+  to: string,
+  subject: string,
+  body: string,
+  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean },
+): Promise<boolean> {
+  if (!transporter) return false;
+  const fromName = opts?.fromName ?? "Gobi Partners";
+  try {
+    await transporter.sendMail({
+      from: MAIL_USERNAME ? `"${fromName}" <${MAIL_USERNAME}>` : MAIL_DEFAULT_SENDER,
+      replyTo: opts?.replyTo ?? MAIL_DEFAULT_SENDER,
+      to,
+      subject,
+      ...(opts?.isHtml ? { html: body } : { text: body }),
+    });
+    return true;
+  } catch (err) {
+    console.error("[mailer] outreach send failed:", err);
+    return false;
+  }
+}
+
 export function registrationEmail(name: string, autoApproved: boolean): { subject: string; html: string } {
   if (autoApproved) {
     return {

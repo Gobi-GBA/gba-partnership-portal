@@ -269,10 +269,21 @@ export const advisors = sqliteTable("advisors", {
   birthDay: integer("birth_day"),   // 1-31 — CRM birthday, staff-visible only (v5.5)
   birthMonth: integer("birth_month"), // 1-12
   birthYear: integer("birth_year"),  // optional, e.g. 1968
-  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  status: text("status").notNull().default("pending"), // approval gating: 'pending' | 'approved' | 'rejected'
+  // ---- v5.8 lifecycle + onboarding workflow ----
+  lifecycleStatus: text("lifecycle_status").notNull().default("proposed"), // 'proposed' | 'onboarded' | 'terminated'
+  onboardedAt: text("onboarded_at"),      // date the advisor reached Onboarded (scoreboard time factor)
+  // Approval workflow stage timestamps (null = not yet done)
+  approvalEmailedAt: text("approval_emailed_at"), // internal approval email sent to COO office + Fred
+  approvedAt: text("approved_at"),                // admin approved onboarding
+  letterIssuedAt: text("letter_issued_at"),       // invitation letter PDF issued
+  signedBackAt: text("signed_back_at"),           // advisor signed & returned -> done
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
 });
+
+export const ADVISOR_LIFECYCLE = ["proposed", "onboarded", "terminated"] as const;
+export type AdvisorLifecycle = (typeof ADVISOR_LIFECYCLE)[number];
 
 export type Advisor = typeof advisors.$inferSelect;
 
@@ -374,6 +385,7 @@ export const advisorInputSchema = z.object({
   cohort: z.string().max(20).nullable().optional(),
   engagement: z.string().max(4000).nullable().optional(),
   publicClearance: z.number().int().min(0).max(1).optional(), // v5.5 — default stays 0 (No)
+  lifecycleStatus: z.enum(ADVISOR_LIFECYCLE).optional(), // v5.8 lifecycle
   birthDay: z.number().int().min(1).max(31).nullable().optional(),
   birthMonth: z.number().int().min(1).max(12).nullable().optional(),
   birthYear: z.number().int().min(1900).max(2100).nullable().optional(),

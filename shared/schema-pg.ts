@@ -124,6 +124,12 @@ export const advisorsPg = pgTable("advisors", {
   birthMonth: integer("birth_month"),
   birthYear: integer("birth_year"),
   status: text("status").notNull().default("pending"),
+  lifecycleStatus: text("lifecycle_status").notNull().default("proposed"),
+  onboardedAt: text("onboarded_at"),
+  approvalEmailedAt: text("approval_emailed_at"),
+  approvedAt: text("approved_at"),
+  letterIssuedAt: text("letter_issued_at"),
+  signedBackAt: text("signed_back_at"),
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
 });

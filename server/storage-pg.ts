@@ -143,6 +143,15 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_day INTEGER`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_month INTEGER`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_year INTEGER`,
+  // ---- v5.8 advisor lifecycle + onboarding workflow ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'proposed'`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS onboarded_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_emailed_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approved_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS letter_issued_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS signed_back_at TEXT`,
+  // Backfill: any already-approved advisor is considered onboarded
+  `UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
     id SERIAL PRIMARY KEY,
     name_en TEXT NOT NULL,

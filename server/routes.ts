@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword } from "./storage.js";
-import { mailEnabled, sendMail, registrationEmail, resetEmail } from "./mailer.js";
+import { mailEnabled, sendMail, sendOutreach, registrationEmail, resetEmail } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
@@ -302,6 +302,86 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // ~10MB per file (base64 inflate
 
 function attachmentTooLarge(b64: string) {
   return b64.length > MAX_ATTACHMENT_BYTES * 1.4;
+}
+
+function esc(s: string): string {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
+  );
+}
+
+// v5.8 — Advisor invitation letter, styled on Gobi letterhead. Rendered as a
+// self-contained HTML page the client opens and prints/saves to PDF (Ctrl/Cmd-P).
+function invitationLetterHtml(advisor: Advisor, role: AdvisorRole | null): string {
+  const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const honorific = advisor.name;
+  const title = role?.title ? esc(role.title) : "";
+  const org = role?.organization ? esc(role.organization) : "";
+  const roleLine = [title, org].filter(Boolean).join(", ");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Advisor Invitation Letter — ${esc(advisor.name)}</title>
+<style>
+  @page { size: A4; margin: 22mm 24mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, "Times New Roman", "Noto Serif SC", serif; color: #14213d; line-height: 1.7; font-size: 12.5pt; margin: 0; }
+  .sheet { max-width: 760px; margin: 0 auto; padding: 40px 44px; }
+  .head { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #D4A843; padding-bottom: 16px; margin-bottom: 8px; }
+  .brand { font-family: "Plus Jakarta Sans", Arial, sans-serif; }
+  .brand .name { font-size: 19pt; font-weight: 800; letter-spacing: .04em; color: #0C2340; }
+  .brand .sub { font-size: 9pt; letter-spacing: .22em; text-transform: uppercase; color: #8a6d1f; margin-top: 2px; }
+  .addr { text-align: right; font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 8.5pt; color: #5b6472; line-height: 1.5; }
+  .date { margin: 26px 0 18px; font-size: 11pt; color: #3a4252; }
+  h1 { font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 15pt; color: #0C2340; margin: 0 0 18px; }
+  p { margin: 0 0 13px; }
+  .to { margin-bottom: 18px; }
+  .to .n { font-weight: 700; }
+  ul { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  .sig { margin-top: 40px; display: flex; justify-content: space-between; gap: 40px; }
+  .sig .block { flex: 1; }
+  .sig .line { border-bottom: 1px solid #14213d; height: 42px; margin-bottom: 6px; }
+  .sig .lbl { font-size: 9.5pt; color: #5b6472; }
+  .foot { margin-top: 34px; border-top: 1px solid #e3e6ec; padding-top: 10px; font-family: "Plus Jakarta Sans", Arial, sans-serif; font-size: 8pt; color: #8a93a3; text-align: center; }
+  .print-hint { background: #0C2340; color: #fff; text-align: center; padding: 10px; font-family: Arial, sans-serif; font-size: 10pt; }
+  @media print { .print-hint { display: none; } .sheet { padding: 0; } }
+</style></head>
+<body>
+<div class="print-hint">Press Ctrl/Cmd + P to save this invitation letter as a PDF.</div>
+<div class="sheet">
+  <div class="head">
+    <div class="brand"><div class="name">GOBI PARTNERS</div><div class="sub">Gobi Advisory Network &middot; Global</div></div>
+    <div class="addr">4209-11, Hopewell Centre<br>183 Queen's Road East, Wanchai<br>Hong Kong<br>www.gobi.vc</div>
+  </div>
+  <div class="date">${esc(today)}</div>
+  <div class="to">
+    <div class="n">${esc(honorific)}</div>
+    ${roleLine ? `<div>${roleLine}</div>` : ""}
+  </div>
+  <h1>Invitation to the Gobi Advisory Network</h1>
+  <p>Dear ${esc(advisor.name)},</p>
+  <p>On behalf of Gobi Partners, it is our pleasure to invite you to join the <b>Gobi Advisory Network (Global)</b>. This network connects universities, academics, and industry experts to foster the growth of technology startups with a positive global impact.</p>
+  <p>As a member of the Gobi Advisory Network, you will have the opportunity to:</p>
+  <ul>
+    <li>Attend exclusive, invitation-only events hosted by Gobi and our affiliates.</li>
+    <li>Participate in project-based professional engagements focused on cutting-edge technologies.</li>
+    <li>Connect with founders from promising next-generation companies and explore innovative technologies from around the world.</li>
+    <li>Benefit from Gobi's extensive network and resources, as well as those of our investors.</li>
+  </ul>
+  <p>We would be honoured to have you as part of our advisory community. To confirm your participation, kindly countersign this letter where indicated below and return a copy to us at your convenience.</p>
+  <p>Thank you for your ongoing support and partnership, and for your dedication to the development of the innovation ecosystem.</p>
+  <div class="sig">
+    <div class="block">
+      <div class="line"></div>
+      <div class="lbl"><b>Fred Li</b><br>Managing Director, Gobi Partners</div>
+    </div>
+    <div class="block">
+      <div class="line"></div>
+      <div class="lbl"><b>${esc(advisor.name)}</b><br>Accepted &amp; agreed &nbsp;|&nbsp; Date: ____________</div>
+    </div>
+  </div>
+  <div class="foot">Gobi Partners &middot; 4209-11 Hopewell Centre, 183 Queen's Road East, Wanchai, Hong Kong &middot; www.gobi.vc</div>
+</div>
+</body></html>`;
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -996,6 +1076,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       birthDay: data.birthDay ?? null,
       birthMonth: data.birthMonth ?? null,
       birthYear: data.birthYear ?? null,
+      lifecycleStatus: data.lifecycleStatus ?? "proposed",
+      onboardedAt: data.lifecycleStatus === "onboarded" ? new Date().toISOString().slice(0, 10) : null,
+      approvalEmailedAt: null,
+      approvedAt: null,
+      letterIssuedAt: null,
+      signedBackAt: null,
       status: isAdmin ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
@@ -1027,9 +1113,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid advisor data", errors: parsed.error.flatten() });
     }
-    const { roles, status, tagIds, ...data } = parsed.data;
+    const { roles, status, tagIds, lifecycleStatus, ...data } = parsed.data;
     const patch: Partial<Advisor> = { ...data } as Partial<Advisor>;
     if (isAdmin && status) patch.status = status;
+    // Lifecycle status is admin-only and normally changes via /workflow; allow admins to set it here too.
+    if (isAdmin && lifecycleStatus) {
+      patch.lifecycleStatus = lifecycleStatus;
+      if (lifecycleStatus === "onboarded") patch.onboardedAt = existing.onboardedAt ?? new Date().toISOString().slice(0, 10);
+    }
     const updated = await storage.updateAdvisor(id, patch);
     if (tagIds) await storage.setAdvisorTags(id, tagIds);
     let savedRoles: AdvisorRole[] | undefined;
@@ -1052,6 +1143,295 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
     await storage.deleteAdvisor(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ---------- Advisor onboarding workflow (v5.8) ----------
+  // Advance a stage or change lifecycle status. Each transition is timestamped and logged.
+  const WORKFLOW_STAGES = ["approval_emailed", "approved", "letter_issued", "signed_back"] as const;
+  app.post("/api/advisors/:id/workflow", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const advisor = await storage.getAdvisor(id);
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const isAdmin = req.user!.role === "admin";
+    const parsed = z.object({
+      stage: z.enum(WORKFLOW_STAGES).optional(),
+      lifecycleStatus: z.enum(["proposed", "onboarded", "terminated"]).optional(),
+      undo: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid workflow request" });
+    const { stage, lifecycleStatus, undo } = parsed.data;
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    const patch: Partial<Advisor> = {};
+    let logNote = "";
+
+    if (stage) {
+      // Approving / issuing the letter is admin-gated; emailing and signing-back are open to staff.
+      if ((stage === "approved" || stage === "letter_issued") && !isAdmin) {
+        return res.status(403).json({ message: "Only admins can approve or issue the invitation letter" });
+      }
+      const col = ({
+        approval_emailed: "approvalEmailedAt",
+        approved: "approvedAt",
+        letter_issued: "letterIssuedAt",
+        signed_back: "signedBackAt",
+      } as const)[stage];
+      (patch as any)[col] = undo ? null : now;
+      const label = ({
+        approval_emailed: "Approval email sent to COO office & Fred Li",
+        approved: "Onboarding approved",
+        letter_issued: "Invitation letter issued",
+        signed_back: "Signed invitation returned — onboarding complete",
+      } as const)[stage];
+      logNote = undo ? `Reverted: ${label}` : label;
+      // Completing the sign-back automatically marks the advisor Onboarded.
+      if (stage === "signed_back" && !undo && advisor.lifecycleStatus !== "terminated") {
+        patch.lifecycleStatus = "onboarded";
+        patch.onboardedAt = advisor.onboardedAt ?? today;
+      }
+    }
+
+    if (lifecycleStatus) {
+      if (!isAdmin) return res.status(403).json({ message: "Only admins can change lifecycle status" });
+      patch.lifecycleStatus = lifecycleStatus;
+      patch.onboardedAt =
+        lifecycleStatus === "onboarded" ? (advisor.onboardedAt ?? today) : advisor.onboardedAt ?? null;
+      logNote = logNote
+        ? `${logNote}; status → ${lifecycleStatus}`
+        : `Lifecycle status changed to ${lifecycleStatus}`;
+    }
+
+    if (Object.keys(patch).length === 0) return res.status(400).json({ message: "Nothing to change" });
+    const updated = await storage.updateAdvisor(id, patch);
+    // Log the transition into the advisor's activity feed for the audit trail.
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: id,
+        date: today,
+        type: "note",
+        note: `[Workflow] ${logNote}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: now,
+      });
+    } catch {}
+    const roles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === id);
+    res.json({ ...updated, roles });
+  });
+
+  // Generate the advisor invitation letter as an HTML document (client prints to PDF).
+  app.get("/api/advisors/:id/invitation-letter", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const roles = (await storage.listAdvisorRoles())
+      .filter((r) => r.advisorId === advisor.id)
+      .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    const primaryRole = roles[0];
+    const html = invitationLetterHtml(advisor, primaryRole ?? null);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  });
+
+  // ---------- CSV export (v5.8 — contacts for other teams) ----------
+  // Staff-only (contact emails are staff-visible). LP status respects IR visibility.
+  const csvCell = (v: unknown): string => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csvRow = (cells: unknown[]) => cells.map(csvCell).join(",");
+
+  app.get("/api/export/advisors.csv", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const advisors = (await storage.listAdvisors()).filter((a) => a.status === "approved");
+    const roles = await storage.listAdvisorRoles();
+    const rolesBy = new Map<number, AdvisorRole[]>();
+    for (const r of roles) { const l = rolesBy.get(r.advisorId) ?? []; l.push(r); rolesBy.set(r.advisorId, l); }
+    const header = ["Name (EN)", "Name (CN)", "Lifecycle status", "Type", "Track", "Pillar", "Primary title", "Primary organization", "Emails", "Domains", "Gobi PIC", "Cohort", "Onboarded date", "Profile URL"];
+    const lines = [csvRow(header)];
+    advisors.sort((a, b) => a.name.localeCompare(b.name));
+    for (const a of advisors) {
+      const rs = (rolesBy.get(a.id) ?? []).sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+      const primary = rs[0];
+      lines.push(csvRow([
+        a.name, a.nameCn ?? "", a.lifecycleStatus, a.advisorType, a.track, a.pillar,
+        primary?.title ?? "", primary?.organization ?? "",
+        (a.emails ?? []).join("; "), a.domains ?? "", (a.gobiPics ?? []).join("; "),
+        a.cohort ?? "", a.onboardedAt ?? "", a.profileUrl ?? a.linkedinUrl ?? "",
+      ]));
+    }
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="gobi-advisors-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send("\uFEFF" + lines.join("\n")); // BOM for Excel UTF-8
+  });
+
+  app.get("/api/export/partners.csv", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const partners = (await storage.listPartnerships()).filter((p) => p.status === "approved");
+    const seeLp = canSeeLp(req.user);
+    const header = ["Name (EN)", "Name (CN)", "Category", "Region", "Stage", "Collab level", "Partnership type", "Contact name", "Contact email", "Gobi PIC", "Website", "Start date", ...(seeLp ? ["LP status"] : [])];
+    const lines = [csvRow(header)];
+    partners.sort((a, b) => (b.collabLevel - a.collabLevel) || a.nameEn.localeCompare(b.nameEn));
+    for (const p of partners) {
+      lines.push(csvRow([
+        p.nameEn, p.nameCn ?? "", p.category, p.region, p.stage, p.collabLevel,
+        p.partnershipType ?? "", p.contactName ?? "", p.contactEmail ?? "",
+        (p.picNames ?? []).join("; "), p.website ?? "", p.startDate ?? "",
+        ...(seeLp ? [p.lpStatus] : []),
+      ]));
+    }
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="gobi-partners-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send("\uFEFF" + lines.join("\n"));
+  });
+
+  // ---------- Team scoreboard / PIC matrix (v5.8) ----------
+  // Counts partners & advisors by Gobi PIC. Time factor = onboarded date for advisors,
+  // start date for partners. Non-admin staff see only their own row.
+  app.get("/api/scoreboard", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const isAdmin = req.user!.role === "admin";
+    const from = typeof req.query.from === "string" ? req.query.from : ""; // YYYY-MM-DD inclusive
+    const to = typeof req.query.to === "string" ? req.query.to : "";       // YYYY-MM-DD inclusive
+    const inRange = (d: string | null | undefined): boolean => {
+      if (!from && !to) return true;
+      if (!d) return false;
+      const day = d.slice(0, 10);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    };
+    const advisors = (await storage.listAdvisors()).filter((a) => a.status === "approved");
+    const partners = (await storage.listPartnerships()).filter((p) => p.status === "approved");
+    // Build a row per staff member found on any PIC field.
+    const rows = new Map<string, {
+      pic: string; partners: number; advisorsTotal: number;
+      advProposed: number; advOnboarded: number; advTerminated: number;
+      advOnboardedInPeriod: number; partnersInPeriod: number;
+    }>();
+    const ensure = (pic: string) => {
+      if (!rows.has(pic)) rows.set(pic, { pic, partners: 0, advisorsTotal: 0, advProposed: 0, advOnboarded: 0, advTerminated: 0, advOnboardedInPeriod: 0, partnersInPeriod: 0 });
+      return rows.get(pic)!;
+    };
+    for (const a of advisors) {
+      for (const pic of a.gobiPics ?? []) {
+        const r = ensure(pic);
+        r.advisorsTotal++;
+        if (a.lifecycleStatus === "proposed") r.advProposed++;
+        else if (a.lifecycleStatus === "onboarded") r.advOnboarded++;
+        else if (a.lifecycleStatus === "terminated") r.advTerminated++;
+        if (a.lifecycleStatus === "onboarded" && inRange(a.onboardedAt)) r.advOnboardedInPeriod++;
+      }
+    }
+    for (const p of partners) {
+      for (const pic of p.picNames ?? []) {
+        const r = ensure(pic);
+        r.partners++;
+        if (inRange(p.startDate ?? p.createdAt)) r.partnersInPeriod++;
+      }
+    }
+    let list = Array.from(rows.values()).sort((a, b) =>
+      (b.advOnboardedInPeriod - a.advOnboardedInPeriod) || (b.advisorsTotal - a.advisorsTotal) || a.pic.localeCompare(b.pic));
+    // Non-admins only see their own contribution.
+    if (!isAdmin) list = list.filter((r) => r.pic === req.user!.name);
+    res.json({ rows: list, isAdmin, from, to });
+  });
+
+  // ---------- CRM outreach to advisors (v5.8) ----------
+  // Compose a per-advisor draft the caller reviews before sending. Sending is
+  // done one advisor at a time (confirm-before-send on the client), either via
+  // the browser mail client (mailto, built client-side) or the server SMTP.
+  const OUTREACH_TEMPLATES: Record<string, { subject: string; body: (name: string) => string }> = {
+    onboarding_invite: {
+      subject: "Invitation to join the Gobi Advisory Network",
+      body: (name) =>
+`Dear ${name},
+
+On behalf of Gobi Partners, it is our pleasure to invite you to join the Gobi Advisory Network (Global). This network connects universities, academics, and industry experts to foster the growth of technology startups with positive global impact.
+
+As a member you will be able to:
+- Attend exclusive, invitation-only Gobi events;
+- Take part in project-based engagements on cutting-edge technologies;
+- Connect with founders of promising next-generation companies;
+- Benefit from Gobi's network and resources, and those of our investors.
+
+To help us complete your profile, we would be grateful if you could share a short bio (English and Chinese) and a portrait photo. A signed invitation letter is attached for your reference.
+
+We look forward to welcoming you.
+
+Warm regards,
+Fred Li
+Managing Director, Gobi Partners
+www.gobi.vc`,
+    },
+    general_update: {
+      subject: "An update from Gobi Partners",
+      body: (name) =>
+`Dear ${name},
+
+Thank you for your continued support of the Gobi Advisory Network.
+
+[Your message here]
+
+Warm regards,
+Fred Li
+Managing Director, Gobi Partners
+www.gobi.vc`,
+    },
+  };
+
+  app.post("/api/advisors/outreach/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const parsed = z.object({
+      advisorIds: z.array(z.number().int()).min(1).max(200),
+      template: z.string().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid request" });
+    const tpl = OUTREACH_TEMPLATES[parsed.data.template ?? "onboarding_invite"] ?? OUTREACH_TEMPLATES.onboarding_invite;
+    const drafts: { advisorId: number; name: string; to: string[]; subject: string; body: string }[] = [];
+    for (const idv of parsed.data.advisorIds) {
+      const a = await storage.getAdvisor(idv);
+      if (!a) continue;
+      drafts.push({
+        advisorId: a.id,
+        name: a.name,
+        to: a.emails ?? [],
+        subject: tpl.subject,
+        body: tpl.body(a.name),
+      });
+    }
+    res.json({ drafts, mailEnabled });
+  });
+
+  app.post("/api/advisors/outreach/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const parsed = z.object({
+      advisorId: z.number().int(),
+      to: z.string().trim().email(),
+      subject: z.string().trim().min(1).max(300),
+      body: z.string().trim().min(1).max(20000),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid email" });
+    if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured. Use the mail-client option instead." });
+    const advisor = await storage.getAdvisor(parsed.data.advisorId);
+    if (!advisor) return res.status(404).json({ message: "Advisor not found" });
+    const ok = await sendOutreach(parsed.data.to, parsed.data.subject, parsed.data.body, {
+      fromName: "Fred Li · Gobi Partners",
+      replyTo: "fred@gobi.vc",
+    });
+    if (!ok) return res.status(502).json({ message: "Send failed" });
+    // Log the outreach into the advisor's activity feed.
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: advisor.id,
+        date: new Date().toISOString().slice(0, 10),
+        type: "email",
+        note: `[CRM] Sent "${parsed.data.subject}" to ${parsed.data.to}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: new Date().toISOString(),
+      });
+    } catch {}
     res.json({ ok: true });
   });
 

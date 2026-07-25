@@ -153,6 +153,14 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "birth_day", "birth_day INTEGER");
   ensureColumn("advisors", "birth_month", "birth_month INTEGER");
   ensureColumn("advisors", "birth_year", "birth_year INTEGER");
+  // ---- v5.8 advisor lifecycle + onboarding workflow ----
+  ensureColumn("advisors", "lifecycle_status", "lifecycle_status TEXT NOT NULL DEFAULT 'proposed'");
+  ensureColumn("advisors", "onboarded_at", "onboarded_at TEXT");
+  ensureColumn("advisors", "approval_emailed_at", "approval_emailed_at TEXT");
+  ensureColumn("advisors", "approved_at", "approved_at TEXT");
+  ensureColumn("advisors", "letter_issued_at", "letter_issued_at TEXT");
+  ensureColumn("advisors", "signed_back_at", "signed_back_at TEXT");
+  try { sqlite.exec(`UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`); } catch {}
   sqlite.exec(`CREATE TABLE IF NOT EXISTS sector_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name_en TEXT NOT NULL,

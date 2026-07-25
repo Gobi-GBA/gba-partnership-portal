@@ -19,20 +19,23 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag } from "@shared/schema";
-import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS } from "@shared/schema";
+import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle } from "@shared/schema";
+import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
-  LayoutGrid, List, SlidersHorizontal, Send, Cake,
+  LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
+  FileText, Download, Loader2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
-  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, type ExtractedAdvisor,
+  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
+import { OutreachDialog } from "@/components/advisor-outreach";
+import { downloadWithAuth, openHtmlWithAuth, preopenTab } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 // ---------- Pillar & track styling ----------
@@ -113,6 +116,181 @@ function PillarBadge({ pillar }: { pillar: Pillar }) {
     <Badge variant="outline" className={cn("text-[11px] font-semibold", PILLAR_STYLES[pillar] ?? PILLAR_STYLES.other)} data-testid={`badge-pillar-${pillar}`}>
       {t(`pillar_${pillar}` as any)}
     </Badge>
+  );
+}
+
+// ---------- Lifecycle status (v5.8) ----------
+const LIFECYCLE_STYLES: Record<string, string> = {
+  proposed: "border-amber-500/40 bg-amber-500/10 text-amber-600",
+  onboarded: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
+  terminated: "border-red-500/40 bg-red-500/10 text-red-600",
+};
+
+function LifecyclePill({ status, advisorId, className }: { status: string; advisorId?: number; className?: string }) {
+  const { t } = useLang();
+  return (
+    <Badge
+      variant="outline"
+      className={cn("text-[11px] font-semibold", LIFECYCLE_STYLES[status] ?? LIFECYCLE_STYLES.proposed, className)}
+      data-testid={advisorId ? `badge-lifecycle-${advisorId}` : "badge-lifecycle"}
+    >
+      {t(`lifecycle_${status}` as any)}
+    </Badge>
+  );
+}
+
+// ---------- Onboarding workflow tracker (v5.8) ----------
+type WorkflowStage = "approval_emailed" | "approved" | "letter_issued" | "signed_back";
+
+const WORKFLOW_STEPS: Array<{
+  stage: WorkflowStage;
+  field: "approvalEmailedAt" | "approvedAt" | "letterIssuedAt" | "signedBackAt";
+  labelKey: "wfApprovalEmailed" | "wfApproved" | "wfLetterIssued" | "wfSignedBack";
+  adminOnly: boolean;
+}> = [
+  { stage: "approval_emailed", field: "approvalEmailedAt", labelKey: "wfApprovalEmailed", adminOnly: false },
+  { stage: "approved", field: "approvedAt", labelKey: "wfApproved", adminOnly: true },
+  { stage: "letter_issued", field: "letterIssuedAt", labelKey: "wfLetterIssued", adminOnly: true },
+  { stage: "signed_back", field: "signedBackAt", labelKey: "wfSignedBack", adminOnly: false },
+];
+
+function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id, "activities"] });
+  };
+
+  const advance = useMutation({
+    mutationFn: async (body: { stage: WorkflowStage; undo?: boolean }) => {
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, body);
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const letter = useMutation({
+    mutationFn: async (target: Window | null) => {
+      const opened = await openHtmlWithAuth(`/api/advisors/${a.id}/invitation-letter`, target);
+      if (!opened) throw new Error(t("wfLetterFailed"));
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, { stage: "letter_issued" });
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const doneAt = (field: (typeof WORKFLOW_STEPS)[number]["field"]) => a[field] ?? null;
+  // The most recently completed step is the only one that can be undone.
+  let lastDone = -1;
+  WORKFLOW_STEPS.forEach((s, i) => { if (doneAt(s.field)) lastDone = i; });
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="workflow-tracker">
+      <p className="mb-3 text-xs font-semibold text-muted-foreground">{t("wfTrackerTitle")}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        {WORKFLOW_STEPS.map((s, i) => {
+          const done = doneAt(s.field);
+          const canAct = !s.adminOnly || isAdmin;
+          return (
+            <div key={s.stage} className="flex flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
+              <div className="flex items-start gap-1.5">
+                {done ? (
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                ) : (
+                  <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                )}
+                <div className="min-w-0">
+                  <p className={cn("text-[11px] font-semibold leading-snug", !done && "text-muted-foreground")}>{t(s.labelKey)}</p>
+                  <p className="text-[10px] text-muted-foreground tabular-nums" data-testid={`text-workflow-date-${s.stage}`}>
+                    {done ? formatDMY(String(done).slice(0, 10)) : t("wfPending")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {!done && canAct && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={advance.isPending}
+                    onClick={() => advance.mutate({ stage: s.stage })}
+                    data-testid={`button-workflow-done-${s.stage}`}
+                  >
+                    {t("wfMarkDone")}
+                  </Button>
+                )}
+                {done && isAdmin && i === lastDone && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={advance.isPending}
+                    onClick={() => advance.mutate({ stage: s.stage, undo: true })}
+                    data-testid={`button-workflow-undo-${s.stage}`}
+                  >
+                    <Undo2 className="mr-1 h-3 w-3" /> {t("wfUndo")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isAdmin && (
+        <div className="mt-3 border-t border-border pt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={letter.isPending}
+            onClick={() => letter.mutate(preopenTab())}
+            data-testid="button-issue-letter"
+          >
+            {letter.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
+            {t("wfGenerateLetter")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- CSV export buttons (v5.8) ----------
+export function ExportCsvButtons({ className }: { className?: string }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState<"advisors" | "partners" | null>(null);
+
+  const run = async (kind: "advisors" | "partners") => {
+    setBusy(kind);
+    try {
+      await downloadWithAuth(`/api/export/${kind}.csv`, `gobi-${kind}.csv`);
+    } catch (e: any) {
+      toast({ description: `${t("exportFailed")} — ${String(e?.message ?? e)}`, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-wrap gap-2", className)}>
+      <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => run("advisors")} data-testid="button-export-advisors">
+        {busy === "advisors" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+        {t("exportAdvisorsCsv")}
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => run("partners")} data-testid="button-export-partners">
+        {busy === "partners" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+        {t("exportPartnersCsv")}
+      </Button>
+    </div>
   );
 }
 
@@ -500,6 +678,21 @@ function AdvisorDetailDialog({
     },
   });
 
+  // v5.8 — lifecycle status (admin only; the server rejects other roles with 403)
+  const setLifecycle = useMutation({
+    mutationFn: async (lifecycleStatus: AdvisorLifecycle) => {
+      const res = await apiRequest("POST", `/api/advisors/${id}/workflow`, { lifecycleStatus });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", id ?? 0] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", id ?? 0, "activities"] });
+      toast({ description: t("advisorSaved") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
   const del = useMutation({
     mutationFn: async () => apiRequest("DELETE", `/api/advisors/${id}`),
     onSuccess: () => {
@@ -538,6 +731,7 @@ function AdvisorDetailDialog({
                     {a.status === "pending" && (
                       <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
                     )}
+                    <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
                   </DialogTitle>
                   {altName && <DialogDescription>{altName}</DialogDescription>}
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -597,6 +791,33 @@ function AdvisorDetailDialog({
                   )}
                 </div>
               )}
+
+              {/* v5.8 — lifecycle status control (admin only) */}
+              {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="control-lifecycle">
+                  <span className="text-xs font-semibold text-muted-foreground">{t("lifecycleSetLabel")}</span>
+                  {ADVISOR_LIFECYCLE.map((s) => (
+                    <Button
+                      key={s}
+                      type="button"
+                      size="sm"
+                      variant={a.lifecycleStatus === s ? "default" : "outline"}
+                      className={cn("h-7 px-2.5 text-[11px]", a.lifecycleStatus === s && "bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]")}
+                      disabled={setLifecycle.isPending || a.lifecycleStatus === s}
+                      onClick={() => {
+                        if (s === "terminated" && !confirm(t("lifecycleConfirmTerminate"))) return;
+                        setLifecycle.mutate(s);
+                      }}
+                      data-testid={`button-lifecycle-${s}`}
+                    >
+                      {t(`lifecycle_${s}` as any)}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {/* v5.8 — onboarding workflow tracker */}
+              {isStaff && <WorkflowTracker a={a} isAdmin={isAdmin} />}
 
               {/* Roles */}
               {a.roles.length > 0 && (
@@ -720,6 +941,8 @@ export default function Advisors() {
   const [cohort, setCohort] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [momentumFilter, setMomentumFilter] = useState<string[]>([]);
+  const [lifecycle, setLifecycle] = useState<string[]>([]);
+  const [outreachOpen, setOutreachOpen] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "activity">("name");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [showTags, setShowTags] = useState(true);
@@ -752,6 +975,7 @@ export default function Advisors() {
       .filter((a) => (cohort.length === 0 || (a.cohort && cohort.includes(a.cohort))))
       .filter((a) => (tagFilter.length === 0 || (a.tags ?? []).some((tg) => tagFilter.includes(String(tg.id)))))
       .filter((a) => (momentumFilter.length === 0 || momentumFilter.includes(momentumOf(a.lastActivityAt))))
+      .filter((a) => (lifecycle.length === 0 || lifecycle.includes(a.lifecycleStatus)))
       .filter((a) => {
         if (!q) return true;
         const hay = [a.name, a.nameCn, a.domains, ...(a.tags ?? []).flatMap((tg) => [tg.nameEn, tg.nameCn]), ...(a.roles ?? []).flatMap((r) => [r.title, r.organization])]
@@ -766,7 +990,7 @@ export default function Advisors() {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, sortBy]);
+  }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, lifecycle, sortBy]);
 
   const dkpOrgs = useMemo(
     () => (partnerships ?? []).filter((p) => p.isDomainKnowledgePartner === 1 && p.status === "approved")
@@ -814,9 +1038,15 @@ export default function Advisors() {
             <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{t("advisorsSub")}</p>
           </div>
           {canSubmit && (
-            <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-add-advisor">
-              <Plus className="h-4 w-4 mr-1.5" /> {t("addAdvisor")}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportCsvButtons />
+              <Button variant="outline" size="sm" onClick={() => setOutreachOpen(true)} data-testid="button-outreach">
+                <Send className="h-3.5 w-3.5 mr-1.5" /> {t("outreachTitle")}
+              </Button>
+              <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-add-advisor">
+                <Plus className="h-4 w-4 mr-1.5" /> {t("addAdvisor")}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -840,6 +1070,8 @@ export default function Advisors() {
             <MultiSelectFilter label={t("sectorTags")} testid="select-tags" selected={tagFilter} onChange={setTagFilter}
               options={(allTags ?? []).map((tg) => ({ value: String(tg.id), label: lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn }))} />
           )}
+          <MultiSelectFilter label={t("lifecycleStatusLabel")} testid="select-lifecycle" selected={lifecycle} onChange={setLifecycle}
+            options={ADVISOR_LIFECYCLE.map((s) => ({ value: s, label: t(`lifecycle_${s}` as any) }))} />
           {canSubmit && (
             <MultiSelectFilter label={t("momentumLabel")} testid="select-momentum" selected={momentumFilter} onChange={setMomentumFilter}
               options={(["active", "warm", "dormant", "none"] as const).map((m) => ({ value: m, label: t(`momentum_${m}` as any) }))} />
@@ -931,6 +1163,7 @@ export default function Advisors() {
                       )}
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <PillarBadge pillar={a.pillar as Pillar} />
+                        <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
                         {a.status === "pending" && (
                           <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
                         )}
@@ -971,6 +1204,7 @@ export default function Advisors() {
                   </div>
                   <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[45%]">
                     {showTags && <TagBadges tags={a.tags} />}
+                    <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
                     <PillarBadge pillar={a.pillar as Pillar} />
                   </div>
                 </button>
@@ -1045,6 +1279,7 @@ export default function Advisors() {
         partnerships={partnerships ?? []}
       />
       <AdvisorFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} partnerships={partnerships ?? []} />
+      {canSubmit && <OutreachDialog open={outreachOpen} onOpenChange={setOutreachOpen} advisors={filtered} />}
     </Layout>
   );
 }

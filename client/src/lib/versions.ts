@@ -9,9 +9,36 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.7";
+export const CURRENT_VERSION = "5.8";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.8",
+    date: "2026-07-25",
+    by: "Fred Li",
+    titleEn: "Advisor lifecycle, onboarding tracker, invitation letters, outreach & scoreboard",
+    titleCn: "顾问生命周期、入职进度跟踪、邀请函、批量联络与业绩看板",
+    itemsEn: [
+      "Every advisor now carries a lifecycle status — proposed, onboarded or terminated — shown as a pill on the cards, the list and the detail page, with a matching filter on the advisors page",
+      "Admins can move an advisor between lifecycle statuses from the detail page, with a confirmation step before terminating",
+      "New onboarding tracker on the advisor detail page follows four stages: approval emailed, approved, letter issued and signed back, each with its own date",
+      "Sending the approval email now records the approval-emailed stage automatically, and the email body includes the background and suggested engagement",
+      "Admins can generate a formatted invitation letter for an advisor, which opens in a new tab ready to print or save as PDF and records the letter-issued stage",
+      "New outreach tool on the advisors page composes onboarding or update emails for a batch of advisors, with editable drafts, the local mail client, or server sending",
+      "Staff can export advisors and partners to CSV from the advisors page and from a new Exports tab in the admin console",
+      "New scoreboard page shows partners and advisors per person in charge, with a date range filter — staff see their own row, admins see everyone",
+    ],
+    itemsCn: [
+      "每位顾问新增生命周期状态 — 建议中、已入职或已终止 — 在卡片、列表与详情页以标签显示，顾问页可按此筛选",
+      "管理员可在详情页调整顾问的生命周期状态，终止前需确认",
+      "顾问详情页新增入职进度跟踪，包含四个阶段：已发送审批邮件、已批准、已出邀请函、已签回，各自记录日期",
+      "发送审批邮件时自动记录“已发送审批邮件”阶段，邮件正文新增背景简介与建议合作方式",
+      "管理员可生成格式化的顾问邀请函，在新标签页打开可直接打印或存为PDF，并自动记录“已出邀请函”阶段",
+      "顾问页新增批量联络工具，可为多位顾问生成入职或进展邮件草稿，支持编辑、用本地邮件客户端发送或由服务器发送",
+      "同事可在顾问页及管理后台新增的导出标签页中，将顾问与合作伙伴导出为CSV",
+      "新增业绩看板页面，按负责人统计合作伙伴与顾问数量，可按日期区间筛选 — 同事查看本人数据，管理员查看全部",
+    ],
+  },
   {
     version: "5.7",
     date: "2026-07-22",

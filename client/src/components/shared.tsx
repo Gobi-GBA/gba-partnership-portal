@@ -307,6 +307,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
+    { href: "/scoreboard", label: t("sbNavLabel"), show: user?.role === "admin" || user?.role === "staff" },
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
     { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
   ];
