@@ -9,9 +9,24 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.01";
+export const CURRENT_VERSION = "6.02";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.02",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "v6.02 — reliable map reset, the sun and moon say hi back",
+    titleCn: "v6.02 — 星图复位更可靠，太阳和月亮也会回应你",
+    itemsEn: [
+      "Star maps: clicking the central Gobi hub now reliably resets the view — previously even a one-pixel hand tremor during the click made the map treat it as a drag and ignore it; all node clicks (partners, advisors, regions) are steadier for the same reason",
+      "Background play: the sun (by day) and the moon (by night) now react when clicked — a friendly double wink of their glow and a little heart that floats up and fades away",
+    ],
+    itemsCn: [
+      "星图：点击中央 Gobi 枢纽现在能够可靠地复位视图 — 此前点击时哪怕手抖动一个像素，地图也会误判为拖拽而忽略点击；同理，所有节点（合作伙伴、顾问、地区）的点击都更稳定了",
+      "背景互动：白天的太阳与夜晚的月亮现在也会回应点击 — 光晕友好地眨两下眼，并有一颗小爱心缓缓升起、淡出",
+    ],
+  },
   {
     version: "6.01",
     date: "2026-07-26",

@@ -326,6 +326,7 @@ export function NetworkGraph({
 
     const zoomBehavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.35, 4])
+      .clickDistance(8) // v6.02 — small pointer jitter still counts as a click
       .on("zoom", (event) => {
         transformRef.current = event.transform;
         container.attr("transform", event.transform);
@@ -598,6 +599,7 @@ export function NetworkGraph({
       });
 
     const dragBehavior = drag<SVGGElement, GraphNode>()
+      .clickDistance(8) // v6.02 — don't swallow clicks over trackpad jitter
       .on("start", (event, d) => {
         if (!event.active) sim.alphaTarget(0.25).restart();
         d.fx = d.x;
@@ -859,6 +861,7 @@ export function AdvisorStarMap({
 
     const zoomBehavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.35, 4])
+      .clickDistance(8) // v6.02 — small pointer jitter still counts as a click
       .on("zoom", (event) => {
         transformRef.current = event.transform;
         container.attr("transform", event.transform);
@@ -1012,6 +1015,7 @@ export function AdvisorStarMap({
       });
 
     const dragBehavior = drag<SVGGElement, GraphNode>()
+      .clickDistance(8) // v6.02 — don't swallow clicks over trackpad jitter
       .on("start", (event, d) => {
         if (!event.active) sim.alphaTarget(0.25).restart();
         d.fx = d.x;

@@ -260,8 +260,26 @@ export function GalaxyBackground() {
     // Clicking an empty part of the page hit-tests the scene; the nearest
     // actor (caravan member, palm or star) reacts once for ~1.2s through the
     // existing rAF loop — purely cosmetic, no extra render cost when idle.
-    type Reaction = { kind: "member" | "palm" | "star" | "twinkle"; index: number; start: number; x: number; y: number };
+    type Reaction = { kind: "member" | "palm" | "star" | "twinkle" | "celestial"; index: number; start: number; x: number; y: number };
     let reaction: Reaction | null = null;
+
+    // v6.02 — small canvas heart for the sun/moon reaction
+    function drawHeart(hx: number, hy: number, d: number, fill: string) {
+      const x = hx - d / 2;
+      const y = hy - d / 2;
+      ctx!.beginPath();
+      ctx!.moveTo(x + d / 2, y + d / 4);
+      ctx!.quadraticCurveTo(x + d / 2, y, x + d / 4, y);
+      ctx!.quadraticCurveTo(x, y, x, y + d / 4);
+      ctx!.quadraticCurveTo(x, y + d / 2, x + d / 4, y + d * 0.72);
+      ctx!.lineTo(x + d / 2, y + d);
+      ctx!.lineTo(x + d * 0.75, y + d * 0.72);
+      ctx!.quadraticCurveTo(x + d, y + d / 2, x + d, y + d / 4);
+      ctx!.quadraticCurveTo(x + d, y, x + d * 0.75, y);
+      ctx!.quadraticCurveTo(x + d / 2, y, x + d / 2, y + d / 4);
+      ctx!.fillStyle = fill;
+      ctx!.fill();
+    }
 
     // Caravan order along the trail: human guide, camel, camel, human, camel
     const MEMBERS: { dx: number; kind: "camel" | "human"; s: number }[] = [
@@ -371,6 +389,17 @@ export function GalaxyBackground() {
         ctx!.arc(moonX - 9, moonY - 4, 23, 0, Math.PI * 2);
         ctx!.fillStyle = "hsla(220, 65%, 7%, 0.55)";
         ctx!.fill();
+        // v6.02 — celestial reaction: double wink + rising heart (moonlight tones)
+        if (reaction && reaction.kind === "celestial") {
+          const pulse = Math.max(0, Math.sin(rProg * Math.PI * 4)) * (1 - rProg * 0.4);
+          if (pulse > 0.01) {
+            ctx!.beginPath();
+            ctx!.arc(moonX, moonY, 32, 0, Math.PI * 2);
+            ctx!.fillStyle = `hsla(210, 90%, 94%, ${0.55 * pulse})`;
+            ctx!.fill();
+          }
+          drawHeart(moonX + 26, moonY - 36 - rProg * 20, 17, `hsla(208, 85%, 88%, ${0.95 * (1 - rProg)})`);
+        }
       } else {
         const bg = ctx!.createLinearGradient(0, 0, 0, h);
         bg.addColorStop(0, "hsl(40, 60%, 96%)");
@@ -386,6 +415,17 @@ export function GalaxyBackground() {
         ctx!.arc(sunX, sunY, 34, 0, Math.PI * 2);
         ctx!.fillStyle = "hsla(44, 95%, 78%, 0.85)";
         ctx!.fill();
+        // v6.02 — celestial reaction: double wink + rising heart (warm gold)
+        if (reaction && reaction.kind === "celestial") {
+          const pulse = Math.max(0, Math.sin(rProg * Math.PI * 4)) * (1 - rProg * 0.4);
+          if (pulse > 0.01) {
+            ctx!.beginPath();
+            ctx!.arc(sunX, sunY, 41, 0, Math.PI * 2);
+            ctx!.fillStyle = `hsla(46, 100%, 96%, ${0.6 * pulse})`;
+            ctx!.fill();
+          }
+          drawHeart(sunX + 30, sunY - 36 - rProg * 20, 17, `hsla(38, 78%, 46%, ${0.95 * (1 - rProg)})`);
+        }
 
         nebula(w * (0.25 + 0.06 * Math.sin(t * 0.03)), h * 0.55, Math.max(w, h) * 0.4, "hsla(35, 70%, 80%, 0.16)");
       }
@@ -548,8 +588,12 @@ export function GalaxyBackground() {
       const py = e.clientY;
       const now = performance.now();
       if (reduced) {
-        // reduced motion — a single quiet twinkle, drawn as one static frame
-        reaction = { kind: "twinkle", index: 0, start: now - 360, x: px, y: py };
+        // reduced motion — one static frame: a heart on the sun/moon, else a quiet twinkle
+        const cdr = Math.hypot(px - w * 0.78, py - h * 0.2);
+        reaction =
+          cdr < 64
+            ? { kind: "celestial", index: 0, start: now - 360, x: w * 0.78, y: h * 0.2 }
+            : { kind: "twinkle", index: 0, start: now - 360, x: px, y: py };
         raf = requestAnimationFrame(frame);
         window.setTimeout(() => {
           reaction = null;
@@ -561,6 +605,14 @@ export function GalaxyBackground() {
       const drift = t;
       let best: Reaction | null = null;
       let bestD = 60; // px pick radius
+      // v6.02 — sun (day) / moon (night): both live at the same spot
+      {
+        const cd = Math.hypot(px - w * 0.78, py - h * 0.2);
+        if (cd < 64) {
+          bestD = cd;
+          best = { kind: "celestial", index: 0, start: now, x: w * 0.78, y: h * 0.2 };
+        }
+      }
       // caravan members
       const span = w + 640;
       const caravanX = w + 300 - ((t * 14) % span);
