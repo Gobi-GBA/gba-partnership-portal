@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.13";
+export const CURRENT_VERSION = "5.14";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.14",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Photo identity gate — fix wrong-person photo on auto-sync",
+    titleCn: "照片身份门控 — 修复自动同步拉错照片",
+    itemsEn: [
+      "Fixed: on team pages listing several people, advisor auto-sync could apply a colleague's photo (a surname match such as Michael WONG vs Andy WONG was wrongly treated as the same person) — photo matching now requires the person's given name or Chinese name",
+      "Every candidate photo is cross-checked against the record's identity factors (name, Chinese name, LinkedIn, email) using its alt text, the caption next to it, and its file name — the AI's pick is verified by the same rule and the strongest match wins",
+      "If no photo on the page can be tied to the person, the photo is left untouched — a missing photo beats a wrong one",
+      "Auto-sync and From CV / bio moved to the top-right corner of the advisor dialog — they are record-level actions that harvest all links (profile URL + LinkedIn) and identity factors together, not helpers of a single field",
+    ],
+    itemsCn: [
+      "修复：在列出多人的团队页面上，顾问自动同步可能套用同事的照片（仅姓氏相同如 Michael WONG 与 Andy WONG 被误判为同一人）—— 照片匹配现在必须命中名字或中文姓名",
+      "每张候选照片都会与记录的身份因子（姓名、中文名、LinkedIn、邮箱）交叉核对 — 依据 alt 文本、照片旁的说明文字及文件名；AI 的选择也经同一规则验证，匹配度最强者胜出",
+      "若页面上没有照片能与本人关联，则不更改照片 — 宁缺勿错",
+      "自动同步与简历提取按钮移至顾问对话框右上角 — 它们是记录级操作，会同时汇集所有链接（资料链接 + LinkedIn）与身份因子，而非单一字段的辅助功能",
+    ],
+  },
   {
     version: "5.13",
     date: "2026-07-26",

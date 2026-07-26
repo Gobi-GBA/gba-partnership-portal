@@ -184,6 +184,7 @@ async function fetchPageMeta(url: string): Promise<{ text: string | null; photoU
 interface ImageCandidate {
   url: string;
   alt: string;
+  near: string;
   score: number;
 }
 
@@ -194,7 +195,7 @@ function collectImageCandidates(html: string, base: string): ImageCandidate[] {
   const out: ImageCandidate[] = [];
   const personHintRe = /(headshot|portrait|avatar|profile|person|people|member|team|staff|founder|leadership|management|speaker|bio|about|dr[-_]|prof[-_])/i;
 
-  const push = (rawUrl: string | undefined, alt: string, context: string, baseScore: number) => {
+  const push = (rawUrl: string | undefined, alt: string, context: string, baseScore: number, near = "") => {
     if (!rawUrl) return;
     const abs = absolutize(rawUrl, base);
     if (!abs || seen.has(abs)) return;
@@ -206,20 +207,34 @@ function collectImageCandidates(html: string, base: string): ImageCandidate[] {
     if (personHintRe.test(abs) || personHintRe.test(context)) score += 3;
     // alt text that looks like a person's name ("Percy Cheng", "Dr. Nancy Man", CJK names)
     if (/([A-Z][a-z]+\s+[A-Z][A-Za-z]+)|(^(Dr|Prof|Ir|Mr|Ms|Mrs)\.?\s)/.test(alt) || /^[\u4e00-\u9fff\u00b7\s]{2,8}$/.test(alt.trim())) score += 2;
-    out.push({ url: abs, alt: alt.slice(0, 120), score });
+    out.push({ url: abs, alt: alt.slice(0, 120), near: near.slice(0, 160), score });
   };
 
-  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+  // v5.14 — capture the caption text that follows each image (team cards put
+  // the person's name right after their photo), so a photo can be tied to a
+  // specific person even when the alt attribute is empty.
+  for (const m of Array.from(html.matchAll(/<img\b[^>]*>/gi))) {
+    const tag = m[0];
     const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1] || tag.match(/\bdata-src=["']([^"']+)["']/i)?.[1];
     const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1] ?? "";
-    push(src, alt, tag, 1);
+    const near = html
+      .slice((m.index ?? 0) + tag.length, (m.index ?? 0) + tag.length + 600)
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    push(src, alt, tag, 1, near);
   }
   // og:image joins the pool as a low-priority candidate — never the automatic winner
   const og = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1]
     ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i)?.[1];
-  push(og, "page share image (often the company logo)", "og:image", 0);
+  push(og, "page share image (often the company logo)", "og:image", 0, "");
 
-  return out.sort((a, b) => b.score - a.score).slice(0, 12);
+  // v5.14 — return a wide pool (callers trim AFTER identity boosting): on a
+  // large team page every portrait scores the same, and a cap applied here
+  // would cut people who appear late in the document — exactly the target
+  // person the advisor sync is looking for.
+  return out.sort((a, b) => b.score - a.score).slice(0, 40);
 }
 
 function absolutize(candidate: string, base: string): string | null {
@@ -1811,6 +1826,49 @@ www.gobi.vc`,
     if (emailLocal) addTokens(emailLocal.replace(/\d+/g, " "));
     const hasIdentity = nameTokens.size > 0 || expectedNameCn.length >= 2;
 
+    // v5.14 — photo identity gate. Surname-only matches are NOT identity: on a
+    // team page "Michael WONG" must never satisfy "Andy WONG". Split the form
+    // name into given-name tokens and surname tokens (CAPITALISED words per the
+    // portal's naming convention, falling back to the last word).
+    const surnameTokens = new Set<string>(
+      (expectedName.match(/\b[A-Z]{2,}\b/g) ?? [])
+        .map((t: string) => t.toLowerCase())
+        .filter((t: string) => t.length >= 2 && !STOP_TOKENS.has(t)),
+    );
+    const givenTokens = new Set<string>();
+    for (const tok of expectedName.toLowerCase().split(/[^a-z]+/)) {
+      if (tok.length >= 2 && !STOP_TOKENS.has(tok) && !surnameTokens.has(tok)) givenTokens.add(tok);
+    }
+    if (surnameTokens.size === 0 && givenTokens.size >= 2) {
+      // Western order without CAPS convention — treat the last token as surname
+      const toks = Array.from(givenTokens);
+      const last = toks[toks.length - 1];
+      surnameTokens.add(last);
+      givenTokens.delete(last);
+    }
+    const hitTok = (hay: string, tok: string) => new RegExp(`(^|[^a-z])${tok}([^a-z]|$)`).test(hay);
+    // Tie strength of an image to the TARGET person, from alt text, the caption
+    // next to the image, and the file name/URL. 0 = cannot be tied.
+    const photoTie = (c: { url: string; alt: string; near?: string }): number => {
+      let hay = `${c.alt} ${c.near ?? ""} ${c.url}`;
+      try { hay = decodeURIComponent(hay); } catch {}
+      hay = hay.toLowerCase();
+      let s = 0;
+      if (expectedNameCn.length >= 2 && `${c.alt}${c.near ?? ""}`.includes(expectedNameCn)) s += 2;
+      let given = 0;
+      let sur = 0;
+      for (const tok of Array.from(givenTokens)) if (hitTok(hay, tok)) given++;
+      for (const tok of Array.from(surnameTokens)) if (hitTok(hay, tok)) sur++;
+      if (given > 0) s += given + sur; // a given-name hit is required — surname alone is a colleague, not a match
+      else if (sur > 0 && givenTokens.size === 0 && surnameTokens.size >= 1 && nameTokens.size === surnameTokens.size) s += sur; // single-word names
+      if (given === 0 && s === 0 && givenTokens.size === 0 && surnameTokens.size === 0 && nameTokens.size >= 2) {
+        // Identity came from LinkedIn slug / email only — require two token hits
+        const hits = Array.from(nameTokens).filter((t) => hitTok(hay, t)).length;
+        if (hits >= 2) s += hits;
+      }
+      return s;
+    };
+
     if (!process.env.DEEPSEEK_API_KEY) {
       return res.status(503).json({
         message: "AI extraction is not configured on this deployment. Set the DEEPSEEK_API_KEY environment variable to enable it.",
@@ -1826,7 +1884,7 @@ www.gobi.vc`,
       [url, linkedinUrl].filter((u) => u && /^https?:\/\//i.test(u)),
     )).slice(0, 3);
     const pageSections: { url: string; text: string }[] = [];
-    const photoCandidates: { url: string; alt: string; score: number }[] = [];
+    const photoCandidates: { url: string; alt: string; near: string; score: number }[] = [];
     const metas = await Promise.all(sourceUrls.map(async (su) => ({ su, meta: await fetchPageMeta(su) })));
     for (const { su, meta } of metas) {
       if (meta.text && meta.text.trim().length >= 80) pageSections.push({ url: su, text: meta.text });
@@ -1835,16 +1893,19 @@ www.gobi.vc`,
       }
     }
     const fetchFailed = sourceUrls.length > 0 && pageSections.length === 0;
-    // Identity preset: candidates whose alt text mentions the target person outrank everything else
+    // Identity preset (v5.14): candidates that can be tied to the target person
+    // by given name / Chinese name outrank everything else — surname-only hits
+    // no longer count (they match colleagues and family members).
     if (hasIdentity) {
       for (const c of photoCandidates) {
-        const altLc = c.alt.toLowerCase();
-        const cnHit = expectedNameCn.length >= 2 && c.alt.includes(expectedNameCn);
-        const enHit = Array.from(nameTokens).some((tok) => altLc.includes(tok));
-        if (cnHit || enHit) c.score += 4;
+        const tie = photoTie(c);
+        if (tie > 0) c.score += 4 + tie;
       }
     }
     photoCandidates.sort((a, b) => b.score - a.score);
+    // Trim to a prompt-sized shortlist only AFTER identity boosting — tied
+    // candidates have floated to the top, so the target person survives the cut.
+    photoCandidates.splice(12);
     if (pageSections.length === 0 && pasted.trim().length < 40) {
       return res.status(422).json({
         message: fetchFailed
@@ -1876,7 +1937,7 @@ STANDARDISATION RULES — follow exactly:
 - domains: 2-5 items, comma-separated, each 1-3 words in Title Case with acronyms in capitals, e.g. "Biotech, University Tech Transfer, AI". Use sector names, not job titles.
 - roles.title: Title Case, e.g. "Co-Founder & Executive Director". roles.organization: official English name without legal suffixes (Limited, Ltd., Inc., Co.). Exactly ONE role has isPrimary 1 (the current main position).
 - cohort: a 4-digit year only, else "".
-- photoIndex: pick ONLY a photo of this person's face/upper body. Company logos, brand marks, buildings, product shots and group photos are WRONG answers — return -1 rather than guess.`;
+- photoIndex: pick ONLY a photo of this person's face/upper body. Company logos, brand marks, buildings, product shots and group photos are WRONG answers — return -1 rather than guess.${hasIdentity ? " Several people on the page may have similar names — only pick an image whose alt text or nearby text identifies the TARGET PERSON by their given name; if no image does, return -1." : ""}`;
       const identityBlock = hasIdentity
         ? `\nTARGET PERSON — this sync is updating an existing record. Extract ONLY the person identified by: ${[
             expectedName && `name "${expectedName}"`,
@@ -1886,7 +1947,7 @@ STANDARDISATION RULES — follow exactly:
           ].filter(Boolean).join(", ")}. The page may present several people or a more prominent person — IGNORE everyone else. If this specific person does not appear in the material, set "personFound": false and leave every other field empty. Do NOT substitute a different person.`
         : "";
       const candidateBlock = photoCandidates.length
-        ? `\nCANDIDATE IMAGES:\n${photoCandidates.map((c, i) => `${i}. ${c.url}${c.alt ? ` — alt: "${c.alt}"` : ""}`).join("\n")}`
+        ? `\nCANDIDATE IMAGES:\n${photoCandidates.map((c, i) => `${i}. ${c.url}${c.alt ? ` — alt: "${c.alt}"` : ""}${c.near ? ` — nearby text: "${c.near}"` : ""}`).join("\n")}`
         : "";
       const perSectionCap = pageSections.length > 1 ? 7000 : 12000;
       const textBlock = [
@@ -1935,13 +1996,26 @@ STANDARDISATION RULES — follow exactly:
         }
       }
 
-      // Photo: AI-selected candidate first; otherwise the best person-hinted
-      // candidate (score >= 3). Never fall back to og:image — a missing photo
-      // beats a company logo.
+      // Photo (v5.14): when the record identifies the person, a photo is only
+      // ever applied if it can be TIED to that person (given name / Chinese name
+      // in the alt text, adjacent caption, or file name). The AI's pick is
+      // cross-checked against the same rule, and the strongest-tied candidate
+      // wins. If nothing ties, no photo is returned — an empty photo beats a
+      // colleague's photo. Without identity, the old behaviour stands.
       let photoUrl = "";
       const idx = Number(data.photoIndex);
-      if (Number.isInteger(idx) && idx >= 0 && idx < photoCandidates.length) {
-        photoUrl = photoCandidates[idx].url;
+      const aiPick = Number.isInteger(idx) && idx >= 0 && idx < photoCandidates.length ? photoCandidates[idx] : null;
+      if (hasIdentity) {
+        const tied = photoCandidates
+          .map((c) => ({ c, tie: photoTie(c) }))
+          .filter((x) => x.tie > 0)
+          .sort((a, b) => b.tie - a.tie || b.c.score - a.c.score);
+        if (tied.length > 0) {
+          const aiTie = aiPick ? photoTie(aiPick) : 0;
+          photoUrl = aiPick && aiTie >= tied[0].tie ? aiPick.url : tied[0].c.url;
+        }
+      } else if (aiPick) {
+        photoUrl = aiPick.url;
       } else {
         const best = photoCandidates.find((c) => c.score >= 3);
         if (best) photoUrl = best.url;

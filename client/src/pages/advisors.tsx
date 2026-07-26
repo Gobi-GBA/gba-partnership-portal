@@ -528,44 +528,51 @@ function AdvisorFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto" data-testid="dialog-advisor-form">
         <DialogHeader>
-          <DialogTitle>{editing ? t("editAdvisor") : t("addAdvisor")}</DialogTitle>
-          <DialogDescription>{t("rolesHint")}</DialogDescription>
+          {/* v5.14 — auto-sync is a record-level action (it harvests the profile
+              URL, LinkedIn URL and identity fields together), so it lives in the
+              dialog's top-right corner rather than next to a single field. */}
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div className="space-y-1.5">
+              <DialogTitle>{editing ? t("editAdvisor") : t("addAdvisor")}</DialogTitle>
+              <DialogDescription>{t("rolesHint")}</DialogDescription>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <LinkedinSyncControl
+                url={form.profileUrl}
+                identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
+                onApply={(d: ExtractedAdvisor) => {
+                  setForm((f) => ({
+                    ...f,
+                    name: d.name?.trim() || f.name,
+                    nameCn: d.nameCn?.trim() || f.nameCn,
+                    background: d.background?.trim() || f.background,
+                    domains: d.domains?.trim() || f.domains,
+                    cohort: d.cohort?.trim() || f.cohort,
+                    photoUrl: d.photoUrl?.trim() || f.photoUrl,
+                    photoThumbUrl: d.photoUrl?.trim() || f.photoThumbUrl,
+                  }));
+                  if (d.roles && d.roles.length > 0) {
+                    setRoles(d.roles.map((r, i) => ({
+                      key: keyRef.current++,
+                      title: r.title,
+                      organization: r.organization ?? "",
+                      partnershipId: null,
+                      isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
+                    })));
+                  }
+                }}
+              />
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* 1. Source — the profile link and auto-sync come first so the team can
-              populate the record before typing anything by hand. */}
+          {/* 1. Source — the profile link comes first so auto-sync (top right)
+              has material to harvest. */}
           <FormSection id="source" step={1} title={t("advSectionSource")}>
             <div className="space-y-1">
               <Label>{t("advisorProfileUrl")}</Label>
-              <div className="flex gap-2">
-                <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
-                <LinkedinSyncControl
-                  url={form.profileUrl}
-                  identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
-                  onApply={(d: ExtractedAdvisor) => {
-                    setForm((f) => ({
-                      ...f,
-                      name: d.name?.trim() || f.name,
-                      nameCn: d.nameCn?.trim() || f.nameCn,
-                      background: d.background?.trim() || f.background,
-                      domains: d.domains?.trim() || f.domains,
-                      cohort: d.cohort?.trim() || f.cohort,
-                      photoUrl: d.photoUrl?.trim() || f.photoUrl,
-                      photoThumbUrl: d.photoUrl?.trim() || f.photoThumbUrl,
-                    }));
-                    if (d.roles && d.roles.length > 0) {
-                      setRoles(d.roles.map((r, i) => ({
-                        key: keyRef.current++,
-                        title: r.title,
-                        organization: r.organization ?? "",
-                        partnershipId: null,
-                        isPrimary: r.isPrimary ?? (i === 0 ? 1 : 0),
-                      })));
-                    }
-                  }}
-                />
-              </div>
+              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
               <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
             </div>
             <div className="space-y-1">
