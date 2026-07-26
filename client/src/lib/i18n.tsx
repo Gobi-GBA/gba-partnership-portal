@@ -639,6 +639,7 @@ const dict = {
   linkedinSyncApplied: { en: "Profile fields updated — review before saving.", cn: "资料已更新——保存前请核对。" },
   syncMismatch: { en: "Auto-sync stopped — that page is about a different person", cn: "自动同步已停止——该页面是另一个人的资料" },
   syncMismatchHint: { en: "Nothing was changed. Check the profile URL, or clear the name field to extract from this page.", cn: "未修改任何内容。请检查资料链接，或清空姓名后再从此页面提取。" },
+  syncFetchFallback: { en: "That page could not be read — it may be offline or blocking automated access. Paste the CV or bio text below instead and AI will fill the form.", cn: "无法读取该页面——可能已失效或屏蔽自动访问。请改为在下方粘贴简历或简介文本，AI 将自动填写表单。" },
   // v5.13 — partner org auto-sync
   partnerSyncHint: { en: "Fetch the organisation's website and enrich the profile fields with AI. Relationship fields (stage, dates, PICs) are not touched. Review before saving.", cn: "抓取机构官网并由AI补充资料字段；合作关系字段（阶段、日期、负责人）不会被修改。保存前请核对。" },
   orgMismatch: { en: "Auto-sync stopped — the material is about a different organisation", cn: "自动同步已停止——材料属于另一个机构" },

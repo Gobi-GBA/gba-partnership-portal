@@ -474,6 +474,8 @@ export function LinkedinSyncControl({ url, identity, onApply }: { url: string; i
         });
         setPasteOpen(false);
       } else if (msg.includes("fetchFailed") || msg.includes("422")) {
+        // Explain the fallback — an unexplained paste box after clicking Auto-sync reads as a bug
+        toast({ description: t("syncFetchFallback") });
         setPasteOpen(true);
       } else {
         toast({ description: msg, variant: "destructive" });

@@ -23,12 +23,14 @@ export const VERSIONS: VersionEntry[] = [
       "Organizations typed by hand or harvested by auto-sync are automatically matched to the partner registry (exact name, alias, acronym such as HKUST, word-order-free acronym such as HKU, Chinese name) — only an unambiguous match links, e.g. Prof. Nancy MAN's HKU and Andy WONG's HKUST roles now link to those partners",
       "One-off backfill re-ran the matcher over all existing advisors, so previously unlinked roles now appear on the partner's page",
       "Sub-entities show their parent in the dropdown (HKU Medicine · The University of Hong Kong); linked organizations show a building mark on the role row",
+      "Auto-sync now explains itself when a profile page cannot be read (site offline or blocking automated access) before offering the paste-text fallback",
     ],
     itemsCn: [
       "顾问角色：机构字段与合作伙伴关联合并为一个可搜索下拉框 — 输入即可搜索（中英文均可），选中即关联，也可保留自由文本；未收录的机构可一键创建为新合作伙伴",
       "手动输入或自动同步获取的机构会自动与合作伙伴库匹配（全名、别名、缩写如 HKUST、乱序缩写如 HKU、中文名）— 仅在匹配唯一时才会关联，例如 Nancy MAN 教授的 HKU 与 Andy WONG 的 HKUST 角色现已关联到对应合作伙伴",
       "已对全部现有顾问执行一次性回填匹配，此前未关联的角色现会出现在合作伙伴页面",
       "子机构在下拉框中显示所属母体（香港大学医学院 · 香港大学）；已关联的机构在角色行上显示建筑标记",
+      "当无法读取资料页面时（网站失效或屏蔽自动访问），自动同步会先给出提示说明，再提供粘贴文本的备选方式",
     ],
   },
   {
