@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.14";
+export const CURRENT_VERSION = "5.15";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "5.15",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "Advisor–partner organization linking",
+    titleCn: "顾问与合作伙伴机构关联",
+    itemsEn: [
+      "Advisor roles: the organization field and the partner link are now one searchable dropdown — type to search partners (EN or CN), pick to link, or keep free text; unknown organizations can be created as a new partner record in one click",
+      "Organizations typed by hand or harvested by auto-sync are automatically matched to the partner registry (exact name, alias, acronym such as HKUST, word-order-free acronym such as HKU, Chinese name) — only an unambiguous match links, e.g. Prof. Nancy MAN's HKU and Andy WONG's HKUST roles now link to those partners",
+      "One-off backfill re-ran the matcher over all existing advisors, so previously unlinked roles now appear on the partner's page",
+      "Sub-entities show their parent in the dropdown (HKU Medicine · The University of Hong Kong); linked organizations show a building mark on the role row",
+    ],
+    itemsCn: [
+      "顾问角色：机构字段与合作伙伴关联合并为一个可搜索下拉框 — 输入即可搜索（中英文均可），选中即关联，也可保留自由文本；未收录的机构可一键创建为新合作伙伴",
+      "手动输入或自动同步获取的机构会自动与合作伙伴库匹配（全名、别名、缩写如 HKUST、乱序缩写如 HKU、中文名）— 仅在匹配唯一时才会关联，例如 Nancy MAN 教授的 HKU 与 Andy WONG 的 HKUST 角色现已关联到对应合作伙伴",
+      "已对全部现有顾问执行一次性回填匹配，此前未关联的角色现会出现在合作伙伴页面",
+      "子机构在下拉框中显示所属母体（香港大学医学院 · 香港大学）；已关联的机构在角色行上显示建筑标记",
+    ],
+  },
   {
     version: "5.14",
     date: "2026-07-26",

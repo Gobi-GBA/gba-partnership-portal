@@ -23,7 +23,7 @@ import {
   LP_STATUSES,
   GOBI_STAFF,
 } from "../shared/schema.js";
-import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag } from "../shared/schema.js";
+import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag, Partnership } from "../shared/schema.js";
 import mammoth from "mammoth";
 import { invitationLetterHtml, invitationLetterDocx, letterFilename, DEFAULT_LETTER_BODY, DEFAULT_LETTER_ACK } from "./letter.js";
 import { z } from "zod";
@@ -1067,6 +1067,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Create — staff submissions await approval; admin entries go live at once
+  // ---------- v5.15: advisor role ↔ partner organization auto-linking ----------
+  // Free-text organizations on advisor roles are resolved against the partner
+  // registry with a confidence ladder (exact → alias → acronym → CN containment).
+  // Only a unique best-level match links; ambiguity leaves the role untouched.
+  const ORG_ACRO_STOP = new Set(["the", "of", "and", "for", "at", "in", "a", "an"]);
+  const orgCollapse = (s: string) => s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  const cjkOnly = (s: string) => (s.match(/[\u4e00-\u9fff]/g) ?? []).join("");
+  const orgSigTokens = (s: string) =>
+    s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 0 && !ORG_ACRO_STOP.has(t));
+  const orgInitials = (s: string) => {
+    const toks = orgSigTokens(s);
+    return toks.length >= 2 ? toks.map((t) => t[0]).join("") : "";
+  };
+  const sortChars = (s: string) => s.split("").sort().join("");
+
+  function orgMatchLevel(orgText: string, p: { nameEn: string; nameCn: string | null }): number {
+    const t = orgText.trim();
+    if (!t) return 0;
+    const tc = orgCollapse(t);
+    const cnT = cjkOnly(t);
+    const cnP = cjkOnly(p.nameCn ?? "");
+    // Aliases: paren-stripped name plus each parenthesised alias — "HKU Medicine (HKUMed)" → ["HKU Medicine", "HKUMed"]
+    const aliases = [
+      p.nameEn.replace(/\([^)]*\)/g, " ").trim(),
+      ...Array.from(p.nameEn.matchAll(/\(([^)]+)\)/g)).map((m) => m[1].trim()),
+    ].filter(Boolean);
+    const pc = orgCollapse(p.nameEn);
+    if (tc.length >= 2 && tc === pc) return 5;
+    if (cnT.length >= 2 && cnP.length >= 2 && cnT === cnP) return 5;
+    const aliasCollapsed = aliases.map(orgCollapse);
+    if (tc.length >= 2 && aliasCollapsed.includes(tc)) return 4;
+    const iT = orgInitials(t);
+    const iAliases = aliases.map(orgInitials).filter((a) => a.length >= 3);
+    if (iT.length >= 3 && (iT === pc || aliasCollapsed.includes(iT))) return 3; // long text vs acronym-named partner ("The Hong Kong University of Science and Technology" vs "HKUST")
+    if (iAliases.some((a) => a === tc)) return 3; // acronym text vs long partner name
+    if (iT.length >= 3 && iAliases.some((a) => a === iT)) return 3; // both long, same initials
+    if (tc.length >= 3 && tc.length <= 6 && iAliases.some((a) => sortChars(a) === sortChars(tc))) return 2; // word-order-free acronym: "HKU" vs "The University of Hong Kong"
+    if (cnT.length >= 4 && cnP.length >= 2 && (cnT.includes(cnP) || cnP.includes(cnT))) return 1;
+    return 0;
+  }
+
+  function resolveOrgPartner(orgText: string | null | undefined, partners: Partnership[]): number | null {
+    if (!orgText || !orgText.trim()) return null;
+    let bestLevel = 0;
+    let matches: number[] = [];
+    for (const p of partners) {
+      if (p.status === "rejected") continue;
+      const lvl = orgMatchLevel(orgText, p);
+      if (lvl > bestLevel) { bestLevel = lvl; matches = [p.id]; }
+      else if (lvl === bestLevel && lvl > 0) matches.push(p.id);
+    }
+    return bestLevel > 0 && matches.length === 1 ? matches[0] : null;
+  }
+
   app.post("/api/advisors", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const parsed = advisorInputSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1108,12 +1162,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       createdAt: new Date().toISOString(),
     });
     if (tagIds) await storage.setAdvisorTags(created.id, tagIds);
+    const partnersForLink = await storage.listPartnerships();
     const savedRoles = await storage.setAdvisorRoles(
       created.id,
       roles.map((r, i) => ({
         title: r.title,
         organization: r.organization ?? null,
-        partnershipId: r.partnershipId ?? null,
+        partnershipId: r.partnershipId ?? resolveOrgPartner(r.organization, partnersForLink),
         isPrimary: r.isPrimary ?? 0,
         sortOrder: i,
       })),
@@ -1142,16 +1197,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       patch.lifecycleStatus = lifecycleStatus;
       if (lifecycleStatus === "onboarded") patch.onboardedAt = existing.onboardedAt ?? new Date().toISOString().slice(0, 10);
     }
-    const updated = await storage.updateAdvisor(id, patch);
+    // Roles-only PATCHes are valid — skip the advisor update when nothing else changed
+    const updated = Object.keys(patch).length > 0 ? await storage.updateAdvisor(id, patch) : existing;
     if (tagIds) await storage.setAdvisorTags(id, tagIds);
     let savedRoles: AdvisorRole[] | undefined;
     if (roles) {
+      const partnersForLink = await storage.listPartnerships();
       savedRoles = await storage.setAdvisorRoles(
         id,
         roles.map((r, i) => ({
           title: r.title,
           organization: r.organization ?? null,
-          partnershipId: r.partnershipId ?? null,
+          partnershipId: r.partnershipId ?? resolveOrgPartner(r.organization, partnersForLink),
           isPrimary: r.isPrimary ?? 0,
           sortOrder: i,
         })),
@@ -1165,6 +1222,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
     await storage.deleteAdvisor(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // v5.15 — idempotent backfill: re-run the org resolver over every advisor role
+  // that has organization text but no partner link. Admin-only; safe to repeat.
+  app.post("/api/admin/relink-advisor-orgs", requireAuth("admin"), async (_req: AuthedRequest, res) => {
+    const partners = await storage.listPartnerships();
+    const advisors = await storage.listAdvisors();
+    const allRoles = await storage.listAdvisorRoles();
+    let checked = 0;
+    const linked: Array<{ advisorId: number; advisor: string; organization: string; partnershipId: number }> = [];
+    for (const a of advisors) {
+      const mine = allRoles
+        .filter((r) => r.advisorId === a.id)
+        .sort((x, y) => (x.sortOrder ?? 0) - (y.sortOrder ?? 0));
+      if (mine.length === 0) continue;
+      let changed = false;
+      const next = mine.map((r) => {
+        checked++;
+        if (r.partnershipId || !r.organization) return r;
+        const pid = resolveOrgPartner(r.organization, partners);
+        if (pid) {
+          changed = true;
+          linked.push({ advisorId: a.id, advisor: a.name, organization: r.organization, partnershipId: pid });
+          return { ...r, partnershipId: pid };
+        }
+        return r;
+      });
+      if (changed) {
+        await storage.setAdvisorRoles(
+          a.id,
+          next.map(({ id: _id, advisorId: _aid, ...rest }) => rest),
+        );
+      }
+    }
+    res.json({ checked, linkedCount: linked.length, linked });
   });
 
   // ---------- Advisor onboarding workflow (v5.8) ----------

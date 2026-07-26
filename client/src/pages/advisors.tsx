@@ -19,6 +19,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
 import {
@@ -404,6 +408,124 @@ const EMPTY_FORM = {
   mobileCc: DEFAULT_MOBILE_CC, mobileNumber: "", wechatId: "", originStaff: [] as string[],
 };
 
+// v5.15 — unified organization picker: one searchable combobox (shadcn Command)
+// that sets both the display text and the partner link. Free text stays possible;
+// unknown orgs can be created as new partner records in one click.
+const ORG_FILTER_STOP = ["the", "of", "and", "for", "at", "in", "a", "an"];
+// Custom cmdk filter: substring match plus acronym support so "HKU" finds
+// "The University of Hong Kong" (initials uhk — word-order-free comparison).
+function orgFilter(value: string, search: string): number {
+  const v = value.toLowerCase();
+  const s = search.toLowerCase().trim();
+  if (!s) return 1;
+  if (v.includes(s)) return 1;
+  const toks = v.split(/[^a-z0-9\u4e00-\u9fff]+/).filter((t) => t.length > 0 && !ORG_FILTER_STOP.includes(t));
+  // Initials from latin tokens only — a CJK name token must not pollute the acronym
+  const inits = toks.filter((t) => /^[a-z0-9]/.test(t)).map((t) => t[0]).join("");
+  const sc = s.replace(/[^a-z0-9]/g, "");
+  if (sc.length >= 2 && inits.includes(sc)) return 0.9;
+  if (sc.length >= 3 && sc.length <= 6 && inits.length >= 3 &&
+      sc.split("").sort().join("") === inits.split("").sort().join("")) return 0.8;
+  return 0;
+}
+
+function OrgCombobox({ organization, partnershipId, partners, onPick, testId }: {
+  organization: string;
+  partnershipId: number | null;
+  partners: Partnership[];
+  onPick: (organization: string, partnershipId: number | null) => void;
+  testId: string;
+}) {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const pname = (p: Partnership) => (lang === "cn" && p.nameCn ? p.nameCn : p.nameEn);
+  const linked = partnershipId ? partners.find((p) => p.id === partnershipId) : undefined;
+  const create = useMutation({
+    mutationFn: async (nameEn: string) => {
+      const res = await apiRequest("POST", "/api/partnerships", {
+        nameEn,
+        startDate: new Date().toISOString().slice(0, 10),
+        stage: "s1_new",
+        collabLevel: 1,
+        category: "other",
+        region: "hongkong",
+      });
+      return res.json();
+    },
+    onSuccess: (p: Partnership) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partnerships"] });
+      onPick(p.nameEn, p.id);
+      toast({ description: t("orgCreated") });
+      setOpen(false);
+      setQ("");
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" role="combobox" aria-expanded={open}
+          className="h-9 w-full justify-between px-3 font-normal" data-testid={testId}>
+          <span className={cn("flex items-center gap-1.5 truncate", !organization && !linked && "text-muted-foreground")}>
+            {linked ? (
+              <>
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold))]" />
+                <span className="truncate">{pname(linked)}</span>
+              </>
+            ) : (organization || t("roleOrg"))}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0" align="start">
+        <Command filter={orgFilter}>
+          <CommandInput placeholder={t("orgSearchPlaceholder")} value={q} onValueChange={setQ} data-testid={`${testId}-search`} />
+          <CommandList className="max-h-56">
+            <CommandEmpty>{t("orgNoMatch")}</CommandEmpty>
+            {q.trim().length > 0 && (
+              <CommandGroup>
+                <CommandItem value={`__text__ ${q}`} data-testid={`${testId}-use-text`}
+                  onSelect={() => { onPick(q.trim(), null); setOpen(false); setQ(""); }}>
+                  <Pencil className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="truncate">{t("orgUseAsText")} “{q.trim()}”</span>
+                </CommandItem>
+                <CommandItem value={`__create__ ${q}`} disabled={create.isPending} data-testid={`${testId}-create`}
+                  onSelect={() => create.mutate(q.trim())}>
+                  {create.isPending
+                    ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    : <Plus className="mr-2 h-3.5 w-3.5 text-muted-foreground" />}
+                  <span className="truncate">{t("orgCreateNew")} “{q.trim()}”</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+            <CommandGroup>
+              {linked && (
+                <CommandItem value="__unlink__" data-testid={`${testId}-unlink`}
+                  onSelect={() => { onPick(organization, null); setOpen(false); }}>
+                  <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> {t("roleNone")}
+                </CommandItem>
+              )}
+              {partners.map((p) => {
+                const parent = p.parentId ? partners.find((x) => x.id === p.parentId) : undefined;
+                return (
+                  <CommandItem key={p.id} value={`${p.nameEn} ${p.nameCn ?? ""}`} data-testid={`${testId}-opt-${p.id}`}
+                    onSelect={() => { onPick(pname(p), p.id); setOpen(false); setQ(""); }}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", partnershipId === p.id ? "opacity-100" : "opacity-0")} />
+                    <span className="truncate">{pname(p)}</span>
+                    {parent && <span className="ml-1.5 truncate text-[11px] text-muted-foreground">· {pname(parent)}</span>}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function AdvisorFormDialog({
   open, onOpenChange, editing, partnerships,
 }: {
@@ -665,24 +787,13 @@ function AdvisorFormDialog({
               <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-start rounded-md bg-secondary/40 p-2" data-testid={`row-role-${i}`}>
                 <Input placeholder={t("roleTitle")} value={r.title} data-testid={`input-role-title-${i}`}
                   onChange={(e) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, title: e.target.value } : x)))} />
-                <div className="space-y-2">
-                  <Input placeholder={t("roleOrg")} value={r.organization ?? ""} data-testid={`input-role-org-${i}`}
-                    onChange={(e) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, organization: e.target.value } : x)))} />
-                  <Select
-                    value={r.partnershipId ? String(r.partnershipId) : "none"}
-                    onValueChange={(v) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, partnershipId: v === "none" ? null : Number(v) } : x)))}
-                  >
-                    <SelectTrigger className="h-9" data-testid={`select-role-partner-${i}`}>
-                      <SelectValue placeholder={t("roleLinkPartner")} />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64">
-                      <SelectItem value="none">{t("roleNone")}</SelectItem>
-                      {sortedPartners.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>{partnerName(p)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <OrgCombobox
+                  organization={r.organization ?? ""}
+                  partnershipId={r.partnershipId ?? null}
+                  partners={sortedPartners}
+                  onPick={(org, pid) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, organization: org, partnershipId: pid } : x)))}
+                  testId={`combo-role-org-${i}`}
+                />
                 <div className="flex items-center gap-1.5 pt-1.5">
                   <button type="button" title={t("rolePrimary")} data-testid={`button-role-primary-${i}`}
                     onClick={() => setRoles((rs) => rs.map((x) => ({ ...x, isPrimary: x.key === r.key ? 1 : 0 })))}
