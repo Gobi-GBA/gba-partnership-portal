@@ -111,8 +111,12 @@ export const rdItemInputSchema = z.object({
 export type RdItemInput = z.infer<typeof rdItemInputSchema>;
 
 // ---------- Partnerships ----------
-// Pipeline: 01 New/Target → 02 Engaged → 03 MOU/Agreement → 04 Progressive → 05 Strategic
-export const STAGES = ["s1_new", "s2_engaged", "s3_agreement", "s4_progressive", "s5_strategic"] as const;
+// Pipeline (v6.03, 4 levels):
+// 01 New/Target — on our radar, no relationship developed yet
+// 02 Engaged — first meeting, activity or contact done
+// 03 Progress Partnership — advanced meetings, collaborations done, track record
+// 04 Strategic Partnership — MoU signed, strategic framework or deeper
+export const STAGES = ["s1_new", "s2_engaged", "s3_progress", "s4_strategic"] as const;
 
 export const CATEGORIES = [
   "university",  // 高校
@@ -199,7 +203,7 @@ export const partnerships = sqliteTable("partnerships", {
   startDate: text("start_date"), // ISO date string
   photos: text("photos", { mode: "json" }).$type<string[]>(), // gallery photo URLs (carousel)
   stage: text("stage").notNull().default("s1_new"),
-  collabLevel: integer("collab_level").notNull().default(1), // 1-5
+  collabLevel: integer("collab_level").notNull().default(1), // 1-4 (derived from stage)
   hallOfFame: integer("hall_of_fame").notNull().default(0), // 0 | 1
   isDomainKnowledgePartner: integer("is_domain_knowledge_partner").notNull().default(0), // 0 | 1 — org serves as a domain knowledge partner in the advisory network
   lpStatus: text("lp_status").notNull().default("na"), // 'na' | 'target' | 'lp' — visible to IR team only
@@ -219,7 +223,7 @@ export const insertPartnershipSchema = createInsertSchema(partnerships).omit({
   stage: z.enum(STAGES),
   category: z.enum(CATEGORIES),
   region: z.enum(REGIONS),
-  collabLevel: z.number().int().min(1).max(5),
+  collabLevel: z.number().int().min(1).max(4),
   parentId: z.number().int().nullable().optional(),
   picNames: z.array(z.string()).max(8).nullable().optional(),
   photos: z.array(z.string()).max(12).nullable().optional(),

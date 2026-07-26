@@ -234,17 +234,26 @@ export function createSqliteStorage(): IStorage {
   }
   // Migrate legacy single PIC into multi-PIC list
   sqlite.exec(`UPDATE partnerships SET pic_names = json_array(pic_name) WHERE pic_names IS NULL AND pic_name IS NOT NULL AND pic_name != ''`);
-  // Migrate old stage values → 01-05 pipeline
+  // Migrate old stage values → 4-level pipeline (v6.03)
+  // Legacy words → old 5-level keys → new 4-level keys, in one pass:
+  // s3_agreement (MOU signed) and s5_strategic both become s4_strategic;
+  // s4_progressive becomes s3_progress. Collab level is re-derived from stage.
   sqlite.exec(`
 UPDATE partnerships SET stage = CASE stage
   WHEN 'target' THEN 's1_new'
   WHEN 'contacted' THEN 's2_engaged'
   WHEN 'met' THEN 's2_engaged'
-  WHEN 'mou' THEN 's3_agreement'
-  WHEN 'agreement' THEN 's3_agreement'
-  WHEN 'active' THEN 's4_progressive'
+  WHEN 'mou' THEN 's4_strategic'
+  WHEN 'agreement' THEN 's4_strategic'
+  WHEN 'active' THEN 's3_progress'
+  WHEN 's3_agreement' THEN 's4_strategic'
+  WHEN 's4_progressive' THEN 's3_progress'
+  WHEN 's5_strategic' THEN 's4_strategic'
   ELSE stage END
-WHERE stage IN ('target','contacted','met','mou','agreement','active');
+WHERE stage IN ('target','contacted','met','mou','agreement','active','s3_agreement','s4_progressive','s5_strategic');
+UPDATE partnerships SET collab_level = CASE stage
+  WHEN 's1_new' THEN 1 WHEN 's2_engaged' THEN 2 WHEN 's3_progress' THEN 3 WHEN 's4_strategic' THEN 4
+  ELSE collab_level END;
 UPDATE users SET role = 'staff' WHERE role = 'member';
 `);
 

@@ -33,9 +33,8 @@ import { z } from "zod";
 const STAGE_LEVEL: Record<string, number> = {
   s1_new: 1,
   s2_engaged: 2,
-  s3_agreement: 3,
-  s4_progressive: 4,
-  s5_strategic: 5,
+  s3_progress: 3,
+  s4_strategic: 4,
 };
 
 // LP status is IR-team-only information. Everyone else sees 'na'.
@@ -2370,7 +2369,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown):
   "context": "fuller background paragraph capturing the narrative of the material",
   "partnershipType": "short label e.g. 'Joint fund', 'Deal flow MOU', 'Co-incubation'",
   "startDate": "YYYY-MM-DD — REQUIRED, never leave empty. If no explicit date appears, give your best estimate from the material's context or your own knowledge of this partnership (announcements, news). If only a year or month is known, use the first day, e.g. 2024-01-01",
-  "stage": one of ${JSON.stringify(STAGES)} (s1_new=identified target only, s2_engaged=in contact / meetings held, s3_agreement=MOU or agreement signed, s4_progressive=active deepening collaboration, s5_strategic=flagship strategic partnership),
+  "stage": one of ${JSON.stringify(STAGES)} (s1_new=on the radar but no relationship developed yet, s2_engaged=first meeting / activity / contact done, s3_progress=advanced meetings and collaborations done with a track record, s4_strategic=MOU signed or a strategic framework or deeper),
   "notes": "any other useful details (dates, follow-ups, people)"
 }
 

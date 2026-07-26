@@ -4,6 +4,7 @@ import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -648,12 +649,42 @@ export function NewBadge({ p }: { p: Pick<Partnership, "createdAt"> }) {
 }
 
 // ---------------- Stage badge ----------------
+// v6.03 — every stage badge explains its level on hover (fast tooltip)
 export function StageBadge({ stage }: { stage: Stage }) {
   const { t } = useLang();
   return (
-    <Badge className={cn("font-medium tabular-nums", STAGE_STYLES[stage])} data-testid={`badge-stage-${stage}`}>
-      {STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}
-    </Badge>
+    <Tooltip delayDuration={100}>
+      <TooltipTrigger asChild>
+        <Badge className={cn("font-medium tabular-nums cursor-default", STAGE_STYLES[stage])} data-testid={`badge-stage-${stage}`}>
+          {STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[280px] text-xs" data-testid={`tooltip-stage-${stage}`}>
+        {t(`stage_def_${stage}` as any)}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// v6.03 — compact level guide for the register / edit interfaces
+export function StageGuide({ selected }: { selected?: string }) {
+  const { t } = useLang();
+  return (
+    <div className="mt-2 rounded-md border bg-muted/40 p-2.5 space-y-1" data-testid="note-stage-guide">
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t("levelGuide")}</p>
+      {STAGES.map((s) => (
+        <p
+          key={s}
+          className={cn(
+            "text-[11px] leading-snug",
+            s === selected ? "text-foreground font-medium" : "text-muted-foreground",
+          )}
+          data-testid={`guide-row-${s}`}
+        >
+          <span className="tabular-nums font-semibold">{STAGE_NUM[s]}</span> · {t(`stage_${s}` as any)} — {t(`stage_def_${s}` as any)}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -821,8 +852,8 @@ export function CategoryBadge({ category }: { category: Category }) {
 export function LevelDots({ level, showLabel = false }: { level: number; showLabel?: boolean }) {
   const { t } = useLang();
   return (
-    <span className="inline-flex items-center gap-1" title={`${t("collabLevel")}: ${level}/5`} data-testid={`level-dots-${level}`}>
-      {[1, 2, 3, 4, 5].map((i) => (
+    <span className="inline-flex items-center gap-1" title={`${t("collabLevel")}: ${level}/4`} data-testid={`level-dots-${level}`}>
+      {[1, 2, 3, 4].map((i) => (
         <span
           key={i}
           className={cn(
@@ -861,7 +892,7 @@ export function PipelineProgress({ stage }: { stage: Stage }) {
       <div className="mt-2 flex justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>01 {t("stage_s1_new")}</span>
         <span className="font-semibold text-foreground">{STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}</span>
-        <span>05 {t("stage_s5_strategic")}</span>
+        <span>04 {t("stage_s4_strategic")}</span>
       </div>
     </div>
   );

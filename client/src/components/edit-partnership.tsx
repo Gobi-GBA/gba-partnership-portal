@@ -15,7 +15,7 @@ import { uploadPhotoAsset, deletePhotoAsset, photoThumbSrc, isAssetToken } from 
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PicChecklist } from "@/components/shared";
+import { PicChecklist, StageGuide } from "@/components/shared";
 import { TagPicker } from "@/components/advisor-crm";
 import type { Partnership, AttachmentMeta, Stage } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
@@ -279,6 +279,7 @@ export function EditPartnershipDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <StageGuide selected={form.stage} />
             </EField>
             {(user?.role === "admin" || user?.isIr === 1) && (
               <EField label={t("lpStatus")}>

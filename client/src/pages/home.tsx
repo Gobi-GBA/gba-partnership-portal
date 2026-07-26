@@ -66,7 +66,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
         if (category.length > 0 && !category.includes(p.category)) return false;
         if (stage.length > 0) {
           const hit = stage.some((s) =>
-            s === "active" ? p.stage === "s4_progressive" || p.stage === "s5_strategic" : p.stage === s,
+            s === "active" ? p.stage === "s3_progress" || p.stage === "s4_strategic" : p.stage === s,
           );
           if (!hit) return false;
         }
@@ -116,8 +116,8 @@ export default function Home({ initialView = "network", initialHof = false }: { 
     const all = partnerships ?? [];
     return {
       total: all.length,
-      active: all.filter((p) => p.stage === "s4_progressive" || p.stage === "s5_strategic").length,
-      mou: all.filter((p) => p.stage === "s3_agreement").length,
+      active: all.filter((p) => p.stage === "s3_progress" || p.stage === "s4_strategic").length,
+      strategic: all.filter((p) => p.stage === "s4_strategic").length,
       universities: all.filter((p) => p.category === "university").length,
     };
   }, [partnerships]);
@@ -160,7 +160,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
               <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl">
                 <Stat value={stats.total} label={t("statPartners")} loading={isLoading} onClick={() => goDirectory()} />
                 <Stat value={stats.active} label={t("statActive")} loading={isLoading} gold onClick={() => goDirectory({ stage: "active" })} />
-                <Stat value={stats.mou} label={t("statMou")} loading={isLoading} onClick={() => goDirectory({ stage: "s3_agreement" })} />
+                <Stat value={stats.strategic} label={t("statStrategic")} loading={isLoading} onClick={() => goDirectory({ stage: "s4_strategic" })} />
                 <Stat value={stats.universities} label={t("statUniversities")} loading={isLoading} onClick={() => goDirectory({ category: "university" })} />
               </div>
 

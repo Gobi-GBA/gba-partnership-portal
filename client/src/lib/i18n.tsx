@@ -23,7 +23,7 @@ const dict = {
   },
   statPartners: { en: "Partners", cn: "合作伙伴" },
   statActive: { en: "Active collaborations", cn: "深度合作中" },
-  statMou: { en: "MOU & agreements", cn: "MOU 与协议" },
+  statStrategic: { en: "Strategic partnerships", cn: "战略伙伴" },
   statUniversities: { en: "Universities", cn: "合作高校" },
 
   // Directory
@@ -46,9 +46,13 @@ const dict = {
   // Stages (01-05 pipeline)
   stage_s1_new: { en: "New / Target", cn: "新目标" },
   stage_s2_engaged: { en: "Engaged", cn: "接洽中" },
-  stage_s3_agreement: { en: "MOU & Agreement", cn: "已签约" },
-  stage_s4_progressive: { en: "Progressive", cn: "深化合作" },
-  stage_s5_strategic: { en: "Strategic", cn: "战略伙伴" },
+  stage_s3_progress: { en: "Progress Partnership", cn: "深化合作" },
+  stage_s4_strategic: { en: "Strategic Partnership", cn: "战略伙伴" },
+  stage_def_s1_new: { en: "On our radar — no relationship developed yet", cn: "已列入视野——尚未建立联系" },
+  stage_def_s2_engaged: { en: "First meeting, activity or contact done", cn: "已完成首次会面、活动或联系" },
+  stage_def_s3_progress: { en: "Advanced meetings, collaborations done, track record building", cn: "深入会谈、已开展合作、逐步积累往绩" },
+  stage_def_s4_strategic: { en: "MoU signed, strategic framework or deeper", cn: "已签署备忘录、建立战略框架或更深层合作" },
+  levelGuide: { en: "Level guide", cn: "级别说明" },
 
   // Categories
   cat_university: { en: "University", cn: "高校" },

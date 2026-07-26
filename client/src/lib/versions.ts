@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.02";
+export const CURRENT_VERSION = "6.03";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.03",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "v6.03 — a clearer 4-level partnership pipeline, refreshed data",
+    titleCn: "v6.03 — 更清晰的四级合作管线，数据焕新",
+    itemsEn: [
+      "Partnership levels simplified from 5 to 4 with crisp definitions: 01 New / Target (on our radar, no relationship yet), 02 Engaged (first meeting, activity or contact done), 03 Progress Partnership (advanced meetings, collaborations done, track record), 04 Strategic Partnership (MoU signed, strategic framework or deeper)",
+      "Every level badge now explains its meaning on hover, and the register / edit forms show a compact level guide with the selected level highlighted, so records are classified consistently at the point of entry",
+      "All existing records migrated automatically: MOU & Agreement and Strategic merge into 04 Strategic Partnership; Progressive becomes 03 Progress Partnership",
+      "Registry refreshed from public sources: new partner records for organizations Gobi already works with, and updated team photos for key partners from recent press coverage",
+    ],
+    itemsCn: [
+      "合作层级由五级精简为四级，定义更清晰：01 新目标（已列入视野、尚未建立联系）、02 接洽中（已完成首次会面、活动或联系）、03 深化合作（深入会谈、已开展合作、积累往绩）、04 战略伙伴（已签署备忘录、建立战略框架或更深层合作）",
+      "所有层级徽章悬停即显说明，登记与编辑界面新增紧凑的级别说明并高亮当前所选级别，录入时即可统一口径",
+      "存量记录已自动迁移：原「MOU 与协议」及「战略」并入 04 战略伙伴，原「深化合作」调整为 03 深化合作",
+      "登记册依据公开来源焕新：补录 Gobi 已有合作但未入册的机构，并从近期新闻报道更新重点伙伴的团队照片",
+    ],
+  },
   {
     version: "6.02",
     date: "2026-07-26",
