@@ -155,8 +155,27 @@ const dict = {
   fbStatus_declined: { en: "Declined", cn: "已拒绝" },
   adminResponse: { en: "Team response", cn: "团队回复" },
   adminFeedback: { en: "System requests", cn: "系统需求" },
+  // v6.0
+  staffSearchPlaceholder: { en: "Search name, title or office…", cn: "搜索姓名、职位或办公室…" },
+  staffNoMatch: { en: "No staff match", cn: "没有匹配的同事" },
+  restrictedLabel: { en: "Restricted", cn: "内部" },
+  restrictedTipAdmin: { en: "Special access — visible to admins only", cn: "特殊权限——仅管理员可见" },
+  restrictedTipRd: { en: "Special access — visible to admins and the dev team only", cn: "特殊权限——仅管理员与开发团队可见" },
+  rdRequestsTitle: { en: "System requests log", cn: "系统需求日志" },
+  rdRequestsSub: {
+    en: "Incoming requests and feedback from the team — triage them into the roadmap below.",
+    cn: "团队提交的系统需求与反馈——在此分流并纳入下方路线图。",
+  },
   fbNotePlaceholder: { en: "Reply / internal note shown to the requester…", cn: "回复或备注（提交者可见）…" },
   fbFrom: { en: "From", cn: "来自" },
+
+  // v6.0 — advisor star map
+  viewMap: { en: "Star map", cn: "星图" },
+  advisorMapCenter: { en: "Gobi Advisory Network", cn: "戈壁顾问网络" },
+  advisorMapHint: {
+    en: "Advisors orbit the partner organization they are linked to; unlinked advisors drift on the outer ring. Click a star to open the profile — filters above apply.",
+    cn: "顾问围绕其关联的合作伙伴机构运行；未关联的顾问分布在外环。点击星点打开详情——上方筛选同样生效。",
+  },
 
   // Admin: add account (v4.2)
   addAccount: { en: "Add account", cn: "新增账户" },

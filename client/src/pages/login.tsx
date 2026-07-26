@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { useLang, type DictKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Layout, BrandMark } from "@/components/shared";
+import { requestWarp, cancelWarp } from "@/components/galaxy-bg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,6 @@ export default function Login() {
   const { t } = useLang();
   const { login, register, updateUser } = useAuth();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -48,10 +47,14 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    // v6.0: flag the warp BEFORE login resolves — the login-first tree in
+    // App.tsx unmounts this page the moment `user` is set, so the next Layout
+    // (home or the /login route) picks the flag up and plays the warp.
+    requestWarp();
     try {
       await login(loginEmail, loginPassword, remember);
-      navigate("/");
     } catch (err: any) {
+      cancelWarp();
       const msg = String(err?.message ?? "");
       if (msg.includes("pending_approval")) {
         toast({ title: t("pendingApproval") });
@@ -72,6 +75,9 @@ export default function Login() {
       return;
     }
     setBusy(true);
+    // v6.0: same warp hand-off as sign-in — auto-approved registration logs the
+    // user straight in and swaps the tree before this handler continues.
+    requestWarp();
     try {
       const result = await register(regName, regEmail, regPassword, {
         secretQ1: regQ1,
@@ -79,6 +85,7 @@ export default function Login() {
         secretQ2: regQ2,
         secretA2: regA2,
       });
+      if (!result.loggedIn) cancelWarp();
       const title = result.autoApproved ? t("registerAutoApproved") : t("registerSuccess");
       toast({
         title,
@@ -100,6 +107,7 @@ export default function Login() {
       setTab("login");
       setLoginEmail(regEmail);
     } catch (err: any) {
+      cancelWarp();
       const msg = String(err?.message ?? "");
       toast({
         title: msg.includes("409") ? "Email already registered / 邮箱已注册" : "Registration failed / 注册失败",

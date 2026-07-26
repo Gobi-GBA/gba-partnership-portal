@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { GalaxyBackground } from "@/components/galaxy-bg";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { GalaxyBackground, WarpOverlay, consumePendingWarp } from "@/components/galaxy-bg";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -284,32 +285,59 @@ export function BrandMark({ className }: { className?: string }) {
   );
 }
 
+// ---------------- Restricted-access sticker (v6.0) ----------------
+// Small amber "sticker" marking pages with special access rights (R&D, Admin).
+export function RestrictedBadge({ tip }: { tip?: string }) {
+  const { t } = useLang();
+  return (
+    <span
+      title={tip}
+      className="ml-1.5 inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 align-middle"
+      data-testid="badge-restricted"
+    >
+      <Lock className="h-2.5 w-2.5" />
+      {t("restrictedLabel")}
+    </span>
+  );
+}
+
 // ---------------- Layout ----------------
 export function Layout({ children }: { children: ReactNode }) {
   const { lang, setLang, t } = useLang();
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [showTestBanner, setShowTestBanner] = useState(true);
   const [showVersions, setShowVersions] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
+  // v6.0: play the post-sign-in warp from Layout — the login page itself is
+  // unmounted the instant `user` is set (login-first tree swap in App.tsx),
+  // so it hands the request over via a module-level flag.
+  const [warping, setWarping] = useState(false);
   useEffect(() => {
-    if (user && !versionLogShown) {
+    if (user && consumePendingWarp()) setWarping(true);
+  }, [user]);
+
+  useEffect(() => {
+    // Skip the what's-new dialog on the transient /login layout — it would be
+    // unmounted by the post-warp navigation and the once-per-session flag
+    // would be burned before anyone saw it.
+    if (user && !versionLogShown && !location.startsWith("/login")) {
       versionLogShown = true;
       setShowVersions(true);
     }
-  }, [user]);
+  }, [user, location]);
 
-  const links: { href: string; label: string; show: boolean; soon?: boolean }[] = [
+  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
     // v5.12 — the scoreboard moved inside the admin portal (Admin → Scoreboard tab).
-    { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
-    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
+    { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1, restrictedTip: t("restrictedTipRd") },
+    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin") },
   ];
 
   return (
@@ -344,8 +372,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))] align-middle">
                       {t("soonTag")}
-                    </span>
+                      {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
+                </span>
                   )}
+                  {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
                 </span>
               </Link>
             ))}
@@ -415,8 +445,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">
                       {t("soonTag")}
-                    </span>
+                      {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
+                </span>
                   )}
+                  {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
                 </span>
               </Link>
             ))}
@@ -474,6 +506,15 @@ export function Layout({ children }: { children: ReactNode }) {
       )}
 
       <main className="flex-1">{children}</main>
+
+      {warping && (
+        <WarpOverlay
+          onDone={() => {
+            setWarping(false);
+            if (location.startsWith("/login")) navigate("/");
+          }}
+        />
+      )}
 
       {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
       {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
@@ -646,8 +687,14 @@ export function PicChecklist({
   placeholderKey?: "selectPics" | "selectOriginStaff";
 }) {
   const { t } = useLang();
+  const [q, setQ] = useState("");
   const toggle = (name: string) =>
     onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
+  // v6.0: quick filter by name / title / office (EN + CJK substring)
+  const query = q.trim().toLowerCase();
+  const matches = (s: (typeof GOBI_STAFF)[number]) =>
+    !query || `${s.name} ${s.title} ${s.office}`.toLowerCase().includes(query);
+  const anyMatch = GOBI_STAFF.some(matches);
   // modal — required for wheel/trackpad scrolling when the popover opens inside a Dialog (Radix scroll-lock)
   return (
     <Popover modal>
@@ -667,12 +714,43 @@ export function PicChecklist({
         collisionPadding={12}
         avoidCollisions
       >
+        <div className="space-y-2 border-b border-border p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t("staffSearchPlaceholder")}
+              className="h-8 pl-7 text-sm"
+              data-testid={`${testid}-search`}
+            />
+          </div>
+          {value.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {value.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => toggle(n)}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium hover:bg-destructive/10 hover:text-destructive"
+                  data-testid={`${optionPrefix}-chip-${n.replace(/\s+/g, "-").toLowerCase()}`}
+                >
+                  {n}
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div
           className="overflow-y-auto overscroll-contain"
-          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height, 18rem))" }}
+          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height, 18rem))", WebkitOverflowScrolling: "touch" }}
         >
+          {!anyMatch && (
+            <p className="px-4 py-3 text-sm text-muted-foreground" data-testid="text-staff-no-match">{t("staffNoMatch")}</p>
+          )}
           {GOBI_OFFICES.map((office) => {
-            const staff = GOBI_STAFF.filter((s) => s.office === office);
+            const staff = GOBI_STAFF.filter((s) => s.office === office && matches(s));
             if (!staff.length) return null;
             return (
               <div key={office} className="p-2 border-b border-border last:border-0">

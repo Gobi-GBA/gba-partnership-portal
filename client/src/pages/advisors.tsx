@@ -29,8 +29,9 @@ import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
   LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
-  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown,
+  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit,
 } from "lucide-react";
+import { AdvisorStarMap } from "@/components/network-graph";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -1262,7 +1263,7 @@ export default function Advisors() {
   const [sortBy, setSortBy] = useState<"name" | "activity">("name");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<string[]>([]);
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list" | "map">("grid");
   const [showTags, setShowTags] = useState(true);
   const [showMomentum, setShowMomentum] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -1530,6 +1531,14 @@ export default function Advisors() {
             >
               <List className="h-3.5 w-3.5" /> {t("viewList")}
             </button>
+            <button
+              type="button"
+              onClick={() => setView("map")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${view === "map" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              data-testid="button-view-map"
+            >
+              <Orbit className="h-3.5 w-3.5" /> {t("viewMap")}
+            </button>
           </div>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "activity")}>
             <SelectTrigger className="h-9 w-44" data-testid="select-sort">
@@ -1580,6 +1589,11 @@ export default function Advisors() {
           </div>
         ) : filtered.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground" data-testid="text-advisors-empty">{t("advisorEmpty")}</p>
+        ) : view === "map" ? (
+          <div className="mt-6">
+            <p className="mb-3 text-xs text-muted-foreground" data-testid="text-advisor-map-hint">{t("advisorMapHint")}</p>
+            <AdvisorStarMap advisors={filtered} partnerships={partnerships ?? []} onSelect={(id) => navigate(`/advisors/${id}`)} height={620} />
+          </div>
         ) : groupBy === "none" ? (
           <div className="mt-6">{renderRoster(filtered)}</div>
         ) : (

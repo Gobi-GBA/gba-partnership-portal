@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
-import { Layout, PartnerLogo, PicAvatars } from "@/components/shared";
+import { Layout, PartnerLogo, PicAvatars, RestrictedBadge } from "@/components/shared";
 import { EditPartnershipDialog } from "@/components/edit-partnership";
 import { ScoreboardPanel } from "@/pages/scoreboard";
 import { Button } from "@/components/ui/button";
@@ -22,13 +22,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ArrowUp, ArrowDown, KeyRound, Copy } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ChevronDown, ArrowUp, ArrowDown, KeyRound, Copy } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
-import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus, SectorTag } from "@shared/schema";
-import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
+import type { Partnership, SafeUser, Stage, ChangeRequest, SectorTag } from "@shared/schema";
+import { ROLES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
-import { FeedbackStatusBadge } from "@/pages/updates";
 import { ExportCsvButtons } from "@/pages/advisors";
 
 export default function Admin() {
@@ -51,23 +50,20 @@ export default function Admin() {
   return (
     <Layout>
       <div className="mx-auto max-w-5xl px-4 py-10">
-        <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-6">{t("adminTitle")}</h1>
+        <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-6">{t("adminTitle")}<RestrictedBadge tip={t("restrictedTipAdmin")} /></h1>
         <Tabs defaultValue="partnerships">
           <TabsList className="mb-6">
             <TabsTrigger value="partnerships" data-testid="tab-admin-partnerships">{t("adminPartnerships")}</TabsTrigger>
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
-            <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
             <TabsTrigger value="scoreboard" data-testid="tab-admin-scoreboard">{t("sbNavLabel")}</TabsTrigger>
             <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
-            <TabsTrigger value="templates" data-testid="tab-admin-templates">{t("tabTemplates")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
           </TabsList>
           <TabsContent value="partnerships"><PartnershipAdmin /></TabsContent>
           <TabsContent value="changes"><ChangeRequestAdmin /></TabsContent>
           <TabsContent value="users"><UserAdmin /></TabsContent>
-          <TabsContent value="feedback"><FeedbackAdmin /></TabsContent>
           <TabsContent value="tags"><TagAdmin /></TabsContent>
           <TabsContent value="scoreboard"><ScoreboardPanel /></TabsContent>
           <TabsContent value="exports">
@@ -76,7 +72,6 @@ export default function Admin() {
               <ExportCsvButtons />
             </div>
           </TabsContent>
-          <TabsContent value="templates"><TemplatesAdmin /></TabsContent>
           <TabsContent value="settings"><SettingsAdmin /></TabsContent>
         </Tabs>
       </div>
@@ -84,91 +79,7 @@ export default function Admin() {
   );
 }
 
-// ---------------- Feedback / system requests ----------------
-function FeedbackCard({ fb }: { fb: Feedback }) {
-  const { t, lang } = useLang();
-  const { toast } = useToast();
-  const [note, setNote] = useState(fb.adminNote ?? "");
-
-  const mutation = useMutation({
-    mutationFn: async (data: { status?: FeedbackStatus; adminNote?: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/feedback/${fb.id}`, data);
-      return res.json();
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }),
-    onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
-  });
-
-  return (
-    <div className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={`card-admin-feedback-${fb.id}`}>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm">{fb.userName}</p>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {new Date(fb.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}
-          </p>
-        </div>
-        <FeedbackStatusBadge status={fb.status as FeedbackStatus} />
-        <Select value={fb.status} onValueChange={(v) => mutation.mutate({ status: v as FeedbackStatus })}>
-          <SelectTrigger className="w-36 h-8 text-xs" data-testid={`select-fb-status-${fb.id}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {FEEDBACK_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{t(`fbStatus_${s}` as any)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <p className="text-sm whitespace-pre-wrap" data-testid={`text-admin-feedback-${fb.id}`}>{fb.message}</p>
-      <div className="flex items-start gap-2">
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder={t("fbNotePlaceholder")}
-          rows={2}
-          maxLength={2000}
-          className="text-sm"
-          data-testid={`input-fb-note-${fb.id}`}
-        />
-        <Button
-          size="icon"
-          variant="outline"
-          title={t("save")}
-          disabled={mutation.isPending || note === (fb.adminNote ?? "")}
-          onClick={() => mutation.mutate({ adminNote: note.trim() ? note.trim() : null })}
-          data-testid={`button-save-fb-note-${fb.id}`}
-        >
-          <Save className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function FeedbackAdmin() {
-  const { t } = useLang();
-  const { data: list, isLoading } = useQuery<Feedback[]>({ queryKey: ["/api/feedback"] });
-
-  if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
-  const items = list ?? [];
-  const open = items.filter((f) => f.status === "open" || f.status === "in_progress");
-  const closed = items.filter((f) => f.status === "solved" || f.status === "declined");
-
-  return (
-    <div className="space-y-6">
-      {open.length > 0 ? (
-        <div>
-          <h3 className="text-sm font-bold mb-3">{t("fbStatus_open")} ({open.length})</h3>
-          <div className="space-y-3">{open.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground" data-testid="text-no-feedback">{t("noRequests")}</p>
-      )}
-      {closed.length > 0 && <div className="space-y-3">{closed.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>}
-    </div>
-  );
-}
+// v6.0: system requests moved to the R&D page as a compact log (see rd-planner.tsx).
 
 // ---------------- Users ----------------
 function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -1265,6 +1176,7 @@ function SettingsAdmin() {
   const { toast } = useToast();
   const [cooEmail, setCooEmail] = useState("");
   const [seeded, setSeeded] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false); // v6.0: templates folded into settings
 
   const { data: settings } = useQuery<{ cooEmail: string }>({ queryKey: ["/api/settings"] });
   if (settings && !seeded) {
@@ -1285,7 +1197,7 @@ function SettingsAdmin() {
   });
 
   return (
-    <div className="max-w-lg space-y-4" data-testid="admin-settings">
+    <div className="max-w-3xl space-y-4" data-testid="admin-settings">
       <div className="flex items-start gap-2">
         <Settings2 className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
         <p className="text-sm text-muted-foreground">{t("settingsCooEmailHint")}</p>
@@ -1311,6 +1223,23 @@ function SettingsAdmin() {
             <Save className="h-4 w-4 mr-1.5" /> {save.isPending ? "…" : t("save")}
           </Button>
         </div>
+      </div>
+      {/* v6.0: letter/email templates live inside settings now */}
+      <div className="rounded-lg border border-card-border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowTemplates((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3"
+          data-testid="button-toggle-templates"
+        >
+          <span className="text-sm font-semibold">{t("tabTemplates")}</span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplates ? "rotate-180" : ""}`} />
+        </button>
+        {showTemplates && (
+          <div className="border-t border-border px-4 py-4">
+            <TemplatesAdmin />
+          </div>
+        )}
       </div>
     </div>
   );

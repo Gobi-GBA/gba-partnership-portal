@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
-import { storage, hashPassword, verifyPassword } from "./storage.js";
+import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
 import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -44,6 +44,33 @@ function canSeeLp(user: User | undefined): boolean {
 
 function redactLp<T extends { lpStatus?: string }>(p: T, user: User | undefined): T {
   return canSeeLp(user) ? p : { ...p, lpStatus: "na" };
+}
+
+// ---------- v6.0: hot-list micro-cache + ETag revalidation ----------
+// Caches the raw DB bundles (shared across users — per-user redaction still
+// happens per request). Version-checked against the storage write counter so
+// any mutation invalidates instantly on this instance; the short TTL bounds
+// staleness across serverless instances.
+const LIST_TTL_MS = 20_000;
+const rawListCache = new Map<string, { v: number; at: number; data: unknown }>();
+async function cachedLoad<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = rawListCache.get(key);
+  if (hit && hit.v === getDataVersion() && Date.now() - hit.at < LIST_TTL_MS) return hit.data as T;
+  const v = getDataVersion();
+  const data = await load();
+  rawListCache.set(key, { v, at: Date.now(), data });
+  return data;
+}
+function jsonWithEtag(req: Request, res: Response, payload: unknown) {
+  const body = JSON.stringify(payload);
+  const etag = `W/"${createHash("sha1").update(body).digest("base64url")}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", "private, no-cache");
+  if (req.headers["if-none-match"] === etag) {
+    res.status(304).end();
+    return;
+  }
+  res.type("application/json").send(body);
 }
 
 function safe(user: User): SafeUser {
@@ -594,10 +621,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ---------- Partnerships ----------
   // Signed-in users only: approved partnerships
   app.get("/api/partnerships", requireAuth(), async (req: AuthedRequest, res) => {
-    const all = await storage.listPartnerships();
-    const users = await storage.listUsers();
+    const [all, users] = await cachedLoad("partnershipsBundle", () =>
+      Promise.all([storage.listPartnerships(), storage.listUsers()]),
+    );
     const nameById = new Map(users.map((u) => [u.id, u.name]));
-    res.json(
+    jsonWithEtag(
+      req,
+      res,
       all
         .filter((p) => p.status === "approved")
         .map((p) => ({
@@ -969,7 +999,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/feedback", requireAuth(), async (req: AuthedRequest, res) => {
-    const rows = req.user!.role === "admin"
+    // v6.0: the dev team reads the full request log on the R&D page (read-only);
+    // status/note updates below stay admin-only.
+    const rows = req.user!.role === "admin" || req.user!.isDev === 1
       ? await storage.listFeedback()
       : await storage.listFeedbackByUser(req.user!.id);
     rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1015,13 +1047,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/advisors", requireAuth(), async (req: AuthedRequest, res) => {
     const isAdmin = req.user!.role === "admin";
     const staff = isStaffUser(req.user);
-    // One parallel round-trip to the database instead of four sequential ones.
-    const [all, roles, tagsByAdvisor, activities] = await Promise.all([
-      storage.listAdvisors(),
-      storage.listAdvisorRoles(),
-      advisorTagMap(),
-      staff ? storage.listAdvisorActivities() : Promise.resolve([]),
-    ]);
+    // One parallel round-trip to the database instead of four sequential ones,
+    // micro-cached across requests (per-user filtering happens below).
+    const [all, roles, tagsByAdvisor, activities] = await cachedLoad("advisorsBundle", () =>
+      Promise.all([
+        storage.listAdvisors(),
+        storage.listAdvisorRoles(),
+        advisorTagMap(),
+        storage.listAdvisorActivities(),
+      ]),
+    );
     const visible = all.filter(
       (a) => a.status === "approved" || isAdmin || a.submittedBy === req.user!.id,
     );
@@ -1036,7 +1071,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const prev = lastByAdvisor.get(act.advisorId);
       if (!prev || act.date > prev) lastByAdvisor.set(act.advisorId, act.date);
     }
-    res.json(
+    jsonWithEtag(
+      req,
+      res,
       visible.map((a) => ({
         ...redactAdvisor(a, req.user),
         photoUrl: null, // keep the list payload light

@@ -9,9 +9,38 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "5.15";
+export const CURRENT_VERSION = "6.0";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.0",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "v6.0 — faster loads, desert-caravan theme, advisor star maps",
+    titleCn: "v6.0 — 加载提速、沙漠驼队主题、顾问星图",
+    itemsEn: [
+      "Speed: advisor and partner lists now load from a server-side cache with browser revalidation (304), the roster list ships without heavy photos (thumbnails only), and both lists are prefetched right after login — warm navigation feels instant",
+      "Staff picker (PIC): a pinned search bar filters colleagues by name, title or office; selected people show as removable chips; the list scrolls smoothly",
+      "R&D and Admin entries carry a Restricted badge that explains their special access rights",
+      "System requests now live at the top of the R&D page as a compact triage log (open first, then resolved); admins update status and reply inline",
+      "Letter templates moved into Admin → Settings as a collapsible section",
+      "Visual: light and dark mode now share one desert world — dunes, an oasis with palms, and a caravan of camels and walkers moving forward as a team; day has sun, drifting sand and butterflies, night has the starry galaxy, meteors, a crescent moon and fireflies",
+      "After login, a brief interstellar warp zooms you into the system",
+      "Partner network: advisors appear as small gold stars orbiting their linked organization, with a toggle and tooltips (name · role @ org); click one to open the profile",
+      "Advisor page: a new Star map view shows the advisory constellation — org hubs with linked advisors clustered around them, unlinked advisors on the outer ring; all filters apply",
+    ],
+    itemsCn: [
+      "速度：顾问与合作伙伴列表改用服务器端缓存并支持浏览器再验证（304），名册列表不再携带大图（仅缩略图），登录后立即预取两份列表——再次切换页面几乎即时",
+      "同事选择器（PIC）：置顶搜索栏可按姓名、职务或办公室过滤；已选人员以可移除的标签展示；列表滚动顺滑",
+      "研发与管理入口新增「内部」徽章，说明其特殊访问权限",
+      "系统需求改为在研发页顶部以紧凑日志形式分流（先未决后已结）；管理员可在行内更新状态并回复",
+      "函件模板移入管理 → 设置，作为可折叠区块",
+      "视觉：明暗两种模式共享同一片沙漠——沙丘、绿洲棕榈，以及骆驼与行者组成的驼队团队一路前行；白天有太阳、流沙与蝴蝶，夜晚有星河、流星、新月与萤火虫",
+      "登录后新增短暂的星际穿越动画，带你进入系统",
+      "合作网络：顾问以小金星形式围绕其关联机构运行，可开关显示，悬停显示提示（姓名·角色@机构），点击打开详情",
+      "顾问页：新增「星图」视图展示顾问星座——机构枢纽周围聚集关联顾问，未关联顾问位于外环；所有筛选同样生效",
+    ],
+  },
   {
     version: "5.15",
     date: "2026-07-26",

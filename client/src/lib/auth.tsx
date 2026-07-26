@@ -17,6 +17,14 @@ interface AuthContextValue {
   updateUser: (u: SafeUser) => void;
 }
 
+// v6.0: warm the hot lists right after sign-in so Partners / Advisors /
+// Network open instantly instead of showing skeletons for seconds.
+function prefetchHotData() {
+  for (const key of ["/api/partnerships", "/api/advisors"]) {
+    queryClient.prefetchQuery({ queryKey: [key] }).catch(() => {});
+  }
+}
+
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   restoring: false,
@@ -39,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(async (res) => {
         const data = await res.json();
         setUser(data.user);
+        prefetchHotData();
       })
       .catch(() => {
         setAuthToken(null);
@@ -55,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (remember) safeSet(TOKEN_KEY, data.token);
     else safeRemove(TOKEN_KEY);
     queryClient.invalidateQueries();
+    prefetchHotData();
   };
 
   const register = async (
@@ -70,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthToken(data.token);
       setUser(data.user);
       queryClient.invalidateQueries();
+      prefetchHotData();
     }
     return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent), loggedIn: Boolean(data.token) };
   };

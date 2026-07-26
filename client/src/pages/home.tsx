@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, LayoutGrid, Share2, CalendarRange, Download, Star, SlidersHorizontal } from "lucide-react";
-import type { Partnership, Stage } from "@shared/schema";
+import type { Partnership, Stage, AdvisorWithRoles } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, sortPartnerships, picsOf, levelOfStage, yearsOf } from "@/lib/constants";
 
 type ViewMode = "cards" | "network" | "timeline";
@@ -25,6 +25,10 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   const queryClient = useQueryClient();
   const { data: partnerships, isLoading } = useQuery<Partnership[]>({
     queryKey: ["/api/partnerships"],
+  });
+  // v6.0 — advisors extend the constellation (small gold stars tied to their org)
+  const { data: advisors } = useQuery<AdvisorWithRoles[]>({
+    queryKey: ["/api/advisors"],
   });
 
   const [search, setSearch] = useState("");
@@ -384,7 +388,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             <div className="mb-4">
               <NetworkLegend />
             </div>
-            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} />
+            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} advisors={advisors ?? []} onSelectAdvisor={(id) => navigate(`/advisors/${id}`)} />
           </div>
         ) : view === "timeline" ? (
           timeline.dated.length === 0 ? (

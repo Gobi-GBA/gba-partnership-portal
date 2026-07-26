@@ -2,7 +2,7 @@
 // Serverless-safe: no local filesystem, schema bootstrap + seed run once per cold start.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities } from "../shared/schema-pg.js";
 import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
@@ -548,7 +548,11 @@ export function createPgStorage(): IStorage {
 
     async listAdvisors() {
       await init();
-      return (await db.select().from(advisors)) as Advisor[];
+      // v6.0: never drag the HD portrait column (up to ~600 KB/row) over the
+      // wire for list views — the detail endpoint serves it on demand.
+      const { photoUrl: _hd, ...listCols } = getTableColumns(advisors);
+      const rows = await db.select(listCols).from(advisors);
+      return rows.map((r) => ({ ...r, photoUrl: null })) as Advisor[];
     }
     async getAdvisor(id: number) {
       await init();
