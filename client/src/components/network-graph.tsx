@@ -44,6 +44,42 @@ function mulberry32(seed: number) {
 
 const PARTICLE_COLORS = ["#A8D8E8", "#9BE29B", "#C9B8F0", "#EAF3FA", "#F0C75E"];
 
+/** v6.01 — instant HTML tooltip that follows the cursor (native SVG <title> has a ~1s browser delay) */
+function attachFastTooltip(
+  nodeSel: { on: (evt: string, cb: (event: MouseEvent, d: GraphNode) => void) => any },
+  tooltipEl: HTMLDivElement | null,
+  textFor: (d: GraphNode) => string,
+) {
+  if (!tooltipEl) return;
+  const move = (event: MouseEvent) => {
+    const wrap = tooltipEl.offsetParent as HTMLElement | null;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const tw = tooltipEl.offsetWidth;
+    const th = tooltipEl.offsetHeight;
+    let lx = x + 14;
+    let ly = y + 14;
+    if (lx + tw > rect.width - 8) lx = x - tw - 14;
+    if (ly + th > rect.height - 8) ly = y - th - 10;
+    tooltipEl.style.left = `${Math.max(4, lx)}px`;
+    tooltipEl.style.top = `${Math.max(4, ly)}px`;
+  };
+  nodeSel
+    .on("mouseenter.tip", (event: MouseEvent, d: GraphNode) => {
+      const txt = textFor(d);
+      if (!txt) return;
+      tooltipEl.textContent = txt;
+      tooltipEl.style.display = "block";
+      move(event);
+    })
+    .on("mousemove.tip", (event: MouseEvent) => move(event))
+    .on("mouseleave.tip", () => {
+      tooltipEl.style.display = "none";
+    });
+}
+
 export function NetworkLegend() {
   const { t } = useLang();
   return (
@@ -87,6 +123,7 @@ export function NetworkGraph({
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [groupBy, setGroupBy] = useState<"region" | "category">("region");
   const [showAdvisors, setShowAdvisors] = useState(true);
   // Preserve the user's zoom/pan across re-renders and layer toggles
@@ -292,6 +329,7 @@ export function NetworkGraph({
       .on("zoom", (event) => {
         transformRef.current = event.transform;
         container.attr("transform", event.transform);
+        if (tooltipRef.current) tooltipRef.current.style.display = "none";
       });
     zoomBehaviorRef.current = zoomBehavior;
     svg.call(zoomBehavior);
@@ -327,7 +365,7 @@ export function NetworkGraph({
       .style("cursor", (d) =>
         d.isParticle
           ? "default"
-          : d.partnership || (d.isAdvisor && onSelectAdvisor)
+          : d.isCenter || d.partnership || (d.isAdvisor && onSelectAdvisor)
             ? "pointer"
             : d.isHub && d.hubGroup === "region" && onToggleRegion
               ? "pointer"
@@ -342,14 +380,21 @@ export function NetworkGraph({
         } else if (d.isHub && d.hubGroup === "region" && d.hubKey && onToggleRegion) {
           event.stopPropagation();
           onToggleRegion(d.hubKey);
+        } else if (d.isCenter) {
+          // v6.01 — clicking the Gobi hub resets the map view
+          event.stopPropagation();
+          if (svgRef.current && zoomBehaviorRef.current)
+            select(svgRef.current).transition().duration(300).call(zoomBehaviorRef.current.transform, zoomIdentity);
         }
       });
 
-    // Native tooltip for advisor stars: "name · role @ org"
-    nodeSel
-      .filter((d) => !!d.isAdvisor)
-      .append("title")
-      .text((d) => d.tooltip ?? "");
+    // v6.01 — instant tooltips on all meaningful nodes (native <title> was ~1s slow)
+    nodeSel.filter((d) => !!d.isCenter).attr("data-testid", "node-center-reset");
+    attachFastTooltip(
+      nodeSel.filter((d) => !d.isParticle),
+      tooltipRef.current,
+      (d) => (d.isCenter ? t("clickResetView") : d.tooltip ?? [d.label, d.sub].filter(Boolean).join(" · ")),
+    );
 
     // glow halo
     nodeSel
@@ -615,6 +660,12 @@ export function NetworkGraph({
       </div>
       <div className="relative">
         <svg ref={svgRef} className="w-full touch-none" style={{ height }} data-testid="svg-network" />
+        <div
+          ref={tooltipRef}
+          data-testid="graph-tooltip"
+          style={{ display: "none" }}
+          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[#F0C75E]/40 bg-[#0B2240]/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#EAF3FA] shadow-xl backdrop-blur"
+        />
         {/* Zoom controls */}
         <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
           <button
@@ -664,6 +715,7 @@ export function AdvisorStarMap({
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<ZoomTransform>(zoomIdentity);
   const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
@@ -696,21 +748,35 @@ export function AdvisorStarMap({
       fy: cy,
     };
 
+    // v6.01 — advisor counts per org hub for the fast tooltip
+    const orgAdvisorCount = new Map<number, number>();
+    advisors.forEach((a) => {
+      const seen = new Set<number>();
+      a.roles.forEach((r) => {
+        if (r.partnershipId && orgIds.has(r.partnershipId) && !seen.has(r.partnershipId)) {
+          seen.add(r.partnershipId);
+          orgAdvisorCount.set(r.partnershipId, (orgAdvisorCount.get(r.partnershipId) ?? 0) + 1);
+        }
+      });
+    });
+
     const hubRadius = Math.min(width, height) * 0.3;
     const hubPos = new Map<number, { x: number; y: number }>();
     const hubNodes: GraphNode[] = orgs.map((p, i) => {
       const angle = -Math.PI / 2 + (i / Math.max(orgs.length, 1)) * Math.PI * 2;
       const pos = { x: cx + Math.cos(angle) * hubRadius, y: cy + Math.sin(angle) * hubRadius };
       hubPos.set(p.id, pos);
+      const label = lang === "cn" && p.nameCn ? p.nameCn : p.nameEn;
       return {
         id: `org-${p.id}`,
-        label: lang === "cn" && p.nameCn ? p.nameCn : p.nameEn,
+        label,
         r: 15,
         color: "#48A9C5",
         isHub: true,
         partnership: p,
         x: pos.x,
         y: pos.y,
+        tooltip: `${label} · ${orgAdvisorCount.get(p.id) ?? 0} ${t("navAdvisors")}`,
       };
     });
 
@@ -796,6 +862,7 @@ export function AdvisorStarMap({
       .on("zoom", (event) => {
         transformRef.current = event.transform;
         container.attr("transform", event.transform);
+        if (tooltipRef.current) tooltipRef.current.style.display = "none";
       });
     zoomBehaviorRef.current = zoomBehavior;
     svg.call(zoomBehavior);
@@ -813,12 +880,25 @@ export function AdvisorStarMap({
       .selectAll<SVGGElement, GraphNode>("g")
       .data(nodes)
       .join("g")
-      .style("cursor", (d) => (d.isAdvisor ? "pointer" : d.isParticle ? "default" : "grab"))
-      .on("click", (_event, d) => {
-        if (d.isAdvisor && d.advisorId != null) onSelect(d.advisorId);
+      .style("cursor", (d) => (d.isAdvisor || d.isCenter ? "pointer" : d.isParticle ? "default" : "grab"))
+      .on("click", (event, d) => {
+        if (d.isAdvisor && d.advisorId != null) {
+          onSelect(d.advisorId);
+        } else if (d.isCenter) {
+          // v6.01 — clicking the Gobi hub resets the map view
+          event.stopPropagation();
+          if (svgRef.current && zoomBehaviorRef.current)
+            select(svgRef.current).transition().duration(300).call(zoomBehaviorRef.current.transform, zoomIdentity);
+        }
       });
 
-    nodeSel.filter((d) => !!d.isAdvisor).append("title").text((d) => d.tooltip ?? "");
+    // v6.01 — instant tooltips (native <title> was ~1s slow)
+    nodeSel.filter((d) => !!d.isCenter).attr("data-testid", "node-advmap-center-reset");
+    attachFastTooltip(
+      nodeSel.filter((d) => !d.isParticle),
+      tooltipRef.current,
+      (d) => (d.isCenter ? t("clickResetView") : d.tooltip ?? d.label ?? ""),
+    );
 
     nodeSel
       .filter((d) => !d.isParticle)
@@ -968,6 +1048,12 @@ export function AdvisorStarMap({
     <div className="rounded-xl border border-card-border overflow-hidden bg-[#0B2240]">
       <div className="relative">
         <svg ref={svgRef} className="w-full touch-none" style={{ height }} data-testid="svg-advisor-map" />
+        <div
+          ref={tooltipRef}
+          data-testid="advmap-tooltip"
+          style={{ display: "none" }}
+          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[#F0C75E]/40 bg-[#0B2240]/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#EAF3FA] shadow-xl backdrop-blur"
+        />
         <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
           <button
             onClick={() => zoomBy(1.4)}

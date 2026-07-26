@@ -10,6 +10,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
 import { Loader2, Upload, X, RefreshCw, ShieldQuestion, KeyRound, Mail, ChevronDown } from "lucide-react";
 import type { SafeUser } from "@shared/schema";
+import { useUnsavedGuard } from "@/components/unsaved-guard";
+import { thankYou } from "@/components/thank-you";
 
 // ---------------- Version log dialog ----------------
 
@@ -59,6 +61,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
   const [title, setTitle] = useState(user?.title ?? "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
   const [saving, setSaving] = useState(false);
@@ -73,6 +76,24 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [pwBusy, setPwBusy] = useState(false);
   const [linkBusy, setLinkBusy] = useState(false);
   const [mailOff, setMailOff] = useState(false);
+
+  // v6.01 — unsaved-changes guard on the profile fields
+  const dirty =
+    !!user &&
+    (name !== (user.name ?? "") ||
+      email !== (user.email ?? "") ||
+      title !== (user.title ?? "") ||
+      avatarUrl !== (user.avatarUrl ?? ""));
+  const discardAndClose = () => {
+    if (user) {
+      setName(user.name ?? "");
+      setEmail(user.email ?? "");
+      setTitle(user.title ?? "");
+      setAvatarUrl(user.avatarUrl ?? "");
+    }
+    onClose();
+  };
+  const { requestClose, guard } = useUnsavedGuard({ dirty, onDiscard: discardAndClose, onSave: () => { void save(); } });
 
   if (!user) return null;
 
@@ -150,26 +171,36 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   const save = async () => {
+    // v6.01 — email is mandatory: it is the login identifier and feeds sync/auto-workflows
+    const emailNorm = email.trim().toLowerCase();
+    if (!emailNorm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      toast({ title: t("profileEmailInvalid"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const res = await apiRequest("PATCH", "/api/me", {
         name: name.trim() || user.name,
+        email: emailNorm,
         title: title.trim() || null,
         avatarUrl: avatarUrl || null,
       });
       const data: { user: SafeUser } = await res.json();
       updateUser(data.user);
       toast({ title: t("profileSaved") });
+      thankYou();
       onClose();
-    } catch {
-      toast({ title: "Save failed / 保存失败", variant: "destructive" });
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      if (msg.includes("409")) toast({ title: t("profileEmailTaken"), variant: "destructive" });
+      else toast({ title: "Save failed / 保存失败", variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && requestClose()}>
       <DialogContent className="max-w-md" data-testid="dialog-profile">
         <DialogHeader>
           <DialogTitle className="font-display">{t("profileTitle")}</DialogTitle>
@@ -214,6 +245,18 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">{t("profileName")}</label>
             <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-profile-name" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">{t("profileEmail")} <span className="text-destructive">*</span></label>
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@gobi.vc"
+              data-testid="input-profile-email"
+            />
+            <p className="text-[11px] text-muted-foreground">{t("profileEmailHint")}</p>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">{t("profileJobTitle")}</label>
@@ -279,6 +322,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
             {t("profileSave")}
           </Button>
         </div>
+        {guard}
       </DialogContent>
     </Dialog>
   );

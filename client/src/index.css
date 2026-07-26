@@ -346,3 +346,11 @@ html { scroll-behavior: smooth; }
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
+
+/* v6.01 — auto-fading thank-you note (slide in from the right, fade out) */
+@keyframes thankyou-note {
+  0% { opacity: 0; transform: translateX(16px); }
+  8% { opacity: 1; transform: translateX(0); }
+  78% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(8px); }
+}

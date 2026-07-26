@@ -171,6 +171,8 @@ const dict = {
 
   // v6.0 — advisor star map
   viewMap: { en: "Star map", cn: "星图" },
+  // v6.01
+  clickResetView: { en: "Click to reset view", cn: "点击复位视图" },
   advisorMapCenter: { en: "Gobi Advisory Network", cn: "戈壁顾问网络" },
   advisorMapHint: {
     en: "Advisors orbit the partner organization they are linked to; unlinked advisors drift on the outer ring. Click a star to open the profile — filters above apply.",
@@ -188,12 +190,28 @@ const dict = {
   // Photo gallery (v4.2)
   photosLabel: { en: "Photos", cn: "照片" },
   photosHint: { en: "Image URLs, one per line", cn: "图片链接，每行一个" },
+  dropPhotosHint: { en: "Click or drop images — JPG/PNG/WebP, max 8MB", cn: "点击或拖入图片 — JPG/PNG/WebP，最大8MB" },
+  uploadingPhotos: { en: "Uploading…", cn: "上传中…" },
+  photoUploadFailed: { en: "Photo upload failed", cn: "照片上传失败" },
+  advancedPhotoUrls: { en: "Advanced: external image URLs", cn: "高级：外部图片链接" },
   photoOf: { en: "of", cn: "/" },
   whatsNew: { en: "What's new", cn: "更新内容" },
   currentVersion: { en: "Current", cn: "当前版本" },
   profileTitle: { en: "Edit profile", cn: "编辑个人资料" },
   profileSub: { en: "Update how your name, title and photo appear across the portal.", cn: "更新您在门户中显示的姓名、职位与照片。" },
   profileName: { en: "Name", cn: "姓名" },
+  profileEmail: { en: "Email", cn: "邮箱" },
+  profileEmailHint: { en: "Used for sign-in, sync and auto-workflows", cn: "用于登录、同步与自动化流程" },
+  profileEmailInvalid: { en: "A valid email is required", cn: "请填写有效邮箱" },
+  profileEmailTaken: { en: "Email already in use", cn: "邮箱已被使用" },
+  unsavedTitle: { en: "Unsaved changes", cn: "未保存的修改" },
+  unsavedBody: { en: "You have edits that are not saved yet.", cn: "您有尚未保存的修改。" },
+  unsavedSave: { en: "Save changes", cn: "保存修改" },
+  unsavedDiscard: { en: "Discard", cn: "放弃修改" },
+  unsavedKeep: { en: "Keep editing", cn: "继续编辑" },
+  allRequests: { en: "All requests", cn: "全部请求" },
+  youTag: { en: "You", cn: "你" },
+  fbUpdated: { en: "Updated", cn: "更新于" },
   profileJobTitle: { en: "Title", cn: "职位" },
   profilePhoto: { en: "Photo", cn: "照片" },
   profilePhotoHint: { en: "Upload an image (max 400 KB) or paste an image URL.", cn: "上传图片（最大 400 KB）或粘贴图片链接。" },

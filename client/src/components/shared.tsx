@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock } from "lucide-react";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
+import { photoThumbSrc, photoHdDownloadHref, isAssetToken } from "@/lib/photos";
 import { Input } from "@/components/ui/input";
 import { GalaxyBackground, WarpOverlay, consumePendingWarp } from "@/components/galaxy-bg";
 import {
@@ -200,7 +201,7 @@ export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }
         {photos.map((src, i) => (
           <img
             key={src}
-            src={src}
+            src={photoThumbSrc(src)}
             alt={`${alt} — ${i + 1}`}
             loading={i === 0 ? "eager" : "lazy"}
             className="h-52 sm:h-60 w-full shrink-0 object-cover"
@@ -208,6 +209,18 @@ export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }
           />
         ))}
       </div>
+      {/* v6.01 — HD download for uploaded photos */}
+      {isAssetToken(photos[idx] ?? "") && (
+        <a
+          href={photoHdDownloadHref(photos[idx])}
+          className="absolute top-2 right-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+          aria-label="Download HD photo"
+          title="HD"
+          data-testid="button-download-hd"
+        >
+          <Download className="h-4 w-4" />
+        </a>
+      )}
       {photos.length > 1 && (
         <>
           <button

@@ -9,9 +9,40 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.0";
+export const CURRENT_VERSION = "6.01";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.01",
+    date: "2026-07-26",
+    by: "Fred Li",
+    titleEn: "v6.01 — photo uploads, edit safety, your request tracker, livelier world",
+    titleCn: "v6.01 — 照片上传、编辑保护、请求追踪、更生动的世界",
+    itemsEn: [
+      "Photos for partner activities: upload image files directly (drag-and-drop or file picker) instead of pasting URLs — photos are stored on our server, grouped by network, auto-thumbnailed for fast carousels, and an HD download is one click away",
+      "Star maps: hover info now appears instantly, and clicking the central Gobi hub zooms the map back out to the full view",
+      "Advisor cards and list rows now show the person in charge (PIC), matching the partnership views",
+      "Your profile now includes a mandatory email address, ready for future sync and automated workflows",
+      "Edit safety: closing any editor with unsaved changes now asks whether to save, discard or keep editing — partnership editor, advisor editor, your profile, and admin settings/templates are all covered",
+      "Updates page: a personal tracker shows the status of your own requests at a glance — status chips with counts, a Mine/All view for the team, and an updated date on each reply",
+      "Sign-in warp: the zoom-in now fades through a translucent gradient veil into the portal instead of a hard dark cut",
+      "Small thank-you notes slide in (and fade out on their own) after you submit records, feedback or edits",
+      "The desert is gently interactive: click near a camel, traveller, palm or star and it says hi — a little hop, a rustle or a twinkle — kept deliberately light so nothing slows down",
+      "Speed: the app now loads in slices — the sign-in screen arrives first and each page fetches its own code on demand, so the first paint is much lighter; the animated backdrop also waits for an idle moment before it starts",
+    ],
+    itemsCn: [
+      "合作伙伴活动照片：支持直接上传图片文件（拖放或选择文件），不再需要粘贴链接 — 照片存储在我们的服务器上，按网络分组，自动生成缩略图令轮播更快，并可一键下载高清原图",
+      "星图：悬停信息即时显示；点击中央 Gobi 枢纽即可缩小回全景视图",
+      "顾问卡片与列表行现在同样显示负责人（PIC），与合作伙伴视图一致",
+      "个人资料新增必填邮箱字段，为后续同步与自动化流程做准备",
+      "编辑保护：在任何编辑器中有未保存修改时关闭，会询问保存、放弃还是继续编辑 — 覆盖合作伙伴编辑器、顾问编辑器、个人资料以及管理设置/模板",
+      "更新页：新增个人请求追踪器，一眼看到自己每条请求的处理状态 — 状态标签带数量、团队可切换「我的/全部」视图、每条回复标注更新日期",
+      "登录穿越动画改为半透明渐变光幕，柔和地淡入门户，不再是生硬的暗场切换",
+      "提交记录、反馈或编辑后，右侧会滑出小小的感谢提示，并自动淡出，无需点击",
+      "沙漠世界变得轻盈可互动：点击骆驼、行者、棕榈或星星附近，它会向你打个招呼 — 轻轻一跳、一阵摇曳或一次闪烁 — 刻意保持简洁，不影响速度",
+      "速度：应用改为分片加载 — 登录页最先到达，每个页面按需加载自己的代码，首屏轻量许多；动态背景也会等浏览器空闲后再启动",
+    ],
+  },
   {
     version: "6.0",
     date: "2026-07-26",

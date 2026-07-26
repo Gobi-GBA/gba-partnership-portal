@@ -2,10 +2,10 @@
 // Serverless-safe: no local filesystem, schema bootstrap + seed run once per cold start.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq, asc, getTableColumns } from "drizzle-orm";
+import { eq, and, asc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities, photoAssetsPg as photoAssets } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
@@ -58,6 +58,18 @@ const BOOTSTRAP: string[] = [
     mime TEXT NOT NULL,
     size INTEGER NOT NULL,
     data TEXT NOT NULL,
+    uploaded_by INTEGER,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS photo_assets (
+    id SERIAL PRIMARY KEY,
+    owner_type TEXT NOT NULL DEFAULT 'partnership',
+    owner_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    thumb_data TEXT NOT NULL,
+    hd_data TEXT NOT NULL,
     uploaded_by INTEGER,
     created_at TEXT NOT NULL
   )`,
@@ -491,6 +503,31 @@ export function createPgStorage(): IStorage {
     async deleteAttachment(id: number) {
       await init();
       await db.delete(attachments).where(eq(attachments.id, id));
+    }
+
+    // v6.01 — photo assets
+    async listPhotoAssetMeta(ownerType: string, ownerId: number) {
+      await init();
+      const { thumbData: _t, hdData: _h, ...metaCols } = getTableColumns(photoAssets);
+      return await db
+        .select(metaCols)
+        .from(photoAssets)
+        .where(and(eq(photoAssets.ownerType, ownerType), eq(photoAssets.ownerId, ownerId)));
+    }
+    async getPhotoAsset(id: number) {
+      await init();
+      const rows = await db.select().from(photoAssets).where(eq(photoAssets.id, id)).limit(1);
+      return rows[0] as PhotoAsset | undefined;
+    }
+    async createPhotoAsset(data: Omit<PhotoAsset, "id">) {
+      await init();
+      const rows = await db.insert(photoAssets).values(data as any).returning();
+      const { thumbData: _t, hdData: _h, ...meta } = rows[0] as PhotoAsset;
+      return meta;
+    }
+    async deletePhotoAsset(id: number) {
+      await init();
+      await db.delete(photoAssets).where(eq(photoAssets.id, id));
     }
 
     async createAuditLog(data: Omit<AuditLog, "id">) {

@@ -1,8 +1,8 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, photoAssets, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
+import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS attachments (
   mime TEXT NOT NULL,
   size INTEGER NOT NULL,
   data TEXT NOT NULL,
+  uploaded_by INTEGER,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS photo_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_type TEXT NOT NULL DEFAULT 'partnership',
+  owner_id INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  thumb_data TEXT NOT NULL,
+  hd_data TEXT NOT NULL,
   uploaded_by INTEGER,
   created_at TEXT NOT NULL
 );
@@ -358,6 +370,35 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     }
     async deleteAttachment(id: number) {
       db.delete(attachments).where(eq(attachments.id, id)).run();
+    }
+
+    // v6.01 — photo assets
+    async listPhotoAssetMeta(ownerType: string, ownerId: number) {
+      return db
+        .select({
+          id: photoAssets.id,
+          ownerType: photoAssets.ownerType,
+          ownerId: photoAssets.ownerId,
+          filename: photoAssets.filename,
+          mime: photoAssets.mime,
+          size: photoAssets.size,
+          uploadedBy: photoAssets.uploadedBy,
+          createdAt: photoAssets.createdAt,
+        })
+        .from(photoAssets)
+        .where(and(eq(photoAssets.ownerType, ownerType), eq(photoAssets.ownerId, ownerId)))
+        .all();
+    }
+    async getPhotoAsset(id: number) {
+      return db.select().from(photoAssets).where(eq(photoAssets.id, id)).get();
+    }
+    async createPhotoAsset(data: Omit<PhotoAsset, "id">) {
+      const row = db.insert(photoAssets).values(data).returning().get();
+      const { thumbData: _t, hdData: _h, ...meta } = row;
+      return meta;
+    }
+    async deletePhotoAsset(id: number) {
+      db.delete(photoAssets).where(eq(photoAssets.id, id)).run();
     }
 
     async createAuditLog(data: Omit<AuditLog, "id">) {

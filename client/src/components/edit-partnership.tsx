@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, API_BASE, getAuthToken } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
@@ -10,7 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Paperclip, Loader2, Sparkles } from "lucide-react";
+import { Trash2, Paperclip, Loader2, Sparkles, ImagePlus, X } from "lucide-react";
+import { uploadPhotoAsset, deletePhotoAsset, photoThumbSrc, isAssetToken } from "@/lib/photos";
+import { useUnsavedGuard } from "@/components/unsaved-guard";
+import { thankYou } from "@/components/thank-you";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PicChecklist } from "@/components/shared";
 import { TagPicker } from "@/components/advisor-crm";
@@ -43,18 +46,22 @@ export function EditPartnershipDialog({
   // Sector tags (v5.5) — admin-only, saved separately from the change-request flow
   const [tagIds, setTagIds] = useState<number[]>([]);
   const [tagsSeededFor, setTagsSeededFor] = useState<number | null>(null);
+  const [snapshot, setSnapshot] = useState<string>("");
+  const [tagSnapshot, setTagSnapshot] = useState<string>("[]");
   const { data: tagAssignments } = useQuery<Array<{ partnershipId: number; tagId: number }>>({
     queryKey: ["/api/partnership-tags"],
     enabled: !!p && mode === "direct",
   });
   if (p && mode === "direct" && tagAssignments && tagsSeededFor !== p.id) {
     setTagsSeededFor(p.id);
-    setTagIds(tagAssignments.filter((x) => x.partnershipId === p.id).map((x) => x.tagId));
+    const seeded = tagAssignments.filter((x) => x.partnershipId === p.id).map((x) => x.tagId);
+    setTagIds(seeded);
+    setTagSnapshot(JSON.stringify(seeded));
   }
 
   if (p && loadedId !== p.id) {
     setLoadedId(p.id);
-    setForm({
+    const seededForm = {
       nameEn: p.nameEn ?? "", nameCn: p.nameCn ?? "", category: p.category,
       region: p.region ?? "hongkong", website: p.website ?? "", logoUrl: p.logoUrl ?? "",
       descriptionEn: p.descriptionEn ?? "", descriptionCn: p.descriptionCn ?? "",
@@ -66,7 +73,9 @@ export function EditPartnershipDialog({
       photosText: (p.photos ?? []).join("\n"),
       lpStatus: p.lpStatus ?? "na",
       isDomainKnowledgePartner: p.isDomainKnowledgePartner ?? 0,
-    });
+    };
+    setForm(seededForm);
+    setSnapshot(JSON.stringify(seededForm)); // v6.01 — dirty-state baseline
   }
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -165,6 +174,8 @@ export function EditPartnershipDialog({
       onSaved();
       onClose();
       setLoadedId(null);
+      setSnapshot(""); setTagSnapshot("[]"); // saved — clear dirty baseline
+      thankYou();
     },
     onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
   });
@@ -175,12 +186,17 @@ export function EditPartnershipDialog({
     onError: () => toast({ title: "Delete failed", variant: "destructive" }),
   });
 
+  // v6.01 — unsaved-changes guard: intercept X / Escape / overlay-click when dirty
+  const dirty = !!p && snapshot !== "" && (JSON.stringify(form) !== snapshot || JSON.stringify(tagIds) !== tagSnapshot);
+  const closeAndReset = () => { onClose(); setLoadedId(null); setTagsSeededFor(null); setSnapshot(""); setTagSnapshot("[]"); };
+  const { requestClose, guard } = useUnsavedGuard({ dirty, onDiscard: closeAndReset, onSave: () => save.mutate() });
+
   if (!p) return null;
   const token = getAuthToken();
   const tokenQS = token ? `?token=${encodeURIComponent(token)}` : "";
 
   return (
-    <Dialog open={!!p} onOpenChange={(o) => { if (!o) { onClose(); setLoadedId(null); setTagsSeededFor(null); } }}>
+    <Dialog open={!!p} onOpenChange={(o) => { if (!o) requestClose(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg">{t("editRecord")} — {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}</DialogTitle>
@@ -296,13 +312,11 @@ export function EditPartnershipDialog({
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>
           <EField label={t("contextLabel")}><Textarea rows={3} value={form.context ?? ""} onChange={(e) => set("context", e.target.value)} data-testid="edit-context" /></EField>
           <EField label={t("notes")}><Textarea rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} data-testid="edit-notes" /></EField>
-          <EField label={`${t("photosLabel")} · ${t("photosHint")}`}>
-            <Textarea
-              rows={3}
-              value={form.photosText ?? ""}
-              onChange={(e) => set("photosText", e.target.value)}
-              placeholder={"https://…/photo-1.jpg\nhttps://…/photo-2.jpg"}
-              data-testid="edit-photos"
+          <EField label={t("photosLabel")}>
+            <PhotoUploader
+              photosText={String(form.photosText ?? "")}
+              onChange={(v) => set("photosText", v)}
+              ownerId={p.id}
             />
           </EField>
 
@@ -340,7 +354,7 @@ export function EditPartnershipDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => { onClose(); setLoadedId(null); }}
+              onClick={requestClose}
               className="transition-colors hover:bg-muted hover:border-foreground/30"
               data-testid="button-cancel-edit"
             >
@@ -356,6 +370,7 @@ export function EditPartnershipDialog({
             </Button>
           </div>
         </form>
+        {guard}
       </DialogContent>
     </Dialog>
   );
@@ -366,6 +381,123 @@ export function EField({ label, children }: { label: string; children: React.Rea
     <div className="space-y-1.5">
       <Label className="text-sm">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+// ---------------- v6.01 Photo upload portal ----------------
+// Uploaded files become server-stored assets ("asset:<id>" tokens in photos[]);
+// thumbnails are generated in the browser before upload for fast galleries.
+const parsePhotoLines = (text: string) =>
+  text.split("\n").map((s) => s.trim()).filter(Boolean);
+
+export function PhotoUploader({
+  photosText,
+  onChange,
+  ownerId,
+}: {
+  photosText: string;
+  onChange: (v: string) => void;
+  ownerId: number;
+}) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const sessionUploads = useRef<Set<string>>(new Set());
+  const [busy, setBusy] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const photos = parsePhotoLines(photosText);
+
+  const addFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files).slice(0, Math.max(0, 12 - photos.length));
+    if (list.length === 0) return;
+    setBusy((b) => b + list.length);
+    let current = photos;
+    for (const file of list) {
+      try {
+        const token = await uploadPhotoAsset(file, "partnership", ownerId);
+        sessionUploads.current.add(token);
+        thankYou();
+        current = [...current, token];
+        onChange(current.join("\n"));
+      } catch (err: any) {
+        toast({ title: t("photoUploadFailed"), description: String(err?.message ?? err), variant: "destructive" });
+      } finally {
+        setBusy((b) => b - 1);
+      }
+    }
+  };
+
+  const removeAt = (i: number) => {
+    const token = photos[i];
+    if (isAssetToken(token) && sessionUploads.current.has(token)) {
+      deletePhotoAsset(token); // brand-new upload discarded — free the row immediately
+      sessionUploads.current.delete(token);
+    }
+    onChange(photos.filter((_, j) => j !== i).join("\n"));
+  };
+
+  return (
+    <div className="space-y-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        className="hidden"
+        onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }}
+        data-testid="input-photo-upload"
+      />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+        className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground transition-colors ${dragOver ? "border-[hsl(var(--gold))] bg-[hsl(var(--gold))]/10" : "border-border hover:border-[hsl(var(--gold))]/60"}`}
+        data-testid="dropzone-photos"
+      >
+        {busy > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+        <span>{busy > 0 ? t("uploadingPhotos") : t("dropPhotosHint")}</span>
+      </div>
+      {photos.length > 0 && (
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+          {photos.map((src, i) => (
+            <div key={`${src}-${i}`} className="group relative overflow-hidden rounded-md border border-border bg-muted">
+              <img src={photoThumbSrc(src)} alt="" className="h-16 w-full object-cover" loading="lazy" />
+              <button
+                type="button"
+                onClick={() => removeAt(i)}
+                aria-label="Remove photo"
+                className="absolute right-1 top-1 rounded-full bg-black/55 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                data-testid={`button-remove-photo-${i}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((s) => !s)}
+        className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+        data-testid="button-toggle-photo-urls"
+      >
+        {t("advancedPhotoUrls")}
+      </button>
+      {showAdvanced && (
+        <Textarea
+          rows={3}
+          value={photosText}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={"https://…/photo-1.jpg\nhttps://…/photo-2.jpg"}
+          data-testid="edit-photos"
+        />
+      )}
     </div>
   );
 }

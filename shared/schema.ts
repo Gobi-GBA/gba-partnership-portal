@@ -59,6 +59,7 @@ export type SafeUser = Omit<
 // Profile fields a user may edit about themselves
 export const profileUpdateSchema = z.object({
   name: z.string().min(1).max(80).optional(),
+  email: z.string().trim().toLowerCase().email().max(160).optional(), // v6.01 — mandatory in the UI; feeds sync/auto-workflows
   title: z.string().max(120).nullable().optional(),
   avatarUrl: z.string().max(400_000).nullable().optional(), // allows small data URIs
 });
@@ -429,6 +430,37 @@ export const attachmentInputSchema = z.object({
   data: z.string().min(1), // base64
 });
 export type AttachmentInput = z.infer<typeof attachmentInputSchema>;
+
+// ---------- v6.01 Photo assets (activity photos: uploaded files, server-stored, grouped per owner) ----------
+// thumbData feeds carousels/lists (fast); hdData is the original for HD download.
+export const PHOTO_OWNER_TYPES = ["partnership", "advisor"] as const;
+export type PhotoOwnerType = (typeof PHOTO_OWNER_TYPES)[number];
+
+export const photoAssets = sqliteTable("photo_assets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ownerType: text("owner_type").notNull().default("partnership"), // PHOTO_OWNER_TYPES
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(), // HD size in bytes
+  thumbData: text("thumb_data").notNull(), // base64 JPEG, client-resized to ≤640px edge
+  hdData: text("hd_data").notNull(), // base64 original
+  uploadedBy: integer("uploaded_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type PhotoAsset = typeof photoAssets.$inferSelect;
+export type PhotoAssetMeta = Omit<PhotoAsset, "thumbData" | "hdData">;
+
+export const photoAssetInputSchema = z.object({
+  ownerType: z.enum(PHOTO_OWNER_TYPES),
+  ownerId: z.number().int().positive(),
+  filename: z.string().min(1).max(200),
+  mime: z.string().min(1).max(80),
+  thumbData: z.string().min(1).max(500_000), // ≤ ~360KB binary
+  hdData: z.string().min(1).max(11_000_000), // ≤ ~8MB binary
+});
+export type PhotoAssetInput = z.infer<typeof photoAssetInputSchema>;
 
 // ---------- Change requests (staff propose edits; admin approves) ----------
 export const changeRequests = sqliteTable("change_requests", {

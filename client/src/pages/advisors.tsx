@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo } from "@/components/shared";
+import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars } from "@/components/shared";
+import { useUnsavedGuard } from "@/components/unsaved-guard";
+import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -544,6 +546,7 @@ function AdvisorFormDialog({
   const [photoBusy, setPhotoBusy] = useState(false);
   const keyRef = useRef(1);
   const [loadedFor, setLoadedFor] = useState<number | "new" | null>(null);
+  const [advSnapshot, setAdvSnapshot] = useState<string | null>("");
 
   // Seed the form when the dialog opens (edit uses the detail endpoint for the HD photo)
   const { data: fullEditing } = useQuery<AdvisorWithRoles>({
@@ -578,8 +581,19 @@ function AdvisorFormDialog({
       setForm(EMPTY_FORM);
       setRoles([{ key: keyRef.current++, title: "", organization: "", partnershipId: null, isPrimary: 1 }]);
     }
+    setAdvSnapshot(null); // re-baselined on the next render, after both states settle
   }
   if (!open && loadedFor !== null) setLoadedFor(null);
+
+  // v6.01 — dirty tracking: fingerprint of form + roles (role keys are transient)
+  const advFingerprint = JSON.stringify({ form, roles: roles.map(({ key, ...r }) => r) });
+  if (open && advSnapshot === null) setAdvSnapshot(advFingerprint);
+  const advDirty = open && !!advSnapshot && advFingerprint !== advSnapshot;
+  const { requestClose, guard } = useUnsavedGuard({
+    dirty: advDirty,
+    onDiscard: () => onOpenChange(false),
+    onSave: () => save.mutate(),
+  });
 
   const partnerName = (p: Partnership) => (lang === "cn" && p.nameCn ? p.nameCn : p.nameEn);
   const sortedPartners = useMemo(
@@ -629,6 +643,7 @@ function AdvisorFormDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
       toast({ description: user?.role === "admin" || editing ? t("advisorSaved") : t("advisorSubmitted") });
       onOpenChange(false);
+      thankYou();
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
@@ -648,7 +663,7 @@ function AdvisorFormDialog({
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (o) onOpenChange(true); else requestClose(); }}>
       <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto" data-testid="dialog-advisor-form">
         <DialogHeader>
           {/* v5.14 — auto-sync is a record-level action (it harvests the profile
@@ -907,7 +922,7 @@ function AdvisorFormDialog({
           </FormSection>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-advisor">{t("cancel")}</Button>
+            <Button variant="outline" onClick={requestClose} data-testid="button-cancel-advisor">{t("cancel")}</Button>
             <Button
               onClick={() => save.mutate()}
               disabled={!form.name.trim() || save.isPending}
@@ -918,6 +933,7 @@ function AdvisorFormDialog({
             </Button>
           </div>
         </div>
+        {guard}
       </DialogContent>
     </Dialog>
   );
@@ -1403,6 +1419,14 @@ export default function Advisors() {
                     )}
                   </div>
                   {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
+                  {(a.gobiPics ?? []).length > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5" data-testid={`text-advisor-pic-${a.id}`}>
+                      <PicAvatars names={a.gobiPics} />
+                      <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                        {t("picLabel")} · {(a.gobiPics ?? []).join(", ")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
@@ -1437,6 +1461,15 @@ export default function Advisors() {
                 )}
               </div>
               <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[40%]">
+                {(a.gobiPics ?? []).length > 0 && (
+                  <span
+                    className="inline-flex items-center"
+                    title={`${t("picLabel")} · ${(a.gobiPics ?? []).join(", ")}`}
+                    data-testid={`text-advisor-pic-${a.id}`}
+                  >
+                    <PicAvatars names={a.gobiPics} />
+                  </span>
+                )}
                 {showTags && <TagBadges tags={a.tags} />}
                 <PillarBadge pillar={a.pillar as Pillar} />
               </div>

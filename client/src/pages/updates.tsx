@@ -14,8 +14,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PartnerLogo, StageBadge, CategoryBadge } from "@/components/shared";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
 import type { Feedback, FeedbackStatus, Partnership, Stage, Category } from "@shared/schema";
+import { FEEDBACK_STATUSES } from "@shared/schema";
 import { History, MessageSquarePlus, Send, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { thankYou } from "@/components/thank-you";
 
 // The partnerships API enriches each row with the submitter's display name.
 type PartnershipWithAuthor = Partnership & { submittedByName?: string | null };
@@ -42,6 +44,9 @@ export default function Updates() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [message, setMessage] = useState("");
+  // v6.01 — personal response tracker
+  const [statusFilter, setStatusFilter] = useState<FeedbackStatus | null>(null);
+  const [scope, setScope] = useState<"mine" | "all">("all");
 
   const { data: requests, isLoading } = useQuery<Feedback[]>({
     queryKey: ["/api/feedback"],
@@ -61,6 +66,12 @@ export default function Updates() {
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" });
 
+  const isTeam = user?.role === "admin" || user?.isDev === 1;
+  const mine = (requests ?? []).filter((r) => r.userId === user?.id);
+  const scoped = isTeam && scope === "all" ? (requests ?? []) : mine;
+  const visible = statusFilter ? scoped.filter((r) => r.status === statusFilter) : scoped;
+  const countOf = (s: FeedbackStatus) => mine.filter((r) => r.status === s).length;
+
   const submit = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/feedback", { message: message.trim() });
@@ -70,6 +81,7 @@ export default function Updates() {
       setMessage("");
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
       toast({ title: t("requestSubmitted") });
+      thankYou();
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -107,24 +119,78 @@ export default function Updates() {
             </div>
           </div>
 
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-8 mb-3">
-            {user?.role === "admin" ? t("adminFeedback") : t("myRequests")}
-          </h2>
+          <div className="mt-8 mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              {isTeam && scope === "all" ? t("adminFeedback") : t("myRequests")}
+            </h2>
+            {isTeam && (
+              <div className="flex rounded-md border border-border overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setScope("mine")}
+                  className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "mine" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
+                  data-testid="toggle-feedback-mine"
+                >
+                  {t("myRequests")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope("all")}
+                  className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "all" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
+                  data-testid="toggle-feedback-all"
+                >
+                  {t("allRequests")}
+                </button>
+              </div>
+            )}
+          </div>
+          {mine.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2" data-testid="tracker-feedback">
+              {FEEDBACK_STATUSES.map((s) =>
+                countOf(s) > 0 ? (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter((f) => (f === s ? null : s));
+                      if (isTeam) setScope("mine");
+                    }}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-[11px] font-semibold transition-all",
+                      STATUS_STYLES[s],
+                      statusFilter === s ? "ring-2 ring-[hsl(43,55%,55%)] ring-offset-1 ring-offset-background" : "opacity-80 hover:opacity-100",
+                    )}
+                    data-testid={`chip-status-${s}`}
+                  >
+                    {t(`fbStatus_${s}` as any)} · {countOf(s)}
+                  </button>
+                ) : null,
+              )}
+            </div>
+          )}
           {isLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
-          ) : !requests || requests.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="text-no-requests">{t("noRequests")}</p>
           ) : (
             <div className="space-y-3">
-              {requests.map((r) => (
+              {visible.map((r) => (
                 <div key={r.id} className="rounded-lg border border-border bg-card p-4" data-testid={`card-feedback-${r.id}`}>
                   <div className="flex items-start justify-between gap-3 mb-1.5">
                     <div className="text-xs text-muted-foreground">
-                      {user?.role === "admin" && <span className="font-semibold text-foreground">{r.userName} · </span>}
-                      {new Date(r.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}
+                      {isTeam && scope === "all" && <span className="font-semibold text-foreground">{r.userName} · </span>}
+                      {isTeam && r.userId === user?.id && (
+                        <Badge variant="outline" className="mr-1.5 border-[hsl(43,55%,55%)]/40 bg-[hsl(43,55%,55%)]/10 px-1.5 py-0 text-[10px] font-bold text-[hsl(43,55%,35%)] dark:text-[hsl(43,55%,65%)]" data-testid="tag-feedback-you">
+                          {t("youTag")}
+                        </Badge>
+                      )}
+                      {fmtDate(r.createdAt)}
+                      {r.updatedAt && (r.status !== "open" || r.adminNote) && (
+                        <span className="ml-1.5 text-[hsl(193,52%,38%)]">· {t("fbUpdated")} {fmtDate(r.updatedAt)}</span>
+                      )}
                     </div>
                     <FeedbackStatusBadge status={r.status as FeedbackStatus} />
                   </div>

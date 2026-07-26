@@ -83,6 +83,20 @@ export const attachmentsPg = pgTable("attachments", {
   createdAt: text("created_at").notNull(),
 });
 
+// v6.01 — uploaded photo assets (thumb + HD), grouped per owner
+export const photoAssetsPg = pgTable("photo_assets", {
+  id: serial("id").primaryKey(),
+  ownerType: text("owner_type").notNull().default("partnership"),
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  thumbData: text("thumb_data").notNull(),
+  hdData: text("hd_data").notNull(),
+  uploadedBy: integer("uploaded_by"),
+  createdAt: text("created_at").notNull(),
+});
+
 export const auditLogsPg = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   partnershipId: integer("partnership_id").notNull(),

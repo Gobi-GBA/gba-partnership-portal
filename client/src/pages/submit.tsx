@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { thankYou } from "@/components/thank-you";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -237,6 +238,7 @@ export default function Submit() {
       setAttachments([]);
       setUnderstanding(null);
       toast({ title: created.status === "approved" ? t("submittedAdmin") : t("submitted") });
+      thankYou();
     },
     onError: () => toast({ title: "Submission failed / 提交失败", variant: "destructive" }),
   });
@@ -256,6 +258,7 @@ export default function Submit() {
       queryClient.invalidateQueries({ queryKey: ["/api/change-requests"] });
       setNote("");
       toast({ title: t("changesSubmitted") });
+      thankYou();
     },
     onError: () => toast({ title: "Submission failed / 提交失败", variant: "destructive" }),
   });

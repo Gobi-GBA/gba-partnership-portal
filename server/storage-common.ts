@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, PhotoAsset, PhotoAssetMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -53,7 +53,7 @@ export interface IStorage {
     data: Partial<
       Pick<
         User,
-        | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash" | "isIr"
+        | "status" | "role" | "name" | "email" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
         | "resetTokenHash" | "resetExpires" | "mustChangePassword"
       >
@@ -75,6 +75,12 @@ export interface IStorage {
   getAttachment(id: number): Promise<Attachment | undefined>;
   createAttachment(data: Omit<Attachment, "id">): Promise<AttachmentMeta>;
   deleteAttachment(id: number): Promise<void>;
+
+  // v6.01 — uploaded photo assets (thumb + HD), grouped per owner
+  listPhotoAssetMeta(ownerType: string, ownerId: number): Promise<PhotoAssetMeta[]>;
+  getPhotoAsset(id: number): Promise<PhotoAsset | undefined>;
+  createPhotoAsset(data: Omit<PhotoAsset, "id">): Promise<PhotoAssetMeta>;
+  deletePhotoAsset(id: number): Promise<void>;
 
   createAuditLog(data: Omit<AuditLog, "id">): Promise<AuditLog>;
   listAuditLogs(partnershipId: number): Promise<AuditLog[]>;

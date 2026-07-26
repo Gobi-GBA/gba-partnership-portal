@@ -10,6 +10,7 @@ import {
   advisorActivityInputSchema,
   sectorTagInputSchema,
   attachmentInputSchema,
+  photoAssetInputSchema,
   changeRequestInputSchema,
   profileUpdateSchema,
   feedbackInputSchema,
@@ -549,10 +550,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/me", requireAuth(), async (req: AuthedRequest, res) => {
     const parsed = profileUpdateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid profile data" });
-    const data: Partial<Pick<User, "name" | "title" | "avatarUrl">> = {};
+    const data: Partial<Pick<User, "name" | "email" | "title" | "avatarUrl">> = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.title !== undefined) data.title = parsed.data.title ?? null;
     if (parsed.data.avatarUrl !== undefined) data.avatarUrl = parsed.data.avatarUrl ?? null;
+    // v6.01 — email is the login identifier; guard duplicates before applying
+    if (parsed.data.email !== undefined && parsed.data.email !== req.user!.email) {
+      const existing = await storage.getUserByEmail(parsed.data.email);
+      if (existing && existing.id !== req.user!.id) return res.status(409).json({ message: "Email already in use" });
+      data.email = parsed.data.email;
+    }
     if (!Object.keys(data).length) return res.status(400).json({ message: "Nothing to update" });
     const updated = await storage.updateUser(req.user!.id, data);
     if (!updated) return res.status(404).json({ message: "Not found" });
@@ -795,6 +802,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/attachments/:id", requireAuth("admin"), async (req, res) => {
     await storage.deleteAttachment(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ---------- v6.01 Photo assets (uploaded activity photos: thumb for carousels, HD for download) ----------
+  app.get("/api/assets", requireAuth(), async (req, res) => {
+    const ownerType = String(req.query.ownerType ?? "partnership");
+    const ownerId = Number(req.query.ownerId);
+    if (!Number.isFinite(ownerId)) return res.status(400).json({ message: "ownerId required" });
+    res.json(await storage.listPhotoAssetMeta(ownerType, ownerId));
+  });
+
+  const sendAssetImage = (res: Response, mime: string, b64: string, downloadName?: string) => {
+    const buf = Buffer.from(b64, "base64");
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    if (downloadName) res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(downloadName)}"`);
+    res.send(buf);
+  };
+
+  // Thumbnail — fast path for carousels/lists (?token= supported for <img> tags)
+  app.get("/api/assets/:id/thumb", requireAuth(), async (req, res) => {
+    const asset = await storage.getPhotoAsset(Number(req.params.id));
+    if (!asset) return res.status(404).json({ message: "Not found" });
+    sendAssetImage(res, "image/jpeg", asset.thumbData);
+  });
+
+  // HD original — ?download=1 forces a file download
+  app.get("/api/assets/:id/hd", requireAuth(), async (req, res) => {
+    const asset = await storage.getPhotoAsset(Number(req.params.id));
+    if (!asset) return res.status(404).json({ message: "Not found" });
+    sendAssetImage(res, asset.mime, asset.hdData, req.query.download === "1" ? asset.filename : undefined);
+  });
+
+  // Upload — non-viewer users; thumb is generated client-side before upload
+  app.post("/api/assets", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const parsed = photoAssetInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid photo", errors: parsed.error.flatten() });
+    if (!parsed.data.mime.startsWith("image/")) return res.status(400).json({ message: "Only images allowed" });
+    const meta = await storage.createPhotoAsset({
+      ...parsed.data,
+      size: Math.floor(parsed.data.hdData.length * 0.75),
+      uploadedBy: req.user!.id,
+      createdAt: new Date().toISOString(),
+    });
+    res.status(201).json(meta);
+  });
+
+  app.delete("/api/assets/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const asset = await storage.getPhotoAsset(Number(req.params.id));
+    if (!asset) return res.json({ ok: true });
+    const isAdmin = req.user!.role === "admin";
+    if (!isAdmin && asset.uploadedBy !== req.user!.id) return res.status(403).json({ message: "Not allowed" });
+    await storage.deletePhotoAsset(asset.id);
     res.json({ ok: true });
   });
 

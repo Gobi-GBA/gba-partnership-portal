@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -29,10 +29,20 @@ import type { Partnership, SafeUser, Stage, ChangeRequest, SectorTag } from "@sh
 import { ROLES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 import { ExportCsvButtons } from "@/pages/advisors";
+import { createDirtyRegistry, UnsavedDialog, type DirtyRegistry } from "@/components/unsaved-guard";
 
 export default function Admin() {
   const { t } = useLang();
   const { user } = useAuth();
+
+  // v6.01 — unsaved-changes guard on the settings tab (COO email + templates)
+  const [tab, setTab] = useState("partnerships");
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const registry = useMemo(createDirtyRegistry, []);
+  const onTabChange = (v: string) => {
+    if (tab === "settings" && v !== "settings" && registry.dirty()) { setPendingTab(v); return; }
+    setTab(v);
+  };
 
   if (!user || user.role !== "admin") {
     return (
@@ -51,7 +61,7 @@ export default function Admin() {
     <Layout>
       <div className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-6">{t("adminTitle")}<RestrictedBadge tip={t("restrictedTipAdmin")} /></h1>
-        <Tabs defaultValue="partnerships">
+        <Tabs value={tab} onValueChange={onTabChange}>
           <TabsList className="mb-6">
             <TabsTrigger value="partnerships" data-testid="tab-admin-partnerships">{t("adminPartnerships")}</TabsTrigger>
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
@@ -72,8 +82,14 @@ export default function Admin() {
               <ExportCsvButtons />
             </div>
           </TabsContent>
-          <TabsContent value="settings"><SettingsAdmin /></TabsContent>
+          <TabsContent value="settings"><SettingsAdmin registry={registry} /></TabsContent>
         </Tabs>
+        <UnsavedDialog
+          open={pendingTab !== null}
+          onKeep={() => setPendingTab(null)}
+          onDiscard={() => { if (pendingTab) setTab(pendingTab); setPendingTab(null); }}
+          onSave={() => { registry.saveAll(); if (pendingTab) setTab(pendingTab); setPendingTab(null); }}
+        />
       </div>
     </Layout>
   );
@@ -1054,7 +1070,7 @@ type TemplateFields = {
   letterAck: string;
 };
 
-function TemplatesAdmin() {
+function TemplatesAdmin({ registry }: { registry?: DirtyRegistry }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [fields, setFields] = useState<TemplateFields | null>(null);
@@ -1075,6 +1091,13 @@ function TemplatesAdmin() {
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
+
+  // v6.01 — register with the tab-switch guard
+  registry?.register("templates", {
+    isDirty: () => !!fields && !!data && JSON.stringify(fields) !== JSON.stringify(data.current),
+    save: () => save.mutate(),
+  });
+  useEffect(() => () => registry?.unregister("templates"), [registry]);
 
   if (isLoading || !fields || !data) {
     return <div className="py-10 text-center text-sm text-muted-foreground">…</div>;
@@ -1171,7 +1194,7 @@ function TemplatesAdmin() {
 }
 
 // ---------------- Settings (v5.5) ----------------
-function SettingsAdmin() {
+function SettingsAdmin({ registry }: { registry?: DirtyRegistry }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [cooEmail, setCooEmail] = useState("");
@@ -1195,6 +1218,13 @@ function SettingsAdmin() {
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
+
+  // v6.01 — register with the tab-switch guard
+  registry?.register("settings", {
+    isDirty: () => seeded && !!settings && cooEmail.trim() !== (settings.cooEmail ?? ""),
+    save: () => save.mutate(),
+  });
+  useEffect(() => () => registry?.unregister("settings"), [registry]);
 
   return (
     <div className="max-w-3xl space-y-4" data-testid="admin-settings">
@@ -1237,7 +1267,7 @@ function SettingsAdmin() {
         </button>
         {showTemplates && (
           <div className="border-t border-border px-4 py-4">
-            <TemplatesAdmin />
+            <TemplatesAdmin registry={registry} />
           </div>
         )}
       </div>

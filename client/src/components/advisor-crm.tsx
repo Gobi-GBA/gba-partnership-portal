@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { thankYou } from "@/components/thank-you";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
 import { copyText } from "@/lib/download";
@@ -161,6 +162,7 @@ export function ActivityTimeline({ advisorId }: { advisorId: number }) {
     onSuccess: () => {
       invalidate();
       toast({ description: t("activitySaved") });
+      thankYou();
       setAdding(false);
       setEditingId(null);
       setDraft(EMPTY_ACT);

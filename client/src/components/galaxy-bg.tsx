@@ -256,10 +256,45 @@ export function GalaxyBackground() {
       }
     }
 
+    // ---------------- v6.01: one-shot background reactions ----------------
+    // Clicking an empty part of the page hit-tests the scene; the nearest
+    // actor (caravan member, palm or star) reacts once for ~1.2s through the
+    // existing rAF loop — purely cosmetic, no extra render cost when idle.
+    type Reaction = { kind: "member" | "palm" | "star" | "twinkle"; index: number; start: number; x: number; y: number };
+    let reaction: Reaction | null = null;
+
+    // Caravan order along the trail: human guide, camel, camel, human, camel
+    const MEMBERS: { dx: number; kind: "camel" | "human"; s: number }[] = [
+      { dx: 0, kind: "human", s: 30 },
+      { dx: 64, kind: "camel", s: 34 },
+      { dx: 158, kind: "camel", s: 31 },
+      { dx: 232, kind: "human", s: 28 },
+      { dx: 296, kind: "camel", s: 29 },
+    ];
+
+    function palmSpots(drift: number) {
+      const ox = w * 0.16;
+      const oBase = duneY(ox, h * 0.84, h * 0.06, 1.3, drift * 0.022 + 5.1);
+      const oy = Math.min(oBase + h * 0.055, h - 12);
+      const poolW = Math.max(90, w * 0.09);
+      const poolH = poolW * 0.24;
+      return {
+        ox, oy, poolW, poolH,
+        palms: [
+          { x: ox - poolW * 0.75, y: oy - poolH * 0.5, s: h * 0.075, lean: -0.5, phase: 0 },
+          { x: ox + poolW * 0.65, y: oy - poolH * 0.6, s: h * 0.09, lean: 0.55, phase: 1.4 },
+          { x: ox + poolW * 0.95, y: oy - poolH * 0.2, s: h * 0.06, lean: 0.35, phase: 2.6 },
+        ],
+      };
+    }
+
     // ---------------- The synced scene ----------------
     function drawScene(now: number, dark: boolean) {
       const t = now / 1000;
       const drift = reduced ? 0 : t;
+      // v6.01 — progress of the active one-shot reaction (0..1, expires itself)
+      const rProg = reaction ? Math.min(1, (now - reaction.start) / 1200) : 0;
+      if (reaction && rProg >= 1) reaction = null;
 
       // ----- Sky -----
       if (dark) {
@@ -367,32 +402,33 @@ export function GalaxyBackground() {
       const silShadow = dark ? "hsla(218, 60%, 2%, 0.35)" : "hsla(26, 50%, 25%, 0.14)";
       const span = w + 640;
       const caravanX = reduced ? w * 0.58 : w + 300 - ((t * 14) % span);
-      // order along the trail: human guide, camel, camel, human, camel
-      const members: { dx: number; kind: "camel" | "human"; s: number }[] = [
-        { dx: 0, kind: "human", s: 30 },
-        { dx: 64, kind: "camel", s: 34 },
-        { dx: 158, kind: "camel", s: 31 },
-        { dx: 232, kind: "human", s: 28 },
-        { dx: 296, kind: "camel", s: 29 },
-      ];
-      for (let i = 0; i < members.length; i++) {
-        const m = members[i];
+      for (let i = 0; i < MEMBERS.length; i++) {
+        const m = MEMBERS[i];
         const cx = caravanX + m.dx;
         if (cx < -90 || cx > w + 90) continue;
         const gy = duneY(cx, h * 0.72, h * 0.05, 1.7, drift * 0.014 + 3.6);
-        if (m.kind === "camel") drawCamel(cx, gy + 2, m.s, reduced ? 0 : t + i * 1.3, silhouette, silShadow);
-        else drawHuman(cx, gy + 2, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow);
+        // v6.01 — clicked member says hi: a light hop, nothing more
+        let dy = 0;
+        if (reaction && reaction.kind === "member" && reaction.index === i) {
+          dy = -Math.sin(Math.PI * rProg) * m.s * 0.35;
+        }
+        if (m.kind === "camel") drawCamel(cx, gy + 2 + dy, m.s, reduced ? 0 : t + i * 1.3, silhouette, silShadow);
+        else drawHuman(cx, gy + 2 + dy, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow);
+        if (dy < -1) {
+          // a tiny greeting sparkle above the head while hopping
+          const sy = gy - m.s * 1.25 + dy;
+          ctx!.beginPath();
+          ctx!.arc(cx, sy, 1.6, 0, Math.PI * 2);
+          ctx!.fillStyle = `hsla(43, 90%, 70%, ${0.8 * Math.sin(Math.PI * rProg)})`;
+          ctx!.fill();
+        }
       }
 
       // ----- Foreground dune -----
       drawDuneLayer(h * 0.84, h * 0.06, 1.3, drift * 0.022 + 5.1, duneC);
 
       // ----- Oasis (left foreground): pool + palms, identical spot both themes -----
-      const ox = w * 0.16;
-      const oBase = duneY(ox, h * 0.84, h * 0.06, 1.3, drift * 0.022 + 5.1);
-      const oy = Math.min(oBase + h * 0.055, h - 12);
-      const poolW = Math.max(90, w * 0.09);
-      const poolH = poolW * 0.24;
+      const { ox, oy, poolW, poolH, palms } = palmSpots(drift);
       // water
       const water = ctx!.createLinearGradient(ox - poolW, oy, ox + poolW, oy);
       if (dark) {
@@ -429,9 +465,15 @@ export function GalaxyBackground() {
       const trunkC = dark ? "hsla(220, 35%, 6%, 0.95)" : "hsla(26, 40%, 26%, 0.75)";
       const frondC = dark ? "hsla(200, 30%, 10%, 0.95)" : "hsla(140, 32%, 28%, 0.7)";
       const palmT = reduced ? 0.5 : t;
-      drawPalm(ox - poolW * 0.75, oy - poolH * 0.5, h * 0.075, palmT, -0.5, trunkC, frondC);
-      drawPalm(ox + poolW * 0.65, oy - poolH * 0.6, h * 0.09, palmT + 1.4, 0.55, trunkC, frondC);
-      drawPalm(ox + poolW * 0.95, oy - poolH * 0.2, h * 0.06, palmT + 2.6, 0.35, trunkC, frondC);
+      for (let i = 0; i < palms.length; i++) {
+        const p = palms[i];
+        // v6.01 — clicked palm rustles: a brief extra sway that settles again
+        const rustle =
+          reaction && reaction.kind === "palm" && reaction.index === i
+            ? Math.sin(rProg * Math.PI * 4) * 1.6 * (1 - rProg)
+            : 0;
+        drawPalm(p.x, p.y, p.s, palmT + p.phase + rustle, p.lean, trunkC, frondC);
+      }
 
       // ----- Life: sand + butterflies by day, fireflies by night -----
       if (dark) {
@@ -479,7 +521,87 @@ export function GalaxyBackground() {
           ctx!.fill();
         }
       }
+
+      // ----- v6.01: star / twinkle reaction — a soft expanding ring -----
+      if (reaction && (reaction.kind === "star" || reaction.kind === "twinkle")) {
+        const a = 0.65 * (1 - rProg);
+        ctx!.beginPath();
+        ctx!.arc(reaction.x, reaction.y, 3 + rProg * 24, 0, Math.PI * 2);
+        ctx!.strokeStyle = `hsla(48, 90%, 76%, ${a})`;
+        ctx!.lineWidth = 1.4;
+        ctx!.stroke();
+        ctx!.beginPath();
+        ctx!.arc(reaction.x, reaction.y, 1.8, 0, Math.PI * 2);
+        ctx!.fillStyle = `hsla(48, 95%, 82%, ${a})`;
+        ctx!.fill();
+      }
     }
+
+    // v6.01 — background click handler: only fires on clicks that land on
+    // non-interactive page chrome (never on buttons, links, cards, dialogs).
+    function onBgClick(e: MouseEvent) {
+      if (reaction) return; // one reaction at a time
+      const el = e.target as Element | null;
+      if (!el || !(el instanceof Element)) return;
+      if (el.closest('a,button,input,textarea,select,label,svg,video,[role],[tabindex],[data-testid],[data-state]')) return;
+      const px = e.clientX;
+      const py = e.clientY;
+      const now = performance.now();
+      if (reduced) {
+        // reduced motion — a single quiet twinkle, drawn as one static frame
+        reaction = { kind: "twinkle", index: 0, start: now - 360, x: px, y: py };
+        raf = requestAnimationFrame(frame);
+        window.setTimeout(() => {
+          reaction = null;
+          raf = requestAnimationFrame(frame);
+        }, 1200);
+        return;
+      }
+      const t = now / 1000;
+      const drift = t;
+      let best: Reaction | null = null;
+      let bestD = 60; // px pick radius
+      // caravan members
+      const span = w + 640;
+      const caravanX = w + 300 - ((t * 14) % span);
+      for (let i = 0; i < MEMBERS.length; i++) {
+        const m = MEMBERS[i];
+        const cx = caravanX + m.dx;
+        if (cx < -90 || cx > w + 90) continue;
+        const gy = duneY(cx, h * 0.72, h * 0.05, 1.7, drift * 0.014 + 3.6);
+        const d = Math.hypot(px - cx, py - (gy - m.s * 0.5));
+        if (d < bestD) {
+          bestD = d;
+          best = { kind: "member", index: i, start: now, x: cx, y: gy };
+        }
+      }
+      // oasis palms (crowns)
+      const geom = palmSpots(drift);
+      for (let i = 0; i < geom.palms.length; i++) {
+        const p = geom.palms[i];
+        const d = Math.hypot(px - (p.x + p.lean * p.s * 0.34), py - (p.y - p.s * 0.8));
+        if (d < bestD) {
+          bestD = d;
+          best = { kind: "palm", index: i, start: now, x: p.x, y: p.y };
+        }
+      }
+      // stars (night sky only)
+      if (document.documentElement.classList.contains("dark")) {
+        let starD = Math.min(bestD, 36);
+        for (let i = 0; i < stars.length; i++) {
+          const s = stars[i];
+          const sx = ((s.x + t * s.drift * 0.01) % 1) * w;
+          const sy = s.y * h * 0.72;
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < starD) {
+            starD = d;
+            best = { kind: "star", index: i, start: now, x: sx, y: sy };
+          }
+        }
+      }
+      if (best) reaction = best;
+    }
+    window.addEventListener("click", onBgClick);
 
     function frame(now: number) {
       const dark = document.documentElement.classList.contains("dark");
@@ -487,7 +609,18 @@ export function GalaxyBackground() {
       if (!reduced) raf = requestAnimationFrame(frame);
     }
 
-    raf = requestAnimationFrame(frame);
+    // v6.01 — defer the first paint of the scene until the browser is idle
+    // (300ms cap) so the canvas never competes with the app's initial render.
+    let idleId = 0;
+    let idleTimer = 0;
+    const startScene = () => {
+      raf = requestAnimationFrame(frame);
+    };
+    if (typeof (window as any).requestIdleCallback === "function") {
+      idleId = (window as any).requestIdleCallback(startScene, { timeout: 300 });
+    } else {
+      idleTimer = window.setTimeout(startScene, 120);
+    }
     // Reduced motion: draw exactly one static frame (the rAF above runs once and stops),
     // and redraw when the theme class flips so the scene matches the mode.
     const observer = new MutationObserver(() => {
@@ -497,8 +630,11 @@ export function GalaxyBackground() {
 
     return () => {
       cancelAnimationFrame(raf);
+      if (idleId && typeof (window as any).cancelIdleCallback === "function") (window as any).cancelIdleCallback(idleId);
+      if (idleTimer) window.clearTimeout(idleTimer);
       observer.disconnect();
       window.removeEventListener("resize", resize);
+      window.removeEventListener("click", onBgClick);
     };
   }, []);
 
@@ -574,9 +710,17 @@ export function WarpOverlay({ onDone }: { onDone: () => void }) {
       const ease = p * p * (3 - 2 * p); // smoothstep
       const speed = 0.02 + ease * 0.22;
 
-      ctx!.fillStyle = `rgba(4, 8, 20, ${p < 0.75 ? 0.92 : 0.92 * (1 - (p - 0.75) / 0.25)})`;
+      // v6.01 — gradient translucent veil: deep navy at the edges, nearly
+      // clear at the centre, easing away from mid-animation so the portal
+      // fades into view beneath the streaks instead of a hard reveal.
+      const veilBase = (p < 0.5 ? 0.55 : 0.55 * (1 - (p - 0.5) / 0.5)) || 0;
       ctx!.clearRect(0, 0, w, h);
       ctx!.globalCompositeOperation = "source-over";
+      const veil = ctx!.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+      veil.addColorStop(0, `rgba(4, 8, 20, ${Math.max(0, veilBase * 0.22)})`);
+      veil.addColorStop(0.55, `rgba(4, 8, 20, ${Math.max(0, veilBase * 0.7)})`);
+      veil.addColorStop(1, `rgba(6, 12, 28, ${Math.max(0, veilBase)})`);
+      ctx!.fillStyle = veil;
       ctx!.fillRect(0, 0, w, h);
 
       for (const s of streaks) {
