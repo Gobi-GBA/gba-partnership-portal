@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars } from "@/components/shared";
+import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection } from "@/components/shared";
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
@@ -25,13 +25,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
-import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle } from "@shared/schema";
+import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle, FileAssetMeta } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
   LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
-  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit,
+  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit, Upload,
 } from "lucide-react";
 import { AdvisorStarMap } from "@/components/network-graph";
 import {
@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
-  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, type ExtractedAdvisor,
+  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, fileToBase64, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OutreachDialog } from "@/components/advisor-outreach";
@@ -277,6 +277,28 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
+  // v6.04 — signed letter filing: the letter document itself is stored for record
+  const letterInputRef = useRef<HTMLInputElement>(null);
+  const { data: letterFiles } = useQuery<FileAssetMeta[]>({
+    queryKey: ["/api/advisors", a.id, "files", "letter"],
+    queryFn: async () => (await apiRequest("GET", `/api/advisors/${a.id}/files?type=letter`)).json(),
+  });
+  const uploadLetter = useMutation({
+    mutationFn: async (file: File) => {
+      const data = await fileToBase64(file);
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/files`, {
+        type: "letter", filename: file.name, mime: file.type || "application/pdf", data,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id, "files"] });
+      toast({ description: t("letterFiled") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
   const doneAt = (field: (typeof WORKFLOW_STEPS)[number]["field"]) => a[field] ?? null;
   // The most recently completed step is the only one that can be undone.
   let lastDone = -1;
@@ -331,11 +353,60 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                     <Undo2 className="mr-1 h-3 w-3" /> {t("wfUndo")}
                   </Button>
                 )}
+                {s.stage === "signed_back" && canAct && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={uploadLetter.isPending}
+                    onClick={() => letterInputRef.current?.click()}
+                    data-testid="button-upload-letter"
+                  >
+                    {uploadLetter.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Upload className="mr-1 h-3 w-3" />}
+                    {t("uploadSignedLetter")}
+                  </Button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* v6.04 — filed signed letters (hidden input + download chips) */}
+      <input
+        ref={letterInputRef}
+        type="file"
+        accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        data-testid="input-letter-file"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          if (f.size > 10 * 1024 * 1024) {
+            toast({ description: t("fileTooLarge"), variant: "destructive" });
+            return;
+          }
+          uploadLetter.mutate(f);
+        }}
+      />
+      {(letterFiles ?? []).length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="row-letter-files">
+          {(letterFiles ?? []).map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-[11px] hover:bg-secondary/70"
+              onClick={() => downloadWithAuth(`/api/files/${f.id}/download`, f.filename)}
+              title={t("download")}
+              data-testid={`chip-letter-file-${f.id}`}
+            >
+              <FileText className="h-3 w-3 text-emerald-600" /> {f.filename}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isAdmin && (
         <div className="mt-3 border-t border-border pt-3">
@@ -677,6 +748,7 @@ function AdvisorFormDialog({
             <div className="flex shrink-0 gap-2">
               <LinkedinSyncControl
                 url={form.profileUrl}
+                advisorId={editing?.id ?? null}
                 identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
                 onApply={(d: ExtractedAdvisor) => {
                   setForm((f) => ({
@@ -964,6 +1036,13 @@ function AdvisorDetailDialog({
   });
   const isStaff = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
+
+  // v6.04 — CVs filed against this advisor (staff only)
+  const { data: cvFiles } = useQuery<FileAssetMeta[]>({
+    queryKey: ["/api/advisors", id ?? 0, "files", "cv"],
+    queryFn: async () => (await apiRequest("GET", `/api/advisors/${id}/files?type=cv`)).json(),
+    enabled: id !== null && isStaff,
+  });
   const [approvalOpen, setApprovalOpen] = useState(false);
 
   const setStatus = useMutation({
@@ -1166,90 +1245,120 @@ function AdvisorDetailDialog({
                 </div>
               )}
 
-              {/* Staff-only: contact + engagement */}
+              {/* v6.04 — one tidy "Contact & links" card: contact chips, then links
+                  and filed documents, then origin/PIC/birthday meta. Staff only —
+                  the server nulls emails/mobile/WeChat for other roles. */}
               {isStaff ? (
                 <>
-                  {(a.emails ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {(a.emails ?? []).map((e) => (
-                        <a key={e} href={`mailto:${e}`} className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs" data-testid={`link-email-${e}`}>
-                          <Mail className="h-3 w-3" /> {e}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  {/* v5.9 — mobile and WeChat are staff-only; the server nulls them for other roles */}
-                  {(a.mobile || a.wechatId) && (
-                    <div className="flex flex-wrap gap-2">
-                      {a.mobile && (
-                        <a
-                          href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
-                          data-testid="link-advisor-mobile"
-                        >
-                          <Phone className="h-3 w-3" /> {a.mobile}
-                        </a>
-                      )}
-                      {a.wechatId && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(a.wechatId ?? "");
-                            toast({ description: t("advisorWechatCopied") });
-                          }}
-                          data-testid="text-advisor-wechat"
-                        >
-                          <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    const link = a.profileUrl || a.linkedinUrl;
+                    const isLinkedin = /linkedin\.com/i.test(link ?? "");
+                    const hasContact = (a.emails ?? []).length > 0 || a.mobile || a.wechatId;
+                    const hasLinks = link || (cvFiles ?? []).length > 0;
+                    const hasMeta = (a.originStaff ?? []).length > 0 || (a.gobiPics ?? []).length > 0 || formatBirthday(a);
+                    if (!hasContact && !hasLinks && !hasMeta) return null;
+                    return (
+                      <div className="rounded-lg border border-border p-3 space-y-2.5" data-testid="card-contact-links">
+                        <p className="text-xs font-semibold text-muted-foreground">{t("contactLinksTitle")}</p>
+                        {hasContact && (
+                          <div className="flex flex-wrap gap-2">
+                            {(a.emails ?? []).map((e) => (
+                              <a key={e} href={`mailto:${e}`} className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs" data-testid={`link-email-${e}`}>
+                                <Mail className="h-3 w-3" /> {e}
+                              </a>
+                            ))}
+                            {a.mobile && (
+                              <a
+                                href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
+                                className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
+                                data-testid="link-advisor-mobile"
+                              >
+                                <Phone className="h-3 w-3" /> {a.mobile}
+                              </a>
+                            )}
+                            {a.wechatId && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(a.wechatId ?? "");
+                                  toast({ description: t("advisorWechatCopied") });
+                                }}
+                                data-testid="text-advisor-wechat"
+                              >
+                                <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {hasLinks && (
+                          <div className="flex flex-wrap gap-2">
+                            {link && (
+                              <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
+                                {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                                {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
+                              </a>
+                            )}
+                            {(cvFiles ?? []).map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                onClick={() => downloadWithAuth(`/api/files/${f.id}/download`, f.filename)}
+                                title={t("download")}
+                                data-testid={`chip-cv-file-${f.id}`}
+                              >
+                                <FileDown className="h-3 w-3 text-[hsl(193,52%,38%)]" /> {t("cvOnFile")}: {f.filename}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hasMeta && (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+                            {(a.originStaff ?? []).length > 0 && (
+                              <span data-testid="text-advisor-origin-staff">{t("originStaffLabel")}: {(a.originStaff ?? []).join(", ")}</span>
+                            )}
+                            {(a.gobiPics ?? []).length > 0 && (
+                              <span data-testid="text-advisor-pics">{t("currentPicLabel")}: {(a.gobiPics ?? []).join(", ")}</span>
+                            )}
+                            {formatBirthday(a) && (
+                              <span className="inline-flex items-center gap-1" data-testid="text-advisor-birthday">
+                                <Cake className="h-3 w-3 text-[hsl(var(--gold))]" /> {formatBirthday(a)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {a.engagement && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground mb-1">{t("advisorEngagement")}</p>
                       <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-advisor-engagement">{a.engagement}</p>
                     </div>
                   )}
-                  {formatBirthday(a) && (
-                    <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="text-advisor-birthday">
-                      <Cake className="h-3.5 w-3.5 text-[hsl(var(--gold))]" /> {formatBirthday(a)}
-                    </p>
-                  )}
                   <ActivityTimeline advisorId={a.id} />
+                  {/* v6.04 — advisor change log */}
+                  <AuditSection entityId={a.id} entityType="advisor" open={id !== null} />
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
+                <>
+                  <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
+                  {(() => {
+                    const link = a.profileUrl || a.linkedinUrl;
+                    if (!link) return null;
+                    const isLinkedin = /linkedin\.com/i.test(link);
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
+                          {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                          {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
+                        </a>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
-
-              {isStaff && (a.originStaff ?? []).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("originStaffLabel")}</p>
-                  <p className="text-sm" data-testid="text-advisor-origin-staff">{(a.originStaff ?? []).join(", ")}</p>
-                </div>
-              )}
-
-              {(a.gobiPics ?? []).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("currentPicLabel")}</p>
-                  <p className="text-sm">{(a.gobiPics ?? []).join(", ")}</p>
-                </div>
-              )}
-
-              {/* External link — single profile link (profileUrl, falling back to legacy linkedinUrl) */}
-              {(() => {
-                const link = a.profileUrl || a.linkedinUrl;
-                if (!link) return null;
-                const isLinkedin = /linkedin\.com/i.test(link);
-                return (
-                  <div className="flex flex-wrap gap-2">
-                    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
-                      {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
-                      {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
-                    </a>
-                  </div>
-                );
-              })()}
 
             </div>
           </>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { thankYou } from "@/components/thank-you";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
@@ -20,7 +20,7 @@ import {
 import type { AdvisorWithRoles, SectorTag, AdvisorActivity } from "@shared/schema";
 import { ACTIVITY_TYPES } from "@shared/schema";
 import {
-  Plus, Trash2, Pencil, Copy, Mail, Sparkles, CalendarDays, Loader2, Send, X, FileText,
+  Plus, Trash2, Pencil, Copy, Mail, Sparkles, CalendarDays, Loader2, Send, X, FileText, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -442,16 +442,29 @@ export interface SyncIdentity {
   emails?: string;
 }
 
-export function LinkedinSyncControl({ url, identity, onApply }: { url: string; identity?: SyncIdentity; onApply: (data: ExtractedAdvisor) => void }) {
+// Read a browser File into raw base64 (no data: prefix) for JSON upload bodies.
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(r.error ?? new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
+
+export function LinkedinSyncControl({ url, identity, advisorId, onApply }: { url: string; identity?: SyncIdentity; advisorId?: number | null; onApply: (data: ExtractedAdvisor) => void }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const [cvName, setCvName] = useState("");
 
   const extract = useMutation({
-    mutationFn: async (body: { url?: string; text?: string }) => {
+    mutationFn: async (body: { url?: string; text?: string; file?: { name: string; mime: string; data: string } }) => {
       const res = await apiRequest("POST", "/api/ai/advisor-extract", {
         ...body,
+        advisorId: advisorId ?? undefined,
         expectedName: identity?.name?.trim() || undefined,
         expectedNameCn: identity?.nameCn?.trim() || undefined,
         linkedinUrl: identity?.linkedinUrl?.trim() || undefined,
@@ -459,10 +472,16 @@ export function LinkedinSyncControl({ url, identity, onApply }: { url: string; i
       });
       return res.json();
     },
-    onSuccess: (data: ExtractedAdvisor) => {
+    onSuccess: (data: ExtractedAdvisor, vars) => {
       onApply(data);
       setPasteOpen(false);
       setPasteText("");
+      if (vars.file) {
+        setCvName(vars.file.name);
+        queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+        toast({ description: advisorId ? t("cvExtractFiledApplied") : t("linkedinSyncApplied") });
+        return;
+      }
       toast({ description: t("linkedinSyncApplied") });
     },
     onError: (e: any) => {
@@ -519,6 +538,41 @@ export function LinkedinSyncControl({ url, identity, onApply }: { url: string; i
             <DialogDescription>{t("cvExtractHint")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">
+            {/* v6.04 — upload the CV file itself: extracted server-side (PDF/DOCX/TXT)
+                and filed against the advisor record when one exists. */}
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2.5">
+              <input
+                ref={cvInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                className="hidden"
+                data-testid="input-cv-file"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  if (f.size > 10 * 1024 * 1024) {
+                    toast({ description: t("fileTooLarge"), variant: "destructive" });
+                    return;
+                  }
+                  const data = await fileToBase64(f);
+                  extract.mutate({ file: { name: f.name, mime: f.type || "application/pdf", data } });
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={extract.isPending}
+                onClick={() => cvInputRef.current?.click()}
+                data-testid="button-upload-cv-file"
+              >
+                {extract.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+                {t("uploadCvFile")}
+              </Button>
+              <span className="text-xs text-muted-foreground">{cvName || t("cvFileHint")}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">{t("orPasteBelow")}</p>
             <Textarea rows={8} value={pasteText} onChange={(e) => setPasteText(e.target.value)} data-testid="input-linkedin-paste" />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setPasteOpen(false)} data-testid="button-cancel-paste">

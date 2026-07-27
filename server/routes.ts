@@ -329,14 +329,17 @@ async function resolveUser(req: AuthedRequest): Promise<User | undefined> {
 }
 
 // Fire-and-forget audit trail writer — never blocks the main response.
+// v6.04: entityType 'partnership' (default) or 'advisor'; the id is stored in partnership_id.
 async function audit(
   user: User,
   partnershipId: number,
   action: AuditAction,
   changes?: Record<string, unknown>,
+  entityType: "partnership" | "advisor" = "partnership",
 ) {
   try {
     await storage.createAuditLog({
+      entityType,
       partnershipId,
       userId: user.id,
       userName: user.name,
@@ -347,6 +350,13 @@ async function audit(
   } catch (err) {
     console.error("audit log failed:", err);
   }
+}
+
+// v6.04 — advisor change log stores FIELD NAMES only: several advisor fields
+// (mobile, WeChat, emails, birthday) are staff-sensitive, so values never
+// enter the shared audit trail.
+function fieldNamesOnly(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.keys(obj).map((k) => [k, true]));
 }
 
 // Which fields of a partial update actually differ from the stored record
@@ -1269,6 +1279,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         sortOrder: i,
       })),
     );
+    await audit(req.user!, created.id, "create", { name: created.name }, "advisor");
     res.status(201).json({ ...created, roles: savedRoles });
   });
 
@@ -1295,6 +1306,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     // Roles-only PATCHes are valid — skip the advisor update when nothing else changed
     const updated = Object.keys(patch).length > 0 ? await storage.updateAdvisor(id, patch) : existing;
+    // v6.04 — advisor change log (field names only; values may be staff-sensitive)
+    {
+      const changed = diffFields(existing, patch);
+      delete (changed as any).status;
+      const logged: Record<string, unknown> = fieldNamesOnly(changed);
+      if (roles) logged.roles = true;
+      if (tagIds) logged.tags = true;
+      const action: AuditAction = status && status !== existing.status && (status === "approved" || status === "rejected")
+        ? (status === "approved" ? "approve" : "reject")
+        : "update";
+      if (Object.keys(logged).length || action !== "update") await audit(req.user!, id, action, logged, "advisor");
+    }
     if (tagIds) await storage.setAdvisorTags(id, tagIds);
     let savedRoles: AdvisorRole[] | undefined;
     if (roles) {
@@ -1316,7 +1339,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const target = await storage.getAdvisor(Number(req.params.id));
     await storage.deleteAdvisor(Number(req.params.id));
+    if (target) await audit(req.user!, target.id, "delete", { name: target.name }, "advisor");
     res.json({ ok: true });
   });
 
@@ -1425,8 +1450,104 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: now,
       });
     } catch {}
+    await audit(req.user!, id, "update", { workflow: logNote }, "advisor");
     const roles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === id);
     res.json({ ...updated, roles });
+  });
+
+  // v6.04 — advisor change log (staff only; contact values never appear here)
+  app.get("/api/advisors/:id/audit", requireAuth("submit"), async (req, res) => {
+    const logs = await storage.listAuditLogs(Number(req.params.id), "advisor");
+    logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(logs);
+  });
+
+  // ---------- v6.04: advisor document filing (CVs + signed letters) ----------
+  const advisorFileSchema = z.object({
+    type: z.enum(["cv", "letter"]),
+    filename: z.string().min(1).max(200),
+    mime: z.string().min(3).max(120),
+    data: z.string().min(16), // base64
+  });
+  const FILE_MIME_OK = /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/msword|text\/plain|image\/jpeg|image\/png)$/;
+
+  app.get("/api/advisors/:id/files", requireAuth("submit"), async (req, res) => {
+    const id = Number(req.params.id);
+    const type = req.query.type === "letter" ? "advisor_letter" : "advisor_cv";
+    const files = await storage.listFileAssetMeta(type, id);
+    files.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(files);
+  });
+
+  app.post("/api/advisors/:id/files", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const advisor = await storage.getAdvisor(id);
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const parsed = advisorFileSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid file upload" });
+    const { type, filename, mime, data } = parsed.data;
+    if (!FILE_MIME_OK.test(mime)) return res.status(415).json({ message: "Only PDF, Word, TXT, JPG or PNG files are accepted" });
+    if (attachmentTooLarge(data)) return res.status(413).json({ message: "File too large (max 10MB)" });
+
+    const now = new Date().toISOString();
+    const meta = await storage.createFileAsset({
+      ownerType: type === "cv" ? "advisor_cv" : "advisor_letter",
+      ownerId: id,
+      filename,
+      mime,
+      size: Math.floor(data.length * 0.75),
+      data,
+      uploadedBy: req.user!.id,
+      uploadedByName: req.user!.name,
+      createdAt: now,
+    });
+
+    let updated = advisor;
+    if (type === "letter") {
+      // Filing the signed letter completes the sign-back step when still pending.
+      if (!advisor.signedBackAt) {
+        const patch: Partial<Advisor> = { signedBackAt: now };
+        if (advisor.lifecycleStatus !== "terminated") {
+          patch.lifecycleStatus = "onboarded";
+          patch.onboardedAt = advisor.onboardedAt ?? now.slice(0, 10);
+        }
+        updated = (await storage.updateAdvisor(id, patch)) ?? advisor;
+      }
+      try {
+        await storage.createAdvisorActivity({
+          advisorId: id, date: now.slice(0, 10), type: "note",
+          note: `[Workflow] Signed letter filed: ${filename}`,
+          createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+        });
+      } catch {}
+      await audit(req.user!, id, "update", { signed_letter_filed: true }, "advisor");
+    } else {
+      try {
+        await storage.createAdvisorActivity({
+          advisorId: id, date: now.slice(0, 10), type: "note",
+          note: `[CV] CV filed: ${filename}`,
+          createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+        });
+      } catch {}
+      await audit(req.user!, id, "update", { cv_filed: true }, "advisor");
+    }
+    res.status(201).json({ file: meta, advisor: updated });
+  });
+
+  app.get("/api/files/:id/download", requireAuth("submit"), async (req, res) => {
+    const f = await storage.getFileAsset(Number(req.params.id));
+    if (!f) return res.status(404).json({ message: "Not found" });
+    res.setHeader("Content-Type", f.mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(f.filename)}"`);
+    res.send(Buffer.from(f.data, "base64"));
+  });
+
+  app.delete("/api/files/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const f = await storage.getFileAsset(Number(req.params.id));
+    if (!f) return res.status(404).json({ message: "Not found" });
+    await storage.deleteFileAsset(f.id);
+    await audit(req.user!, f.ownerId, "update", { [`${f.ownerType === "advisor_letter" ? "signed_letter" : "cv"}_removed`]: true }, "advisor");
+    res.json({ ok: true });
   });
 
   // v5.11 — admin-editable letter template overrides (empty meta -> firm default)
@@ -1986,9 +2107,14 @@ www.gobi.vc`,
   });
 
   // ---------- AI: sync advisor profile from a URL (e.g. LinkedIn) or pasted text (DeepSeek) ----------
-  app.post("/api/ai/advisor-extract", requireAuth("submit"), async (req, res) => {
+  app.post("/api/ai/advisor-extract", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
     const pasted = typeof req.body?.text === "string" ? req.body.text : "";
+    // v6.04 — uploaded CV file (PDF/DOCX/TXT); text-extracted here and filed
+    // against the advisor record when advisorId is present.
+    const advisorIdRaw = Number(req.body?.advisorId);
+    const advisorId = Number.isInteger(advisorIdRaw) && advisorIdRaw > 0 ? advisorIdRaw : null;
+    const cvParse = z.object({ name: z.string().min(1).max(200), mime: z.string().min(3).max(120), data: z.string().min(16) }).safeParse(req.body?.file);
 
     // ---- Rule-based identity preset ----
     // When the form already identifies the advisor (name, Chinese name, LinkedIn
@@ -2094,7 +2220,41 @@ www.gobi.vc`,
     // Trim to a prompt-sized shortlist only AFTER identity boosting — tied
     // candidates have floated to the top, so the target person survives the cut.
     photoCandidates.splice(12);
-    if (pageSections.length === 0 && pasted.trim().length < 40) {
+
+    // v6.04 — read the uploaded CV and file it for record
+    let cvText = "";
+    let cvFileName = "";
+    if (cvParse.success) {
+      const f = cvParse.data;
+      if (attachmentTooLarge(f.data)) return res.status(413).json({ message: "File too large (max 10MB)" });
+      cvFileName = f.name;
+      try {
+        if (f.mime === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+          const { extractText, getDocumentProxy } = await import("unpdf");
+          const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(f.data, "base64")));
+          const { text: pdfText } = await extractText(pdf, { mergePages: true });
+          cvText = pdfText;
+        } else if (
+          f.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+          f.name.toLowerCase().endsWith(".docx")
+        ) {
+          const result = await mammoth.extractRawText({ buffer: Buffer.from(f.data, "base64") });
+          cvText = result.value;
+        } else if (f.mime === "text/plain" || /\.(txt|md)$/i.test(f.name)) {
+          cvText = Buffer.from(f.data, "base64").toString("utf8");
+        } else {
+          return res.status(415).json({ message: "Only PDF, DOCX or TXT files are supported for CV extraction" });
+        }
+      } catch (err) {
+        console.error("CV text extraction failed:", err);
+      }
+      cvText = cvText.trim();
+      if (!cvText) {
+        return res.status(422).json({ message: "Could not read text from that file — scanned/image PDFs are not supported. Paste the CV text instead." });
+      }
+    }
+
+    if (pageSections.length === 0 && pasted.trim().length < 40 && !cvText) {
       return res.status(422).json({
         message: fetchFailed
           ? "Could not read that page — LinkedIn and some sites block automated access. Open the profile, copy the text, and paste it instead."
@@ -2111,7 +2271,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
   "personFound": true if the TARGET PERSON appears in the material, else false,` : ""}
   "name": "person's name in English",
   "nameCn": "person's name in Chinese if present",
-  "background": "2-4 sentence English professional bio",
+  "background": "career chronology in the standard line format — see STANDARDISATION RULES",
   "domains": "comma-separated expertise areas",
   "roles": [{ "title": "job title", "organization": "organisation name", "isPrimary": 1 for the current main role else 0 }],
   "cohort": "graduation year if evident, else empty",
@@ -2121,7 +2281,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
 STANDARDISATION RULES — follow exactly:
 - name: "[Honorific ]Given-name SURNAME" with the family name in CAPITALS, keeping Prof./Dr./Ir. honorifics when evident, e.g. "Percy CHENG", "Prof. Nancy Kwan MAN". No nicknames in quotes.
 - nameCn: Chinese characters only, no spaces or punctuation, e.g. "王宇新". Empty if not stated — never transliterate.
-- background: 2-4 factual third-person sentences — current position first, then prior experience, education, notable achievements. No marketing language ("visionary", "world-class"), no bullet points, no first person.
+- background: the person's experience as a chronology — ONE line per position, most recent first, each line EXACTLY "YYYY–YYYY — Organization — Role & scope" (use "YYYY–present" for ongoing roles, "n.a." when a year is not stated; scope = concise phrase of what they did or led, max ~12 words). After the position lines, education in the same shape: "YYYY–YYYY — Institution — Degree, field". Separate lines with \n. No paragraphs, no bullet symbols, no marketing language ("visionary", "world-class"), no first person.
 - domains: 2-5 items, comma-separated, each 1-3 words in Title Case with acronyms in capitals, e.g. "Biotech, University Tech Transfer, AI". Use sector names, not job titles.
 - roles.title: Title Case, e.g. "Co-Founder & Executive Director". roles.organization: official English name without legal suffixes (Limited, Ltd., Inc., Co.). Exactly ONE role has isPrimary 1 (the current main position).
 - cohort: a 4-digit year only, else "".
@@ -2143,6 +2303,7 @@ STANDARDISATION RULES — follow exactly:
         identityBlock,
         candidateBlock,
         ...pageSections.map((s) => `\nFETCHED PAGE CONTENT (${s.url}):\n"""\n${s.text.slice(0, perSectionCap)}\n"""`),
+        cvText ? `\nUPLOADED CV (${cvFileName}):\n"""\n${cvText.slice(0, 12000)}\n"""` : "",
         pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
       ].join("\n");
 
@@ -2156,7 +2317,7 @@ STANDARDISATION RULES — follow exactly:
           model: "deepseek-v4-flash",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
-          max_tokens: 1200,
+          max_tokens: 1600,
         }),
       });
       if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
@@ -2181,6 +2342,28 @@ STANDARDISATION RULES — follow exactly:
             expected: expectedName || expectedNameCn || liSlug || emailLocal,
             found: foundName || foundCn || "",
           });
+        }
+      }
+
+      // v6.04 — file the uploaded CV for record, but ONLY now that the identity
+      // check has passed: a mismatched person's CV must never be attached to
+      // this advisor's record.
+      if (advisorId && cvParse.success && cvText) {
+        try {
+          const f = cvParse.data;
+          const now = new Date().toISOString();
+          await storage.createFileAsset({
+            ownerType: "advisor_cv", ownerId: advisorId, filename: f.name, mime: f.mime,
+            size: Math.floor(f.data.length * 0.75), data: f.data,
+            uploadedBy: req.user!.id, uploadedByName: req.user!.name, createdAt: now,
+          });
+          await storage.createAdvisorActivity({
+            advisorId, date: now.slice(0, 10), type: "note", note: `[CV] CV filed: ${f.name}`,
+            createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+          });
+          await audit(req.user!, advisorId, "update", { cv_filed: true }, "advisor");
+        } catch (err) {
+          console.error("CV filing failed:", err);
         }
       }
 
@@ -2211,6 +2394,8 @@ STANDARDISATION RULES — follow exactly:
 
       // Autofill standardisation (server-side, belt and braces over the prompt)
       const clean = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+      // background keeps its line structure (v6.04 — one "YYYY–YYYY — Org — Scope" line per position)
+      const cleanMl = (s: unknown) => String(s ?? "").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       const nameCn = clean(data.nameCn).replace(/[^\u4e00-\u9fff\u00b7]/g, "");
       const domains = Array.from(new Set(
         clean(data.domains).split(/[,\uff0c\u3001;\uff1b/]+/).map((d) => d.trim()).filter(Boolean),
@@ -2234,7 +2419,7 @@ STANDARDISATION RULES — follow exactly:
       res.json({
         name: clean(data.name),
         nameCn,
-        background: clean(data.background),
+        background: cleanMl(data.background),
         domains,
         cohort,
         roles,

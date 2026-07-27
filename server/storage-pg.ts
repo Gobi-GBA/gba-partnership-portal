@@ -4,8 +4,8 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq, and, asc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities, photoAssetsPg as photoAssets } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities, photoAssetsPg as photoAssets, fileAssetsPg as fileAssets } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, PhotoAsset, FileAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
@@ -91,6 +91,20 @@ const BOOTSTRAP: string[] = [
     changes TEXT,
     created_at TEXT NOT NULL
   )`,
+  // ---- v6.04 advisor document filing + generalized audit log ----
+  `CREATE TABLE IF NOT EXISTS file_assets (
+    id SERIAL PRIMARY KEY,
+    owner_type TEXT NOT NULL,
+    owner_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    uploaded_by INTEGER,
+    uploaded_by_name TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'partnership'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_q1 TEXT`,
@@ -530,14 +544,39 @@ export function createPgStorage(): IStorage {
       await db.delete(photoAssets).where(eq(photoAssets.id, id));
     }
 
+    // v6.04 — document file assets (advisor CVs, signed letters)
+    async listFileAssetMeta(ownerType: string, ownerId: number) {
+      await init();
+      const { data: _d, ...metaCols } = getTableColumns(fileAssets);
+      return await db
+        .select(metaCols)
+        .from(fileAssets)
+        .where(and(eq(fileAssets.ownerType, ownerType), eq(fileAssets.ownerId, ownerId)));
+    }
+    async getFileAsset(id: number) {
+      await init();
+      const rows = await db.select().from(fileAssets).where(eq(fileAssets.id, id)).limit(1);
+      return rows[0] as FileAsset | undefined;
+    }
+    async createFileAsset(data: Omit<FileAsset, "id">) {
+      await init();
+      const rows = await db.insert(fileAssets).values(data as any).returning();
+      const { data: _d, ...meta } = rows[0] as FileAsset;
+      return meta;
+    }
+    async deleteFileAsset(id: number) {
+      await init();
+      await db.delete(fileAssets).where(eq(fileAssets.id, id));
+    }
+
     async createAuditLog(data: Omit<AuditLog, "id">) {
       await init();
       const rows = await db.insert(auditLogs).values(data as any).returning();
       return rows[0] as AuditLog;
     }
-    async listAuditLogs(partnershipId: number) {
+    async listAuditLogs(entityId: number, entityType = "partnership") {
       await init();
-      return (await db.select().from(auditLogs).where(eq(auditLogs.partnershipId, partnershipId))) as AuditLog[];
+      return (await db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType)))) as AuditLog[];
     }
 
     async listChangeRequests() {

@@ -691,6 +691,17 @@ const dict = {
   // v5.7 — CV / biography AI extract
   cvExtract: { en: "From CV / bio", cn: "从简历/传记提取" },
   cvExtractHint: { en: "Paste a CV, biography or profile text and AI fills the form. Review before saving.", cn: "粘贴简历、传记或主页文本，由AI填写表格，保存前请核对。", },
+  // v6.04 — CV filing, signed letter filing, contact card, change log
+  uploadCvFile: { en: "Upload CV file", cn: "上传简历文件" },
+  cvFileHint: { en: "PDF, Word or TXT — filed for record and auto-extracted", cn: "PDF、Word或TXT——存档备查并自动提取" },
+  orPasteBelow: { en: "Or paste the text below:", cn: "或在下方粘贴文本：" },
+  cvExtractFiledApplied: { en: "CV filed and profile fields updated — review before saving.", cn: "简历已存档，资料已更新——保存前请核对。" },
+  fileTooLarge: { en: "File too large (max 10MB)", cn: "文件过大（上限10MB）" },
+  uploadSignedLetter: { en: "File signed letter", cn: "存档签署函件" },
+  letterFiled: { en: "Signed letter filed", cn: "签署函件已存档" },
+  cvOnFile: { en: "CV", cn: "简历" },
+  contactLinksTitle: { en: "Contact & links", cn: "联系方式与链接" },
+  download: { en: "Download", cn: "下载" },
   cvPasteTitle: { en: "Extract from CV / biography", cn: "从简历/传记提取" },
   // v5.7 — edit-rights request
   requestEdit: { en: "Request edit rights", cn: "申请编辑权限" },

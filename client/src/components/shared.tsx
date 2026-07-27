@@ -1169,18 +1169,19 @@ export function PartnershipDetailDialog({
             </div>
           )}
 
-          <AuditSection partnershipId={p.id} open={open} />
+          <AuditSection entityId={p.id} open={open} />
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ---------------- Per-partner change log (audit) ----------------
-function AuditSection({ partnershipId, open }: { partnershipId: number; open: boolean }) {
+// ---------------- Per-entity change log (audit) ----------------
+// v6.04 — generalised: partnerships and advisors share the same audit trail UI.
+export function AuditSection({ entityId, entityType = "partnership", open }: { entityId: number; entityType?: "partnership" | "advisor"; open: boolean }) {
   const { t, lang } = useLang();
   const { data: logs } = useQuery<AuditLog[]>({
-    queryKey: ["/api/partnerships", partnershipId, "audit"],
+    queryKey: [entityType === "advisor" ? "/api/advisors" : "/api/partnerships", entityId, "audit"],
     enabled: open,
   });
   const fmt = (iso: string) => {

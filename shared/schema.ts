@@ -456,6 +456,27 @@ export const photoAssets = sqliteTable("photo_assets", {
 export type PhotoAsset = typeof photoAssets.$inferSelect;
 export type PhotoAssetMeta = Omit<PhotoAsset, "thumbData" | "hdData">;
 
+// ---------- Document file assets (v6.04 — advisor CVs and signed letters) ----------
+// Stores original documents (PDF/DOCX/TXT/images) as base64, mirroring photo_assets.
+export const FILE_OWNER_TYPES = ["advisor_cv", "advisor_letter"] as const;
+export type FileOwnerType = (typeof FILE_OWNER_TYPES)[number];
+
+export const fileAssets = sqliteTable("file_assets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ownerType: text("owner_type").notNull(), // FILE_OWNER_TYPES
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(), // bytes
+  data: text("data").notNull(), // base64 original
+  uploadedBy: integer("uploaded_by"),
+  uploadedByName: text("uploaded_by_name"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type FileAsset = typeof fileAssets.$inferSelect;
+export type FileAssetMeta = Omit<FileAsset, "data">;
+
 export const photoAssetInputSchema = z.object({
   ownerType: z.enum(PHOTO_OWNER_TYPES),
   ownerId: z.number().int().positive(),
@@ -486,9 +507,12 @@ export const changeRequestInputSchema = z.object({
 });
 export type ChangeRequestInput = z.infer<typeof changeRequestInputSchema>;
 
-// ---------- Audit log (who changed what, per partnership) ----------
+// ---------- Audit log (who changed what) ----------
+// v6.04: generalized — entityType 'partnership' (default) or 'advisor';
+// partnershipId doubles as the generic entity id (kept for compatibility).
 export const auditLogs = sqliteTable("audit_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull().default("partnership"), // 'partnership' | 'advisor' (v6.04)
   partnershipId: integer("partnership_id").notNull(),
   userId: integer("user_id"),
   userName: text("user_name").notNull(),

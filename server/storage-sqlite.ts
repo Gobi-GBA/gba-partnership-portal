@@ -1,5 +1,5 @@
-import { users, sessions, partnerships, attachments, photoAssets, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
-import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, photoAssets, fileAssets, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
+import type { User, Partnership, Attachment, PhotoAsset, FileAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, asc } from "drizzle-orm";
@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS photo_assets (
   uploaded_by INTEGER,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS file_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_type TEXT NOT NULL,
+  owner_id INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  uploaded_by INTEGER,
+  uploaded_by_name TEXT,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS change_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   partnership_id INTEGER NOT NULL,
@@ -128,6 +140,8 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "must_change_password", "must_change_password INTEGER NOT NULL DEFAULT 0");
   ensureColumn("users", "edit_requested_at", "edit_requested_at TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
+  // v6.04 — generalized audit log (partnership | advisor)
+  ensureColumn("audit_logs", "entity_type", "entity_type TEXT NOT NULL DEFAULT 'partnership'");
   ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");
   ensureColumn("partnerships", "is_domain_knowledge_partner", "is_domain_knowledge_partner INTEGER NOT NULL DEFAULT 0");
   // Advisors (v5.0)
@@ -410,11 +424,41 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
       db.delete(photoAssets).where(eq(photoAssets.id, id)).run();
     }
 
+    // v6.04 — document file assets (advisor CVs, signed letters)
+    async listFileAssetMeta(ownerType: string, ownerId: number) {
+      return db
+        .select({
+          id: fileAssets.id,
+          ownerType: fileAssets.ownerType,
+          ownerId: fileAssets.ownerId,
+          filename: fileAssets.filename,
+          mime: fileAssets.mime,
+          size: fileAssets.size,
+          uploadedBy: fileAssets.uploadedBy,
+          uploadedByName: fileAssets.uploadedByName,
+          createdAt: fileAssets.createdAt,
+        })
+        .from(fileAssets)
+        .where(and(eq(fileAssets.ownerType, ownerType), eq(fileAssets.ownerId, ownerId)))
+        .all();
+    }
+    async getFileAsset(id: number) {
+      return db.select().from(fileAssets).where(eq(fileAssets.id, id)).get();
+    }
+    async createFileAsset(data: Omit<FileAsset, "id">) {
+      const row = db.insert(fileAssets).values(data).returning().get();
+      const { data: _d, ...meta } = row;
+      return meta;
+    }
+    async deleteFileAsset(id: number) {
+      db.delete(fileAssets).where(eq(fileAssets.id, id)).run();
+    }
+
     async createAuditLog(data: Omit<AuditLog, "id">) {
       return db.insert(auditLogs).values(data).returning().get();
     }
-    async listAuditLogs(partnershipId: number) {
-      return db.select().from(auditLogs).where(eq(auditLogs.partnershipId, partnershipId)).all();
+    async listAuditLogs(entityId: number, entityType = "partnership") {
+      return db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType))).all();
     }
 
     async listChangeRequests() {

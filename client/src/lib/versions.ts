@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.03";
+export const CURRENT_VERSION = "6.04";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.04",
+    date: "2026-07-28",
+    by: "Fred Li",
+    titleEn: "v6.04 — advisor change log, CV filing with AI extraction, signed letter filing, tidier contact card",
+    titleCn: "v6.04 — 顾问变更日志、简历存档与AI提取、签署函件存档、更整洁的联系卡片",
+    itemsEn: [
+      "Advisor change log: every create, edit, approval, rejection, deletion and workflow step on an advisor record is now logged with who did it and when — shown at the bottom of the advisor detail view for staff; only field names are recorded, never sensitive values",
+      "CV filing: the From CV / bio dialog now accepts a PDF, Word or TXT file upload — the file is stored on the advisor record for later download, and AI reads it to fill the form",
+      "Standardised experience format: AI-extracted backgrounds now come as a clean chronology — one line per position, most recent first, in the shape Year–Year — Organization — Role & scope, followed by education",
+      "Signed letter filing: the onboarding workflow's Signed back step now takes the actual signed letter file — uploading it files the document for record and completes the step automatically",
+      "Contact & links tidied: emails, mobile, WeChat, profile links, filed CVs, origin staff, current PIC and birthday are now grouped in one orderly card instead of scattered rows",
+      "Engineering: a written SOP now requires every GitHub update to be recorded in the repository update log (docs/UPDATE_LOG.md) — check first, work, log back",
+    ],
+    itemsCn: [
+      "顾问变更日志：顾问记录的每次创建、编辑、批准、拒绝、删除及流程操作现在都会记录操作人与时间——员工可在顾问详情底部查看；日志只记录字段名称，绝不记录敏感内容",
+      "简历存档：「从简历/传记提取」对话框现在支持上传 PDF、Word 或 TXT 文件——文件存档在顾问记录中可随时下载，并由 AI 读取内容自动填表",
+      "经历格式标准化：AI 提取的背景信息现在以清晰的时间线呈现——每段职务一行、由近及远，格式为 年份–年份 — 机构 — 职务与职责，学历同格式列于其后",
+      "签署函件存档：入职流程的「已签回」步骤现在可直接上传签署好的函件文件——上传即存档备查，并自动完成该步骤",
+      "联系方式整理：邮箱、手机、微信、主页链接、已存档简历、来源同事、当前负责人与生日现在归入一张整齐的卡片，不再散落各处",
+      "工程规范：新增书面 SOP，要求每次 GitHub 更新必须记入仓库更新日志（docs/UPDATE_LOG.md）——先查后做、做完回记",
+    ],
+  },
   {
     version: "6.03",
     date: "2026-07-26",
