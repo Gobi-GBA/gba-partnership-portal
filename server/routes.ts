@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response, NextFunction, CookieOptions } from "express";
 import type { Server } from "node:http";
 import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
 import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail } from "./mailer.js";
@@ -87,7 +87,117 @@ function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
 
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {};
+  const out: Record<string, string> = {};
+  for (const part of header.split(/;\s*/)) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1);
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function sessionCookieOptions(remember = false): CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    ...(remember ? { maxAge: 30 * 24 * 60 * 60 * 1000 } : {}),
+  };
+}
+
 const AUTO_APPROVE_DOMAIN = "@gobi.vc"; // registrations from this domain are approved instantly as viewers
+const SESSION_COOKIE = "gobi_portal_session";
+const GOOGLE_STATE_COOKIE = "gobi_google_oauth_state";
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const GOOGLE_OAUTH_SCOPES = "openid email profile";
+
+interface GoogleUserInfo {
+  sub: string;
+  email: string;
+  email_verified: boolean;
+  name?: string;
+  picture?: string;
+}
+
+function googleStateCookieOptions(): CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/auth/google",
+    maxAge: 10 * 60 * 1000,
+  };
+}
+
+function loginRedirectUrl(req: Request, google?: string): string {
+  const url = new URL("/login", appBaseUrl(req));
+  if (google) url.searchParams.set("google", google);
+  return url.toString();
+}
+
+function googleCallbackUrl(req: Request): string {
+  return new URL("/api/auth/google/callback", appBaseUrl(req)).toString();
+}
+
+async function exchangeGoogleCode(code: string, redirectUri: string): Promise<{ access_token: string }> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("Google OAuth is not configured");
+  }
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+  });
+  const resp = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const payload = await resp.json().catch(async () => ({ error: await resp.text() }));
+  if (!resp.ok) {
+    throw new Error(`Google token exchange failed: ${JSON.stringify(payload)}`);
+  }
+  if (typeof payload.access_token !== "string") {
+    throw new Error("Google token exchange did not return an access token");
+  }
+  return { access_token: payload.access_token };
+}
+
+async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUserInfo> {
+  const resp = await fetch(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const payload = await resp.json().catch(async () => ({ error: await resp.text() }));
+  if (!resp.ok) {
+    throw new Error(`Google userinfo failed: ${JSON.stringify(payload)}`);
+  }
+  return payload as GoogleUserInfo;
+}
+
+function displayNameForGoogle(email: string, name?: string | null): string {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (trimmed) return trimmed;
+  return email.split("@")[0] || email;
+}
+
+function isGobiEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(AUTO_APPROVE_DOMAIN);
+}
 
 // ---------- gobi.vc team page (profile sync) ----------
 
@@ -305,6 +415,9 @@ function extractPhotoUrl(html: string, base: string): string | null {
 
 function appBaseUrl(req: Request): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("APP_URL must be set in production");
+  }
   const origin = req.headers.origin;
   if (typeof origin === "string" && origin.startsWith("http")) return origin;
   const proto = (req.headers["x-forwarded-proto"] as string) ?? req.protocol ?? "https";
@@ -317,11 +430,11 @@ interface AuthedRequest extends Request {
 }
 
 async function resolveUser(req: AuthedRequest): Promise<User | undefined> {
-  const header = req.headers.authorization;
   let token: string | undefined;
-  if (header?.startsWith("Bearer ")) token = header.slice(7);
-  // <a href> links (attachment downloads) cannot send headers — accept ?token= too
-  if (!token && typeof req.query?.token === "string") token = req.query.token;
+  const cookies = parseCookies(req.headers.cookie);
+  token = cookies[SESSION_COOKIE];
+  const header = req.headers.authorization;
+  if (!token && header?.startsWith("Bearer ")) token = header.slice(7);
   if (!token) return undefined;
   const session = await storage.getSession(token);
   if (!session) return undefined;
@@ -421,9 +534,109 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Auto-approved colleagues are signed in immediately — no separate login step
     if (autoApproved) {
       const session = await storage.createSession(user.id);
-      return res.status(201).json({ user: safe(user), autoApproved, emailSent, token: session.token });
+      res.cookie(SESSION_COOKIE, session.token, sessionCookieOptions(false));
+      return res.status(201).json({ user: safe(user), autoApproved, emailSent, loggedIn: true });
     }
-    res.status(201).json({ user: safe(user), autoApproved, emailSent });
+    res.status(201).json({ user: safe(user), autoApproved, emailSent, loggedIn: false });
+  });
+
+  app.get("/api/auth/google/start", async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.redirect(302, loginRedirectUrl(req, "disabled"));
+    }
+
+    const state = randomBytes(16).toString("hex");
+    res.cookie(GOOGLE_STATE_COOKIE, state, googleStateCookieOptions());
+
+    const authUrl = new URL(GOOGLE_AUTH_URL);
+    authUrl.searchParams.set("client_id", clientId);
+    authUrl.searchParams.set("redirect_uri", googleCallbackUrl(req));
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", GOOGLE_OAUTH_SCOPES);
+    authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("prompt", "select_account");
+
+    return res.redirect(302, authUrl.toString());
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.redirect(302, loginRedirectUrl(req, "disabled"));
+    }
+
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const cookies = parseCookies(req.headers.cookie);
+    const expectedState = cookies[GOOGLE_STATE_COOKIE];
+    res.clearCookie(GOOGLE_STATE_COOKIE, googleStateCookieOptions());
+
+    if (!code || !state || !expectedState || state !== expectedState) {
+      return res.redirect(302, loginRedirectUrl(req, "error"));
+    }
+
+    try {
+      const redirectUri = googleCallbackUrl(req);
+      const tokenData = await exchangeGoogleCode(code, redirectUri);
+      const profile = await fetchGoogleUserInfo(tokenData.access_token);
+      const email = String(profile.email ?? "").trim().toLowerCase();
+      if (!email || profile.email_verified !== true) {
+        throw new Error("Google account email is not verified");
+      }
+
+      const autoApproved = isGobiEmail(email);
+      const displayName = displayNameForGoogle(email, profile.name);
+      let user = await storage.getUserByEmail(email);
+      let sendRegistrationMail = false;
+
+      if (!user) {
+        user = await storage.createUser({
+          name: displayName,
+          email,
+          passwordHash: hashPassword(randomBytes(32).toString("hex")),
+          role: autoApproved ? "viewer" : "staff",
+          status: autoApproved ? "approved" : "pending",
+        });
+        if (profile.picture) {
+          const updated = await storage.updateUser(user.id, { avatarUrl: profile.picture });
+          if (updated) user = updated;
+        }
+        sendRegistrationMail = true;
+      } else {
+        const updates: Partial<Pick<User, "name" | "avatarUrl" | "status">> = {};
+        if (!user.name?.trim()) updates.name = displayName;
+        if (!user.avatarUrl && profile.picture) updates.avatarUrl = profile.picture;
+        if (autoApproved && user.status !== "approved") {
+          updates.status = "approved";
+          sendRegistrationMail = true;
+        }
+        if (Object.keys(updates).length > 0) {
+          const updated = await storage.updateUser(user.id, updates);
+          if (updated) user = updated;
+        }
+      }
+
+      if (sendRegistrationMail && mailEnabled) {
+        const tpl = registrationEmail(user.name, autoApproved);
+        await sendMail(user.email, tpl.subject, tpl.html).catch((err) => {
+          console.warn("[google sso] registration email failed:", err);
+        });
+      }
+
+      if (user.status !== "approved") {
+        return res.redirect(302, loginRedirectUrl(req, user.status === "rejected" ? "rejected" : "pending"));
+      }
+
+      const session = await storage.createSession(user.id);
+      res.cookie(SESSION_COOKIE, session.token, sessionCookieOptions(false));
+      return res.redirect(302, new URL("/", appBaseUrl(req)).toString());
+    } catch (err) {
+      console.error("[google sso] sign-in failed:", err);
+      return res.redirect(302, loginRedirectUrl(req, "error"));
+    }
   });
 
   // ---------- Password reset ----------
@@ -490,7 +703,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, password, remember } = req.body ?? {};
     if (typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({ message: "Email and password required" });
     }
@@ -505,7 +718,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ message: "account_rejected" });
     }
     const session = await storage.createSession(user.id);
-    res.json({ token: session.token, user: safe(user) });
+    res.cookie(SESSION_COOKIE, session.token, sessionCookieOptions(Boolean(remember)));
+    res.json({ user: safe(user) });
   });
 
   // v5.12 — change own password. Requires the current password, except when an
@@ -536,8 +750,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/auth/logout", async (req, res) => {
+    const cookies = parseCookies(req.headers.cookie);
     const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ")) await storage.deleteSession(header.slice(7));
+    const token = cookies[SESSION_COOKIE] ?? (header?.startsWith("Bearer ") ? header.slice(7) : undefined);
+    if (token) await storage.deleteSession(token);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions(false));
     res.json({ ok: true });
   });
 
@@ -766,7 +983,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.listAttachmentMeta(Number(req.params.id)));
   });
 
-  // Signed-in users: download/view a file (?token= supported for <a> links)
+  // Signed-in users: download/view a file
   app.get("/api/attachments/:id", requireAuth(), async (req, res) => {
     const att = await storage.getAttachment(Number(req.params.id));
     if (!att) return res.status(404).json({ message: "Not found" });
@@ -820,7 +1037,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send(buf);
   };
 
-  // Thumbnail — fast path for carousels/lists (?token= supported for <img> tags)
+  // Thumbnail — fast path for carousels/lists
   app.get("/api/assets/:id/thumb", requireAuth(), async (req, res) => {
     const asset = await storage.getPhotoAsset(Number(req.params.id));
     if (!asset) return res.status(404).json({ message: "Not found" });

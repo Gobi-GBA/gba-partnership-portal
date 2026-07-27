@@ -2,18 +2,6 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 export const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
-// Auth token kept in memory (cookies and browser storage are blocked in the sandboxed iframe)
-let authToken: string | null = null;
-export function getAuthToken() {
-  return authToken;
-}
-export function setAuthToken(token: string | null) {
-  authToken = token;
-}
-function authHeaders(): Record<string, string> {
-  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
-}
-
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -30,8 +18,8 @@ export async function apiRequest(
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
-      ...authHeaders(),
     },
+    credentials: "include",
     body: data ? JSON.stringify(data) : undefined,
   });
 
@@ -46,7 +34,7 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const res = await fetch(`${API_BASE}${queryKey.join("/")}`, {
-      headers: authHeaders(),
+      credentials: "include",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
