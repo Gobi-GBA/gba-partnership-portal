@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STAFF, logoFor, initialsFor, picsOf, levelOfStage, isNew } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE, getAuthToken } from "@/lib/queryClient";
+import { API_BASE } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
@@ -1130,7 +1130,7 @@ export function PartnershipDetailDialog({
               {attachments.map((a) => (
                 <a
                   key={a.id}
-                  href={`${API_BASE}/api/attachments/${a.id}${getAuthToken() ? `?token=${encodeURIComponent(getAuthToken()!)}` : ""}`}
+                  href={`${API_BASE}/api/attachments/${a.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-[hsl(var(--aqua))]/60 transition-colors"

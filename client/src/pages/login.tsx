@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLang, type DictKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Layout, BrandMark } from "@/components/shared";
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { SECRET_QUESTIONS } from "@/lib/constants";
 import { Loader2, ArrowLeft, Mail, ShieldQuestion } from "lucide-react";
+import { useLocation } from "wouter";
 
 type ForgotStep = "email" | "sent" | "questions" | "done";
 
@@ -20,6 +21,7 @@ export default function Login() {
   const { t } = useLang();
   const { login, register, updateUser } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -43,6 +45,25 @@ export default function Login() {
   const [fA2, setFA2] = useState("");
   const [fPassword, setFPassword] = useState("");
   const [fConfirm, setFConfirm] = useState("");
+
+  useEffect(() => {
+    const google = new URLSearchParams(window.location.search).get("google");
+    if (!google) return;
+    if (google === "pending") {
+      toast({ title: t("googleSignInPending") });
+    } else if (google === "rejected") {
+      toast({ title: t("accountRejected"), variant: "destructive" });
+    } else {
+      toast({ title: t("googleSignInError"), variant: "destructive" });
+    }
+    navigate("/login", { replace: true });
+  }, [navigate, t, toast]);
+
+  const handleGoogleSignIn = () => {
+    setBusy(true);
+    requestWarp();
+    window.location.assign("/api/auth/google/start");
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -347,66 +368,21 @@ export default function Login() {
                 </TabsContent>
 
                 <TabsContent value="register">
-                  <form onSubmit={handleRegister} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reg-name">{t("name")}</Label>
-                      <Input
-                        id="reg-name" required value={regName}
-                        onChange={(e) => setRegName(e.target.value)}
-                        data-testid="input-register-name"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reg-email">{t("email")}</Label>
-                      <Input
-                        id="reg-email" type="email" required value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
-                        data-testid="input-register-email"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reg-password">{t("password")}</Label>
-                      <Input
-                        id="reg-password" type="password" required minLength={6} value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        data-testid="input-register-password"
-                      />
-                    </div>
-
-                    <div className="rounded-md border border-border p-3 space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        {t("secretQuestionsTitle")}
-                      </p>
-                      <div className="space-y-1.5">
-                        <Label>{t("secretQuestion1")}</Label>
-                        {questionSelect(regQ1, setRegQ1, regQ2, "select-secret-q1")}
-                        <Input
-                          required placeholder={t("secretAnswer")} value={regA1}
-                          onChange={(e) => setRegA1(e.target.value)}
-                          data-testid="input-secret-a1"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>{t("secretQuestion2")}</Label>
-                        {questionSelect(regQ2, setRegQ2, regQ1, "select-secret-q2")}
-                        <Input
-                          required placeholder={t("secretAnswer")} value={regA2}
-                          onChange={(e) => setRegA2(e.target.value)}
-                          data-testid="input-secret-a2"
-                        />
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">{t("pendingApproval")}</p>
+                  <div className="space-y-4">
                     <Button
-                      type="submit" className="w-full"
-                      disabled={busy || !regQ1 || !regQ2}
-                      data-testid="button-submit-register"
+                      type="button"
+                      className="w-full bg-white text-black border border-input hover:bg-slate-50"
+                      disabled={busy}
+                      onClick={handleGoogleSignIn}
+                      data-testid="button-google-sign-in"
                     >
                       {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                      {t("createAccount")}
+                      {t("googleSignIn")}
                     </Button>
-                  </form>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {t("googleSignInHint")}
+                    </p>
+                  </div>
                 </TabsContent>
               </Tabs>
             )}

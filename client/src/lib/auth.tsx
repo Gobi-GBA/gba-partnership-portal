@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { apiRequest, setAuthToken, queryClient } from "./queryClient";
-import { safeGet, safeSet, safeRemove, TOKEN_KEY } from "./storage";
+import { apiRequest, queryClient } from "./queryClient";
 import type { SafeUser } from "@shared/schema";
 
 interface AuthContextValue {
@@ -36,13 +35,10 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SafeUser | null>(null);
-  const [restoring, setRestoring] = useState(() => Boolean(safeGet(TOKEN_KEY)));
+  const [restoring, setRestoring] = useState(true);
 
-  // Remember me: restore the saved session on app start.
+  // Restore the cookie-backed session on app start.
   useEffect(() => {
-    const saved = safeGet(TOKEN_KEY);
-    if (!saved) return;
-    setAuthToken(saved);
     apiRequest("GET", "/api/auth/me")
       .then(async (res) => {
         const data = await res.json();
@@ -50,19 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         prefetchHotData();
       })
       .catch(() => {
-        setAuthToken(null);
-        safeRemove(TOKEN_KEY);
+        setUser(null);
       })
       .finally(() => setRestoring(false));
   }, []);
 
   const login = async (email: string, password: string, remember = false) => {
-    const res = await apiRequest("POST", "/api/auth/login", { email, password });
+    const res = await apiRequest("POST", "/api/auth/login", { email, password, remember });
     const data = await res.json();
-    setAuthToken(data.token);
     setUser(data.user);
-    if (remember) safeSet(TOKEN_KEY, data.token);
-    else safeRemove(TOKEN_KEY);
     queryClient.invalidateQueries();
     prefetchHotData();
   };
@@ -75,20 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     const res = await apiRequest("POST", "/api/auth/register", { name, email, password, ...secrets });
     const data = await res.json();
-    // Auto-approved colleagues receive a session token — sign them in on the spot
-    if (data.token) {
-      setAuthToken(data.token);
+    // Auto-approved colleagues are signed in on the spot via a cookie-backed session.
+    if (data.loggedIn) {
       setUser(data.user);
       queryClient.invalidateQueries();
       prefetchHotData();
     }
-    return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent), loggedIn: Boolean(data.token) };
+    return { autoApproved: Boolean(data.autoApproved), emailSent: Boolean(data.emailSent), loggedIn: Boolean(data.loggedIn) };
   };
 
   const logout = () => {
     apiRequest("POST", "/api/auth/logout").catch(() => {});
-    setAuthToken(null);
-    safeRemove(TOKEN_KEY);
     setUser(null);
     queryClient.invalidateQueries();
   };
