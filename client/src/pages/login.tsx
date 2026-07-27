@@ -369,19 +369,85 @@ export default function Login() {
 
                 <TabsContent value="register">
                   <div className="space-y-4">
-                    <Button
-                      type="button"
-                      className="w-full bg-white text-black border border-input hover:bg-slate-50"
-                      disabled={busy}
-                      onClick={handleGoogleSignIn}
-                      data-testid="button-google-sign-in"
-                    >
-                      {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                      {t("googleSignIn")}
-                    </Button>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {t("googleSignInHint")}
-                    </p>
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        className="w-full bg-white text-black border border-input hover:bg-slate-50"
+                        disabled={busy}
+                        onClick={handleGoogleSignIn}
+                        data-testid="button-google-sign-in"
+                      >
+                        {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                        {t("googleSignIn")}
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      <span>or</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+
+                    <form onSubmit={handleRegister} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reg-name">{t("name")}</Label>
+                        <Input
+                          id="reg-name" required value={regName}
+                          onChange={(e) => setRegName(e.target.value)}
+                          data-testid="input-register-name"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reg-email">{t("email")}</Label>
+                        <Input
+                          id="reg-email" type="email" required value={regEmail}
+                          onChange={(e) => setRegEmail(e.target.value)}
+                          data-testid="input-register-email"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reg-password">{t("password")}</Label>
+                        <Input
+                          id="reg-password" type="password" required minLength={6} value={regPassword}
+                          onChange={(e) => setRegPassword(e.target.value)}
+                          data-testid="input-register-password"
+                        />
+                      </div>
+
+                      <div className="rounded-md border border-border p-3 space-y-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          {t("secretQuestionsTitle")}
+                        </p>
+                        <div className="space-y-1.5">
+                          <Label>{t("secretQuestion1")}</Label>
+                          {questionSelect(regQ1, setRegQ1, regQ2, "select-secret-q1")}
+                          <Input
+                            required placeholder={t("secretAnswer")} value={regA1}
+                            onChange={(e) => setRegA1(e.target.value)}
+                            data-testid="input-secret-a1"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>{t("secretQuestion2")}</Label>
+                          {questionSelect(regQ2, setRegQ2, regQ1, "select-secret-q2")}
+                          <Input
+                            required placeholder={t("secretAnswer")} value={regA2}
+                            onChange={(e) => setRegA2(e.target.value)}
+                            data-testid="input-secret-a2"
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">{t("pendingApproval")}</p>
+                      <Button
+                        type="submit" className="w-full"
+                        disabled={busy || !regQ1 || !regQ2}
+                        data-testid="button-submit-register"
+                      >
+                        {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                        {t("createAccount")}
+                      </Button>
+                    </form>
                   </div>
                 </TabsContent>
               </Tabs>

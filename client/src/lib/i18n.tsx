@@ -279,13 +279,9 @@ const dict = {
   name: { en: "Full name", cn: "姓名" },
   signIn: { en: "Sign in", cn: "登录" },
   createAccount: { en: "Create account", cn: "注册账号" },
-  registerTab: { en: "Google sign-in", cn: "Google 登录" },
+  registerTab: { en: "Register", cn: "注册" },
   loginTab: { en: "Sign in", cn: "登录" },
   googleSignIn: { en: "Continue with Google", cn: "使用 Google 继续" },
-  googleSignInHint: {
-    en: "@gobi.vc accounts are approved automatically. Other emails are sent to admin for approval.",
-    cn: "@gobi.vc 账号会自动批准，其他邮箱会提交给管理员审批。",
-  },
   googleSignInPending: {
     en: "Your Google account was created and is awaiting admin approval.",
     cn: "您的 Google 账号已创建，正在等待管理员审批。",
