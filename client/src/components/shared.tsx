@@ -205,7 +205,7 @@ export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }
             src={photoThumbSrc(src)}
             alt={`${alt} — ${i + 1}`}
             loading={i === 0 ? "eager" : "lazy"}
-            className="h-52 sm:h-60 w-full shrink-0 object-cover"
+            className="h-52 sm:h-60 w-full min-w-0 shrink-0 grow-0 basis-full object-cover"
             data-testid={`img-photo-${i}`}
           />
         ))}
@@ -998,7 +998,7 @@ export function PartnershipDetailDialog({
   const partnerName = (x: Partnership) => (lang === "cn" && x.nameCn ? x.nameCn : x.nameEn);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden [&>*]:min-w-0">
         <DialogHeader>
           <div className="flex items-center gap-4">
             <PartnerLogo p={p} size="lg" />
@@ -1084,7 +1084,7 @@ export function PartnershipDetailDialog({
 
           <PipelineProgress stage={p.stage as Stage} />
 
-          {desc && <p className="text-sm leading-relaxed">{desc}</p>}
+          {desc && <p className="text-sm leading-relaxed break-words">{desc}</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label={t("partnershipType")} value={p.partnershipType} />
@@ -1118,7 +1118,7 @@ export function PartnershipDetailDialog({
           {p.context && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-xs font-semibold text-muted-foreground mb-1">{t("contextLabel")}</p>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{p.context}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{p.context}</p>
             </div>
           )}
 
@@ -1165,7 +1165,7 @@ export function PartnershipDetailDialog({
           {p.notes && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-xs font-semibold text-muted-foreground mb-1">{t("notes")}</p>
-              <p className="text-sm whitespace-pre-wrap">{p.notes}</p>
+              <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{p.notes}</p>
             </div>
           )}
 
