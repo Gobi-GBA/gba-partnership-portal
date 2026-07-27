@@ -1,25 +1,19 @@
 // v6.01 — uploaded photo assets: helpers shared by the carousel and the upload portal.
 // Uploaded photos are referenced as "asset:<id>" tokens inside `photos` arrays;
 // legacy "https://…" URLs keep working side by side.
-import { API_BASE, apiRequest, getAuthToken } from "./queryClient";
+import { apiRequest } from "./queryClient";
 import type { PhotoAssetMeta, PhotoOwnerType } from "@shared/schema";
 
 export const isAssetToken = (s: string) => s.startsWith("asset:");
 export const assetIdOf = (s: string) => Number(s.slice("asset:".length));
 
-const tokenQS = (extra?: string) => {
-  const t = getAuthToken();
-  const parts = [t ? `token=${encodeURIComponent(t)}` : "", extra ?? ""].filter(Boolean);
-  return parts.length ? `?${parts.join("&")}` : "";
-};
-
 /** Small, fast image for carousels/grids */
 export const photoThumbSrc = (s: string) =>
-  isAssetToken(s) ? `${API_BASE}/api/assets/${assetIdOf(s)}/thumb${tokenQS()}` : s;
+  isAssetToken(s) ? `/api/assets/${assetIdOf(s)}/thumb` : s;
 
 /** HD original as a browser download */
 export const photoHdDownloadHref = (s: string) =>
-  isAssetToken(s) ? `${API_BASE}/api/assets/${assetIdOf(s)}/hd${tokenQS("download=1")}` : s;
+  isAssetToken(s) ? `/api/assets/${assetIdOf(s)}/hd?download=1` : s;
 
 const MAX_HD_BYTES = 8 * 1024 * 1024;
 const THUMB_EDGE = 640;

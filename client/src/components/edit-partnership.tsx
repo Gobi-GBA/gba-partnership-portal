@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient, API_BASE, getAuthToken } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -192,8 +192,6 @@ export function EditPartnershipDialog({
   const { requestClose, guard } = useUnsavedGuard({ dirty, onDiscard: closeAndReset, onSave: () => save.mutate() });
 
   if (!p) return null;
-  const token = getAuthToken();
-  const tokenQS = token ? `?token=${encodeURIComponent(token)}` : "";
 
   return (
     <Dialog open={!!p} onOpenChange={(o) => { if (!o) requestClose(); }}>
@@ -328,7 +326,7 @@ export function EditPartnershipDialog({
                 <div key={a.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                   <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <a
-                    href={`${API_BASE}/api/attachments/${a.id}${tokenQS}`}
+                    href={`/api/attachments/${a.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="truncate font-medium hover:underline"

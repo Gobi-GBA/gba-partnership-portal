@@ -1,0 +1,43 @@
+Gobi Partnership Portal - env vars reminder
+
+Required for live deployment:
+- APP_URL
+  - Public base URL of the app, for example: https://your-app.vercel.app
+- DATABASE_URL
+  - Neon / Postgres connection string for production
+- GOOGLE_CLIENT_ID
+  - Google OAuth client ID
+- GOOGLE_CLIENT_SECRET
+  - Google OAuth client secret
+- ADMIN_SEED_PASSWORD
+  - Initial admin password for the seed admin account
+
+Email / notifications:
+- MAIL_SERVER
+  - Example: smtp.gmail.com
+- MAIL_PORT
+  - Example: 587
+- MAIL_USE_TLS
+  - true or false
+- MAIL_USERNAME
+  - Gmail / SMTP username
+- MAIL_PASSWORD
+  - Gmail app password or SMTP password
+- MAIL_DEFAULT_SENDER
+  - Example: noreply@gobi.vc
+
+Optional / feature-specific:
+- DEEPSEEK_API_KEY
+  - Needed for AI quick-fill features
+- SQLITE_PATH
+  - Only if you want to move the local SQLite file from the default data.db
+
+Google OAuth redirect URI to add in Google Cloud:
+- https://YOUR_DOMAIN/api/auth/google/callback
+
+Local development reminders:
+- APP_URL should match the local URL you use in the browser
+  - Example: http://127.0.0.1:5000 or http://localhost:5000
+- If you are testing OAuth locally, add the local callback URI too
+  - Example: http://127.0.0.1:5000/api/auth/google/callback
+

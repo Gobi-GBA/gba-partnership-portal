@@ -273,7 +273,7 @@ const dict = {
 
   // Auth
   loginTitle: { en: "Team sign in", cn: "团队登录" },
-  loginBody: { en: "Sign in to register and manage partnerships.", cn: "登录后可登记与管理合作伙伴。" },
+  loginBody: { en: "Continue with Google, or sign in with your password if you already have one.", cn: "可使用 Google 继续，若已有密码也可直接登录。" },
   email: { en: "Email", cn: "邮箱" },
   password: { en: "Password", cn: "密码" },
   name: { en: "Full name", cn: "姓名" },
@@ -281,6 +281,15 @@ const dict = {
   createAccount: { en: "Create account", cn: "注册账号" },
   registerTab: { en: "Register", cn: "注册" },
   loginTab: { en: "Sign in", cn: "登录" },
+  googleSignIn: { en: "Continue with Google", cn: "使用 Google 继续" },
+  googleSignInPending: {
+    en: "Your Google account was created and is awaiting admin approval.",
+    cn: "您的 Google 账号已创建，正在等待管理员审批。",
+  },
+  googleSignInError: {
+    en: "Google sign-in could not be completed. Please try again.",
+    cn: "Google 登录未完成，请重试。",
+  },
   pendingApproval: {
     en: "Your account is awaiting admin approval. You'll be able to sign in once approved.",
     cn: "您的账号正在等待管理员审批，审批通过后即可登录。",
