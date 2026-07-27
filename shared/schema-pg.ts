@@ -21,6 +21,7 @@ export const usersPg = pgTable("users", {
   resetTokenHash: text("reset_token_hash"),
   resetExpires: text("reset_expires"),
   editRequestedAt: text("edit_requested_at"),
+  mustChangePassword: integer("must_change_password").notNull().default(0),
 });
 
 export const sessionsPg = pgTable("sessions", {
@@ -82,6 +83,20 @@ export const attachmentsPg = pgTable("attachments", {
   createdAt: text("created_at").notNull(),
 });
 
+// v6.01 — uploaded photo assets (thumb + HD), grouped per owner
+export const photoAssetsPg = pgTable("photo_assets", {
+  id: serial("id").primaryKey(),
+  ownerType: text("owner_type").notNull().default("partnership"),
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  thumbData: text("thumb_data").notNull(),
+  hdData: text("hd_data").notNull(),
+  uploadedBy: integer("uploaded_by"),
+  createdAt: text("created_at").notNull(),
+});
+
 export const auditLogsPg = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   partnershipId: integer("partnership_id").notNull(),
@@ -123,7 +138,16 @@ export const advisorsPg = pgTable("advisors", {
   birthDay: integer("birth_day"),
   birthMonth: integer("birth_month"),
   birthYear: integer("birth_year"),
+  mobile: text("mobile"),
+  wechatId: text("wechat_id"),
+  originStaff: jsonb("origin_staff").$type<string[]>(),
   status: text("status").notNull().default("pending"),
+  lifecycleStatus: text("lifecycle_status").notNull().default("proposed"),
+  onboardedAt: text("onboarded_at"),
+  approvalEmailedAt: text("approval_emailed_at"),
+  approvedAt: text("approved_at"),
+  letterIssuedAt: text("letter_issued_at"),
+  signedBackAt: text("signed_back_at"),
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
 });

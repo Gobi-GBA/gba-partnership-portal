@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
-import { Layout, PartnerLogo, PicAvatars } from "@/components/shared";
+import { Layout, PartnerLogo, PicAvatars, RestrictedBadge } from "@/components/shared";
 import { EditPartnershipDialog } from "@/components/edit-partnership";
+import { ScoreboardPanel } from "@/pages/scoreboard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,24 +15,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ArrowUp, ArrowDown } from "lucide-react";
+import { Check, X, Star, Trash2, ShieldAlert, Pencil, CalendarDays, Search, UserPlus, Save, Landmark, RefreshCw, Loader2, Info, Plus, Tags, Settings2, ChevronDown, ArrowUp, ArrowDown, KeyRound, Copy } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
-import type { Partnership, SafeUser, Stage, ChangeRequest, Feedback, FeedbackStatus, SectorTag } from "@shared/schema";
-import { ROLES, FEEDBACK_STATUSES } from "@shared/schema";
+import type { Partnership, SafeUser, Stage, ChangeRequest, SectorTag } from "@shared/schema";
+import { ROLES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
-import { FeedbackStatusBadge } from "@/pages/updates";
+import { ExportCsvButtons } from "@/pages/advisors";
+import { createDirtyRegistry, UnsavedDialog, type DirtyRegistry } from "@/components/unsaved-guard";
 
 export default function Admin() {
   const { t } = useLang();
   const { user } = useAuth();
+
+  // v6.01 — unsaved-changes guard on the settings tab (COO email + templates)
+  const [tab, setTab] = useState("partnerships");
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const registry = useMemo(createDirtyRegistry, []);
+  const onTabChange = (v: string) => {
+    if (tab === "settings" && v !== "settings" && registry.dirty()) { setPendingTab(v); return; }
+    setTab(v);
+  };
 
   if (!user || user.role !== "admin") {
     return (
@@ -49,113 +60,42 @@ export default function Admin() {
   return (
     <Layout>
       <div className="mx-auto max-w-5xl px-4 py-10">
-        <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-6">{t("adminTitle")}</h1>
-        <Tabs defaultValue="partnerships">
+        <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-6">{t("adminTitle")}<RestrictedBadge tip={t("restrictedTipAdmin")} /></h1>
+        <Tabs value={tab} onValueChange={onTabChange}>
           <TabsList className="mb-6">
             <TabsTrigger value="partnerships" data-testid="tab-admin-partnerships">{t("adminPartnerships")}</TabsTrigger>
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
-            <TabsTrigger value="feedback" data-testid="tab-admin-feedback">{t("adminFeedback")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
+            <TabsTrigger value="scoreboard" data-testid="tab-admin-scoreboard">{t("sbNavLabel")}</TabsTrigger>
+            <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
           </TabsList>
           <TabsContent value="partnerships"><PartnershipAdmin /></TabsContent>
           <TabsContent value="changes"><ChangeRequestAdmin /></TabsContent>
           <TabsContent value="users"><UserAdmin /></TabsContent>
-          <TabsContent value="feedback"><FeedbackAdmin /></TabsContent>
           <TabsContent value="tags"><TagAdmin /></TabsContent>
-          <TabsContent value="settings"><SettingsAdmin /></TabsContent>
+          <TabsContent value="scoreboard"><ScoreboardPanel /></TabsContent>
+          <TabsContent value="exports">
+            <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-exports">
+              <p className="mb-3 text-sm text-muted-foreground">{t("exportsHint")}</p>
+              <ExportCsvButtons />
+            </div>
+          </TabsContent>
+          <TabsContent value="settings"><SettingsAdmin registry={registry} /></TabsContent>
         </Tabs>
+        <UnsavedDialog
+          open={pendingTab !== null}
+          onKeep={() => setPendingTab(null)}
+          onDiscard={() => { if (pendingTab) setTab(pendingTab); setPendingTab(null); }}
+          onSave={() => { registry.saveAll(); if (pendingTab) setTab(pendingTab); setPendingTab(null); }}
+        />
       </div>
     </Layout>
   );
 }
 
-// ---------------- Feedback / system requests ----------------
-function FeedbackCard({ fb }: { fb: Feedback }) {
-  const { t, lang } = useLang();
-  const { toast } = useToast();
-  const [note, setNote] = useState(fb.adminNote ?? "");
-
-  const mutation = useMutation({
-    mutationFn: async (data: { status?: FeedbackStatus; adminNote?: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/feedback/${fb.id}`, data);
-      return res.json();
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }),
-    onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
-  });
-
-  return (
-    <div className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={`card-admin-feedback-${fb.id}`}>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm">{fb.userName}</p>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {new Date(fb.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}
-          </p>
-        </div>
-        <FeedbackStatusBadge status={fb.status as FeedbackStatus} />
-        <Select value={fb.status} onValueChange={(v) => mutation.mutate({ status: v as FeedbackStatus })}>
-          <SelectTrigger className="w-36 h-8 text-xs" data-testid={`select-fb-status-${fb.id}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {FEEDBACK_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{t(`fbStatus_${s}` as any)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <p className="text-sm whitespace-pre-wrap" data-testid={`text-admin-feedback-${fb.id}`}>{fb.message}</p>
-      <div className="flex items-start gap-2">
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder={t("fbNotePlaceholder")}
-          rows={2}
-          maxLength={2000}
-          className="text-sm"
-          data-testid={`input-fb-note-${fb.id}`}
-        />
-        <Button
-          size="icon"
-          variant="outline"
-          title={t("save")}
-          disabled={mutation.isPending || note === (fb.adminNote ?? "")}
-          onClick={() => mutation.mutate({ adminNote: note.trim() ? note.trim() : null })}
-          data-testid={`button-save-fb-note-${fb.id}`}
-        >
-          <Save className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function FeedbackAdmin() {
-  const { t } = useLang();
-  const { data: list, isLoading } = useQuery<Feedback[]>({ queryKey: ["/api/feedback"] });
-
-  if (isLoading) return <p className="text-muted-foreground py-8">…</p>;
-  const items = list ?? [];
-  const open = items.filter((f) => f.status === "open" || f.status === "in_progress");
-  const closed = items.filter((f) => f.status === "solved" || f.status === "declined");
-
-  return (
-    <div className="space-y-6">
-      {open.length > 0 ? (
-        <div>
-          <h3 className="text-sm font-bold mb-3">{t("fbStatus_open")} ({open.length})</h3>
-          <div className="space-y-3">{open.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground" data-testid="text-no-feedback">{t("noRequests")}</p>
-      )}
-      {closed.length > 0 && <div className="space-y-3">{closed.map((f) => <FeedbackCard key={f.id} fb={f} />)}</div>}
-    </div>
-  );
-}
+// v6.0: system requests moved to the R&D page as a compact log (see rd-planner.tsx).
 
 // ---------------- Users ----------------
 function AddAccountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -354,6 +294,25 @@ function UserAdmin() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<SafeUser | null>(null);
   const { data: users, isLoading } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
+  // v5.12 — force password reset
+  const [resetTarget, setResetTarget] = useState<SafeUser | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const forceReset = async () => {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    try {
+      const res = await apiRequest("POST", `/api/admin/users/${resetTarget.id}/reset-password`);
+      const data: { tempPassword: string } = await res.json();
+      setTempPassword(data.tempPassword);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    } catch {
+      toast({ title: "Failed / 失败", variant: "destructive" });
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   // Local draft of rights per user id. Checkboxes update the draft instantly
   // (color changes right away); the admin then commits all changes in one PATCH.
@@ -513,6 +472,17 @@ function UserAdmin() {
       >
         <Pencil className="h-4 w-4" />
       </Button>
+      {u.id !== me?.id && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => { setTempPassword(null); setResetTarget(u); }}
+          title={t("pwResetAction")}
+          data-testid={`button-reset-pwd-${u.id}`}
+        >
+          <KeyRound className="h-4 w-4" />
+        </Button>
+      )}
       {u.status === "pending" && (
         <>
           <Button size="sm" onClick={() => mutation.mutate({ id: u.id, status: "approved" })} className="bg-emerald-600 text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md" data-testid={`button-approve-user-${u.id}`}>
@@ -577,6 +547,41 @@ function UserAdmin() {
       </div>
       <AddAccountDialog open={showAdd} onClose={() => setShowAdd(false)} />
       <EditAccountDialog u={editing} onClose={() => setEditing(null)} />
+      {/* v5.12 — force password reset: confirm, then show the one-time temp password */}
+      <Dialog open={resetTarget !== null} onOpenChange={(o) => { if (!o) { setResetTarget(null); setTempPassword(null); } }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-reset-password">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <KeyRound className="h-4 w-4" /> {t("pwResetAction")}
+            </DialogTitle>
+            <DialogDescription>{resetTarget?.name} · {resetTarget?.email}</DialogDescription>
+          </DialogHeader>
+          {tempPassword ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("pwResetDone")}</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md border border-border bg-secondary px-3 py-2 font-mono text-sm" data-testid="text-temp-password">{tempPassword}</code>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(tempPassword).then(() => toast({ title: t("pwCopied") })); }} data-testid="button-copy-temp-password">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("pwResetOnce")}</p>
+              <Button className="w-full" variant="outline" onClick={() => { setResetTarget(null); setTempPassword(null); }} data-testid="button-close-reset-dialog">{t("close")}</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("pwResetConfirm")}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setResetTarget(null)} data-testid="button-cancel-reset">{t("cancel")}</Button>
+                <Button className="flex-1 bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" onClick={forceReset} disabled={resetBusy} data-testid="button-confirm-reset">
+                  {resetBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t("pwResetAction")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1052,12 +1057,149 @@ function TagAdmin() {
   );
 }
 
+// ---------------- Templates (v5.11) ----------------
+// Admin editor for the outreach email templates and the invitation letter
+// text. Values equal to the built-in default are stored as "no override"
+// server-side, so unedited templates keep receiving default improvements.
+type TemplateFields = {
+  outreachOnboardingSubject: string;
+  outreachOnboardingBody: string;
+  outreachUpdateSubject: string;
+  outreachUpdateBody: string;
+  letterBody: string;
+  letterAck: string;
+};
+
+function TemplatesAdmin({ registry }: { registry?: DirtyRegistry }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [fields, setFields] = useState<TemplateFields | null>(null);
+
+  const { data, isLoading } = useQuery<{ current: TemplateFields; defaults: TemplateFields }>({
+    queryKey: ["/api/admin/templates"],
+  });
+  if (data && fields === null) setFields(data.current);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/admin/templates", fields);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/templates"] });
+      toast({ description: t("settingsSaved") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  // v6.01 — register with the tab-switch guard
+  registry?.register("templates", {
+    isDirty: () => !!fields && !!data && JSON.stringify(fields) !== JSON.stringify(data.current),
+    save: () => save.mutate(),
+  });
+  useEffect(() => () => registry?.unregister("templates"), [registry]);
+
+  if (isLoading || !fields || !data) {
+    return <div className="py-10 text-center text-sm text-muted-foreground">…</div>;
+  }
+
+  const set = (k: keyof TemplateFields) => (v: string) => setFields((f) => (f ? { ...f, [k]: v } : f));
+  const isDefault = (keys: (keyof TemplateFields)[]) => keys.every((k) => fields[k] === data.defaults[k]);
+  const resetSection = (keys: (keyof TemplateFields)[]) =>
+    setFields((f) => (f ? { ...f, ...Object.fromEntries(keys.map((k) => [k, data.defaults[k]])) } : f));
+
+  // Called as a plain function (not JSX component) so React keeps the child
+  // tree identity across renders — an inline component type would remount the
+  // textareas on every keystroke and drop focus.
+  const Section = ({ title, hint, keys, children, testid }: { title: string; hint: string; keys: (keyof TemplateFields)[]; children: JSX.Element[]; testid: string }) => (
+    <div className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={testid}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        </div>
+        <Button type="button" size="sm" variant="outline" disabled={isDefault(keys)} onClick={() => resetSection(keys)} data-testid={`button-reset-${testid}`}>
+          <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> {t("tplReset")}
+        </Button>
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="max-w-3xl space-y-4" data-testid="admin-templates">
+      <div className="flex items-start gap-2">
+        <Settings2 className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
+        <p className="text-sm text-muted-foreground">{t("tplHint")}</p>
+      </div>
+
+      {Section({
+        title: t("tplOnboardingEmail"),
+        hint: t("tplEmailPlaceholders"),
+        keys: ["outreachOnboardingSubject", "outreachOnboardingBody"],
+        testid: "section-tpl-onboarding",
+        children: [
+          <div key="s" className="space-y-1.5">
+            <Label>{t("tplSubject")}</Label>
+            <Input value={fields.outreachOnboardingSubject} onChange={(e) => set("outreachOnboardingSubject")(e.target.value)} data-testid="input-tpl-onboarding-subject" />
+          </div>,
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplBody")}</Label>
+            <Textarea rows={12} className="font-mono text-xs leading-relaxed" value={fields.outreachOnboardingBody} onChange={(e) => set("outreachOnboardingBody")(e.target.value)} data-testid="textarea-tpl-onboarding-body" />
+          </div>,
+        ],
+      })}
+
+      {Section({
+        title: t("tplUpdateEmail"),
+        hint: t("tplEmailPlaceholders"),
+        keys: ["outreachUpdateSubject", "outreachUpdateBody"],
+        testid: "section-tpl-update",
+        children: [
+          <div key="s" className="space-y-1.5">
+            <Label>{t("tplSubject")}</Label>
+            <Input value={fields.outreachUpdateSubject} onChange={(e) => set("outreachUpdateSubject")(e.target.value)} data-testid="input-tpl-update-subject" />
+          </div>,
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplBody")}</Label>
+            <Textarea rows={8} className="font-mono text-xs leading-relaxed" value={fields.outreachUpdateBody} onChange={(e) => set("outreachUpdateBody")(e.target.value)} data-testid="textarea-tpl-update-body" />
+          </div>,
+        ],
+      })}
+
+      {Section({
+        title: t("tplLetter"),
+        hint: t("tplLetterPlaceholders"),
+        keys: ["letterBody", "letterAck"],
+        testid: "section-tpl-letter",
+        children: [
+          <div key="b" className="space-y-1.5">
+            <Label>{t("tplLetterBody")}</Label>
+            <Textarea rows={14} className="font-mono text-xs leading-relaxed" value={fields.letterBody} onChange={(e) => set("letterBody")(e.target.value)} data-testid="textarea-tpl-letter-body" />
+          </div>,
+          <div key="a" className="space-y-1.5">
+            <Label>{t("tplLetterAck")}</Label>
+            <Textarea rows={8} className="font-mono text-xs leading-relaxed" value={fields.letterAck} onChange={(e) => set("letterAck")(e.target.value)} data-testid="textarea-tpl-letter-ack" />
+          </div>,
+        ],
+      })}
+
+      <div className="flex justify-end">
+        <Button onClick={() => save.mutate()} disabled={save.isPending} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-save-templates">
+          <Save className="h-4 w-4 mr-1.5" /> {save.isPending ? "…" : t("save")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------- Settings (v5.5) ----------------
-function SettingsAdmin() {
+function SettingsAdmin({ registry }: { registry?: DirtyRegistry }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [cooEmail, setCooEmail] = useState("");
   const [seeded, setSeeded] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false); // v6.0: templates folded into settings
 
   const { data: settings } = useQuery<{ cooEmail: string }>({ queryKey: ["/api/settings"] });
   if (settings && !seeded) {
@@ -1077,8 +1219,15 @@ function SettingsAdmin() {
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
+  // v6.01 — register with the tab-switch guard
+  registry?.register("settings", {
+    isDirty: () => seeded && !!settings && cooEmail.trim() !== (settings.cooEmail ?? ""),
+    save: () => save.mutate(),
+  });
+  useEffect(() => () => registry?.unregister("settings"), [registry]);
+
   return (
-    <div className="max-w-lg space-y-4" data-testid="admin-settings">
+    <div className="max-w-3xl space-y-4" data-testid="admin-settings">
       <div className="flex items-start gap-2">
         <Settings2 className="h-4 w-4 mt-0.5 text-[hsl(var(--gold))]" />
         <p className="text-sm text-muted-foreground">{t("settingsCooEmailHint")}</p>
@@ -1104,6 +1253,23 @@ function SettingsAdmin() {
             <Save className="h-4 w-4 mr-1.5" /> {save.isPending ? "…" : t("save")}
           </Button>
         </div>
+      </div>
+      {/* v6.0: letter/email templates live inside settings now */}
+      <div className="rounded-lg border border-card-border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowTemplates((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3"
+          data-testid="button-toggle-templates"
+        >
+          <span className="text-sm font-semibold">{t("tabTemplates")}</span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplates ? "rotate-180" : ""}`} />
+        </button>
+        {showTemplates && (
+          <div className="border-t border-border px-4 py-4">
+            <TemplatesAdmin registry={registry} />
+          </div>
+        )}
       </div>
     </div>
   );

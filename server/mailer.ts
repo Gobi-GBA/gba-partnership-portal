@@ -30,10 +30,13 @@ const transporter = mailEnabled
   : null;
 
 const BRAND = "Gobi Partnership Portal · 合作伙伴门户";
+// v5.9 — Gobi house style for all portal email: Calibri-first font stack.
+export const GOBI_FONT = "Calibri,'Segoe UI','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif";
+const GOBI_ADDRESS = "4209-11, Hopewell Centre, 183 Queen's Road East, Wanchai, Hong Kong";
 
 function wrap(bodyHtml: string): string {
   return `
-  <div style="font-family:'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0C2340;">
+  <div style="font-family:${GOBI_FONT};max-width:560px;margin:0 auto;padding:24px;color:#0C2340;">
     <div style="border-bottom:3px solid #D4A843;padding-bottom:12px;margin-bottom:20px;">
       <strong style="font-size:16px;">${BRAND}</strong>
     </div>
@@ -41,6 +44,32 @@ function wrap(bodyHtml: string): string {
     <div style="border-top:1px solid #e2e8f0;margin-top:28px;padding-top:12px;font-size:12px;color:#64748b;">
       Internal partnership registry · Gobi Partners<br/>
       This is an automated message — please do not reply. 此邮件为系统自动发送，请勿回复。
+    </div>
+  </div>`;
+}
+
+// v5.9 — Gobi-branded wrapper for person-to-person outreach email.
+// Navy masthead with the Gobi wordmark, gold rule, Calibri body, and the
+// official footer — but no automated/do-not-reply chrome.
+export function outreachHtml(bodyText: string): string {
+  const escaped = bodyText
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const paragraphs = escaped
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 14px;line-height:1.55;">${p.replace(/\n/g, "<br/>")}</p>`) 
+    .join("");
+  return `
+  <div style="font-family:${GOBI_FONT};max-width:600px;margin:0 auto;color:#1a2433;">
+    <div style="background:#0C2340;padding:18px 28px;">
+      <span style="color:#ffffff;font-size:18px;font-weight:bold;letter-spacing:3px;">GOBI PARTNERS</span>
+    </div>
+    <div style="height:3px;background:#D4A843;"></div>
+    <div style="padding:26px 28px;font-size:15px;">
+      ${paragraphs}
+    </div>
+    <div style="border-top:1px solid #e2e8f0;padding:14px 28px 22px;font-size:12px;color:#64748b;">
+      Gobi Partners · ${GOBI_ADDRESS}<br/>
+      <a href="https://www.gobi.vc" style="color:#0C2340;">www.gobi.vc</a>
     </div>
   </div>`;
 }
@@ -58,6 +87,31 @@ export async function sendMail(to: string, subject: string, bodyHtml: string): P
     return true;
   } catch (err) {
     console.error("[mailer] send failed:", err);
+    return false;
+  }
+}
+
+// v5.8 — Raw outreach send (CRM). No automated/do-not-reply chrome: this is a
+// person-to-person email (e.g. Fred → advisor). Body may be plain text or HTML.
+export async function sendOutreach(
+  to: string,
+  subject: string,
+  body: string,
+  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean },
+): Promise<boolean> {
+  if (!transporter) return false;
+  const fromName = opts?.fromName ?? "Gobi Partners";
+  try {
+    await transporter.sendMail({
+      from: MAIL_USERNAME ? `"${fromName}" <${MAIL_USERNAME}>` : MAIL_DEFAULT_SENDER,
+      replyTo: opts?.replyTo ?? MAIL_DEFAULT_SENDER,
+      to,
+      subject,
+      ...(opts?.isHtml ? { html: body } : { text: body }),
+    });
+    return true;
+  } catch (err) {
+    console.error("[mailer] outreach send failed:", err);
     return false;
   }
 }

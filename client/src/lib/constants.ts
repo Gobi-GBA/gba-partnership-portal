@@ -7,27 +7,24 @@ export { STAGES, CATEGORIES, REGIONS, GOBI_STAFF };
 export const STAGE_ORDER: Record<Stage, number> = {
   s1_new: 0,
   s2_engaged: 1,
-  s3_agreement: 2,
-  s4_progressive: 3,
-  s5_strategic: 4,
+  s3_progress: 2,
+  s4_strategic: 3,
 };
 
-// Numeric prefix shown on badges: 01-05
+// Numeric prefix shown on badges: 01-04
 export const STAGE_NUM: Record<Stage, string> = {
   s1_new: "01",
   s2_engaged: "02",
-  s3_agreement: "03",
-  s4_progressive: "04",
-  s5_strategic: "05",
+  s3_progress: "03",
+  s4_strategic: "04",
 };
 
 // Badge styling per stage (Tailwind classes, light+dark)
 export const STAGE_STYLES: Record<Stage, string> = {
   s1_new: "bg-muted text-muted-foreground border-transparent",
   s2_engaged: "bg-[hsl(193,45%,88%)] text-[hsl(214,68%,20%)] dark:bg-[hsl(214,55%,20%)] dark:text-[hsl(193,52%,70%)] border-transparent",
-  s3_agreement: "bg-[hsl(193,52%,43%)] text-white dark:bg-[hsl(193,52%,35%)] border-transparent",
-  s4_progressive: "bg-[hsl(214,68%,25%)] text-white dark:bg-[hsl(214,60%,35%)] border-transparent",
-  s5_strategic: "bg-[hsl(42,63%,50%)] text-[hsl(214,68%,12%)] dark:bg-[hsl(42,63%,55%)] border-transparent",
+  s3_progress: "bg-[hsl(214,68%,25%)] text-white dark:bg-[hsl(214,60%,35%)] border-transparent",
+  s4_strategic: "bg-[hsl(42,63%,50%)] text-[hsl(214,68%,12%)] dark:bg-[hsl(42,63%,55%)] border-transparent",
 };
 
 // Region ordering — Gobi office regions first

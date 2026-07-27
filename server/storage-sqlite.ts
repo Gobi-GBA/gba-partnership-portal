@@ -1,8 +1,8 @@
-import { users, sessions, partnerships, attachments, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { users, sessions, partnerships, attachments, photoAssets, changeRequests, auditLogs, feedback, rdItems, advisors, advisorRoles, sectorTags, advisorTags, partnershipTags, advisorActivities } from "../shared/schema.js";
+import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS attachments (
   mime TEXT NOT NULL,
   size INTEGER NOT NULL,
   data TEXT NOT NULL,
+  uploaded_by INTEGER,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS photo_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_type TEXT NOT NULL DEFAULT 'partnership',
+  owner_id INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  thumb_data TEXT NOT NULL,
+  hd_data TEXT NOT NULL,
   uploaded_by INTEGER,
   created_at TEXT NOT NULL
 );
@@ -113,6 +125,7 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "secret_a2_hash", "secret_a2_hash TEXT");
   ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
+  ensureColumn("users", "must_change_password", "must_change_password INTEGER NOT NULL DEFAULT 0");
   ensureColumn("users", "edit_requested_at", "edit_requested_at TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
   ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");
@@ -153,6 +166,19 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "birth_day", "birth_day INTEGER");
   ensureColumn("advisors", "birth_month", "birth_month INTEGER");
   ensureColumn("advisors", "birth_year", "birth_year INTEGER");
+  // ---- v5.8 advisor lifecycle + onboarding workflow ----
+  ensureColumn("advisors", "lifecycle_status", "lifecycle_status TEXT NOT NULL DEFAULT 'proposed'");
+  ensureColumn("advisors", "onboarded_at", "onboarded_at TEXT");
+  ensureColumn("advisors", "approval_emailed_at", "approval_emailed_at TEXT");
+  ensureColumn("advisors", "approved_at", "approved_at TEXT");
+  ensureColumn("advisors", "letter_issued_at", "letter_issued_at TEXT");
+  ensureColumn("advisors", "signed_back_at", "signed_back_at TEXT");
+  try { sqlite.exec(`UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`); } catch {}
+  // ---- v5.9 advisor CRM basics + origin staff ----
+  ensureColumn("advisors", "mobile", "mobile TEXT");
+  ensureColumn("advisors", "wechat_id", "wechat_id TEXT");
+  ensureColumn("advisors", "origin_staff", "origin_staff TEXT");
+  try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}
   sqlite.exec(`CREATE TABLE IF NOT EXISTS sector_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name_en TEXT NOT NULL,
@@ -208,17 +234,26 @@ export function createSqliteStorage(): IStorage {
   }
   // Migrate legacy single PIC into multi-PIC list
   sqlite.exec(`UPDATE partnerships SET pic_names = json_array(pic_name) WHERE pic_names IS NULL AND pic_name IS NOT NULL AND pic_name != ''`);
-  // Migrate old stage values → 01-05 pipeline
+  // Migrate old stage values → 4-level pipeline (v6.03)
+  // Legacy words → old 5-level keys → new 4-level keys, in one pass:
+  // s3_agreement (MOU signed) and s5_strategic both become s4_strategic;
+  // s4_progressive becomes s3_progress. Collab level is re-derived from stage.
   sqlite.exec(`
 UPDATE partnerships SET stage = CASE stage
   WHEN 'target' THEN 's1_new'
   WHEN 'contacted' THEN 's2_engaged'
   WHEN 'met' THEN 's2_engaged'
-  WHEN 'mou' THEN 's3_agreement'
-  WHEN 'agreement' THEN 's3_agreement'
-  WHEN 'active' THEN 's4_progressive'
+  WHEN 'mou' THEN 's4_strategic'
+  WHEN 'agreement' THEN 's4_strategic'
+  WHEN 'active' THEN 's3_progress'
+  WHEN 's3_agreement' THEN 's4_strategic'
+  WHEN 's4_progressive' THEN 's3_progress'
+  WHEN 's5_strategic' THEN 's4_strategic'
   ELSE stage END
-WHERE stage IN ('target','contacted','met','mou','agreement','active');
+WHERE stage IN ('target','contacted','met','mou','agreement','active','s3_agreement','s4_progressive','s5_strategic');
+UPDATE partnerships SET collab_level = CASE stage
+  WHEN 's1_new' THEN 1 WHEN 's2_engaged' THEN 2 WHEN 's3_progress' THEN 3 WHEN 's4_strategic' THEN 4
+  ELSE collab_level END;
 UPDATE users SET role = 'staff' WHERE role = 'member';
 `);
 
@@ -261,7 +296,7 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
           User,
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-          | "resetTokenHash" | "resetExpires"
+          | "resetTokenHash" | "resetExpires" | "mustChangePassword"
         >
       >
     ) {
@@ -344,6 +379,35 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     }
     async deleteAttachment(id: number) {
       db.delete(attachments).where(eq(attachments.id, id)).run();
+    }
+
+    // v6.01 — photo assets
+    async listPhotoAssetMeta(ownerType: string, ownerId: number) {
+      return db
+        .select({
+          id: photoAssets.id,
+          ownerType: photoAssets.ownerType,
+          ownerId: photoAssets.ownerId,
+          filename: photoAssets.filename,
+          mime: photoAssets.mime,
+          size: photoAssets.size,
+          uploadedBy: photoAssets.uploadedBy,
+          createdAt: photoAssets.createdAt,
+        })
+        .from(photoAssets)
+        .where(and(eq(photoAssets.ownerType, ownerType), eq(photoAssets.ownerId, ownerId)))
+        .all();
+    }
+    async getPhotoAsset(id: number) {
+      return db.select().from(photoAssets).where(eq(photoAssets.id, id)).get();
+    }
+    async createPhotoAsset(data: Omit<PhotoAsset, "id">) {
+      const row = db.insert(photoAssets).values(data).returning().get();
+      const { thumbData: _t, hdData: _h, ...meta } = row;
+      return meta;
+    }
+    async deletePhotoAsset(id: number) {
+      db.delete(photoAssets).where(eq(photoAssets.id, id)).run();
     }
 
     async createAuditLog(data: Omit<AuditLog, "id">) {

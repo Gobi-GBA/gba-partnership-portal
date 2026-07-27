@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, LayoutGrid, Share2, CalendarRange, Download, Star, SlidersHorizontal } from "lucide-react";
-import type { Partnership, Stage } from "@shared/schema";
+import type { Partnership, Stage, AdvisorWithRoles } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, sortPartnerships, picsOf, levelOfStage, yearsOf } from "@/lib/constants";
 
 type ViewMode = "cards" | "network" | "timeline";
@@ -25,6 +25,10 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   const queryClient = useQueryClient();
   const { data: partnerships, isLoading } = useQuery<Partnership[]>({
     queryKey: ["/api/partnerships"],
+  });
+  // v6.0 — advisors extend the constellation (small gold stars tied to their org)
+  const { data: advisors } = useQuery<AdvisorWithRoles[]>({
+    queryKey: ["/api/advisors"],
   });
 
   const [search, setSearch] = useState("");
@@ -62,7 +66,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
         if (category.length > 0 && !category.includes(p.category)) return false;
         if (stage.length > 0) {
           const hit = stage.some((s) =>
-            s === "active" ? p.stage === "s4_progressive" || p.stage === "s5_strategic" : p.stage === s,
+            s === "active" ? p.stage === "s3_progress" || p.stage === "s4_strategic" : p.stage === s,
           );
           if (!hit) return false;
         }
@@ -112,8 +116,8 @@ export default function Home({ initialView = "network", initialHof = false }: { 
     const all = partnerships ?? [];
     return {
       total: all.length,
-      active: all.filter((p) => p.stage === "s4_progressive" || p.stage === "s5_strategic").length,
-      mou: all.filter((p) => p.stage === "s3_agreement").length,
+      active: all.filter((p) => p.stage === "s3_progress" || p.stage === "s4_strategic").length,
+      strategic: all.filter((p) => p.stage === "s4_strategic").length,
       universities: all.filter((p) => p.category === "university").length,
     };
   }, [partnerships]);
@@ -156,7 +160,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
               <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl">
                 <Stat value={stats.total} label={t("statPartners")} loading={isLoading} onClick={() => goDirectory()} />
                 <Stat value={stats.active} label={t("statActive")} loading={isLoading} gold onClick={() => goDirectory({ stage: "active" })} />
-                <Stat value={stats.mou} label={t("statMou")} loading={isLoading} onClick={() => goDirectory({ stage: "s3_agreement" })} />
+                <Stat value={stats.strategic} label={t("statStrategic")} loading={isLoading} onClick={() => goDirectory({ stage: "s4_strategic" })} />
                 <Stat value={stats.universities} label={t("statUniversities")} loading={isLoading} onClick={() => goDirectory({ category: "university" })} />
               </div>
 
@@ -384,7 +388,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             <div className="mb-4">
               <NetworkLegend />
             </div>
-            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} />
+            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} advisors={advisors ?? []} onSelectAdvisor={(id) => navigate(`/advisors/${id}`)} />
           </div>
         ) : view === "timeline" ? (
           timeline.dated.length === 0 ? (

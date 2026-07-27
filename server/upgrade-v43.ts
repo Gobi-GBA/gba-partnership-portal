@@ -452,7 +452,7 @@ export const V43_NEW_PARTNERS: any[] = [
     picNames: [],
     partnershipType: "Limited partner (per internal record)",
     startDate: "",
-    stage: "s3_agreement",
+    stage: "s4_strategic",
     collabLevel: 4,
     hallOfFame: 0,
     lpStatus: "lp",

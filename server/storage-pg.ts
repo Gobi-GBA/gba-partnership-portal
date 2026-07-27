@@ -2,10 +2,10 @@
 // Serverless-safe: no local filesystem, schema bootstrap + seed run once per cold start.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities } from "../shared/schema-pg.js";
-import type { User, Partnership, Attachment, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities, photoAssetsPg as photoAssets } from "../shared/schema-pg.js";
+import type { User, Partnership, Attachment, PhotoAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
 import { V43_UPGRADES, V43_NEW_PARTNERS } from "./upgrade-v43.js";
@@ -61,6 +61,18 @@ const BOOTSTRAP: string[] = [
     uploaded_by INTEGER,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS photo_assets (
+    id SERIAL PRIMARY KEY,
+    owner_type TEXT NOT NULL DEFAULT 'partnership',
+    owner_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    thumb_data TEXT NOT NULL,
+    hd_data TEXT NOT NULL,
+    uploaded_by INTEGER,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS change_requests (
     id SERIAL PRIMARY KEY,
     partnership_id INTEGER NOT NULL,
@@ -91,6 +103,7 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS photos JSONB`,
   `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS lp_status TEXT NOT NULL DEFAULT 'na'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_ir INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_ir = 1 WHERE email = 'fred@gobi.vc'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_dev INTEGER NOT NULL DEFAULT 0`,
   `UPDATE users SET is_dev = 1 WHERE email = 'fred@gobi.vc'`,
@@ -143,6 +156,20 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_day INTEGER`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_month INTEGER`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS birth_year INTEGER`,
+  // ---- v5.8 advisor lifecycle + onboarding workflow ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'proposed'`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS onboarded_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_emailed_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approved_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS letter_issued_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS signed_back_at TEXT`,
+  // Backfill: any already-approved advisor is considered onboarded
+  `UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`,
+  // ---- v5.9 advisor CRM basics + origin staff ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS mobile TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS wechat_id TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS origin_staff JSONB`,
+  `UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
     id SERIAL PRIMARY KEY,
     name_en TEXT NOT NULL,
@@ -365,7 +392,7 @@ export function createPgStorage(): IStorage {
           User,
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-          | "resetTokenHash" | "resetExpires"
+          | "resetTokenHash" | "resetExpires" | "mustChangePassword"
         >
       >
     ) {
@@ -478,6 +505,31 @@ export function createPgStorage(): IStorage {
       await db.delete(attachments).where(eq(attachments.id, id));
     }
 
+    // v6.01 — photo assets
+    async listPhotoAssetMeta(ownerType: string, ownerId: number) {
+      await init();
+      const { thumbData: _t, hdData: _h, ...metaCols } = getTableColumns(photoAssets);
+      return await db
+        .select(metaCols)
+        .from(photoAssets)
+        .where(and(eq(photoAssets.ownerType, ownerType), eq(photoAssets.ownerId, ownerId)));
+    }
+    async getPhotoAsset(id: number) {
+      await init();
+      const rows = await db.select().from(photoAssets).where(eq(photoAssets.id, id)).limit(1);
+      return rows[0] as PhotoAsset | undefined;
+    }
+    async createPhotoAsset(data: Omit<PhotoAsset, "id">) {
+      await init();
+      const rows = await db.insert(photoAssets).values(data as any).returning();
+      const { thumbData: _t, hdData: _h, ...meta } = rows[0] as PhotoAsset;
+      return meta;
+    }
+    async deletePhotoAsset(id: number) {
+      await init();
+      await db.delete(photoAssets).where(eq(photoAssets.id, id));
+    }
+
     async createAuditLog(data: Omit<AuditLog, "id">) {
       await init();
       const rows = await db.insert(auditLogs).values(data as any).returning();
@@ -533,7 +585,11 @@ export function createPgStorage(): IStorage {
 
     async listAdvisors() {
       await init();
-      return (await db.select().from(advisors)) as Advisor[];
+      // v6.0: never drag the HD portrait column (up to ~600 KB/row) over the
+      // wire for list views — the detail endpoint serves it on demand.
+      const { photoUrl: _hd, ...listCols } = getTableColumns(advisors);
+      const rows = await db.select(listCols).from(advisors);
+      return rows.map((r) => ({ ...r, photoUrl: null })) as Advisor[];
     }
     async getAdvisor(id: number) {
       await init();

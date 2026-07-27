@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { thankYou } from "@/components/thank-you";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
+import { copyText } from "@/lib/download";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -160,6 +162,7 @@ export function ActivityTimeline({ advisorId }: { advisorId: number }) {
     onSuccess: () => {
       invalidate();
       toast({ description: t("activitySaved") });
+      thankYou();
       setAdding(false);
       setEditingId(null);
       setDraft(EMPTY_ACT);
@@ -283,6 +286,8 @@ function buildApprovalEmail(a: AdvisorWithRoles, requesterName: string, lang: st
         ["主要职务", roleLine],
         ["行业标签", tagsLine],
         ["专长领域", a.domains ?? "—"],
+        ["背景简介", a.background ?? "—"],
+        ["建议合作方式与可能项目", a.engagement ?? "—"],
         ["公开展示许可", clearance],
         ["申请人", requesterName],
       ]
@@ -292,13 +297,15 @@ function buildApprovalEmail(a: AdvisorWithRoles, requesterName: string, lang: st
         ["Primary role", roleLine],
         ["Sector tags", tagsLine],
         ["Expert domains", a.domains ?? "—"],
+        ["Background", a.background ?? "—"],
+        ["Suggested engagement and potential projects", a.engagement ?? "—"],
         ["Public listing clearance", clearance],
         ["Requested by", requesterName],
       ];
 
   const intro = cn
-    ? "您好，\n\n现提请审批以下顾问任命，详情如下："
-    : "Dear COO Office,\n\nI would like to request approval for the following advisor appointment:";
+    ? "您好，\n\n现提请审批以下顾问任命。该人选的背景、专长领域与建议的合作方式如下，请审阅："
+    : "Dear COO Office,\n\nI would like to request approval for the following advisor appointment. The candidate's background, expertise and the engagement we propose are summarised below for your review:";
   const outro = cn
     ? `此申请由 Gobi Partners 合作伙伴门户生成。\n\n此致\n${requesterName}`
     : `This request was generated from the Gobi Partners Partnership Portal.\n\nBest regards,\n${requesterName}`;
@@ -341,13 +348,23 @@ export function ApprovalEmailDialog({ advisor, open, onOpenChange }: {
   const { subject, plain, html } = buildApprovalEmail(advisor, user?.name ?? "", lang, t);
   const mailtoHref = `mailto:${encodeURIComponent(cooEmail)}?cc=${encodeURIComponent(CC_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plain)}`;
 
+  // v5.8 — handing the draft to the mail client records the workflow stage so the
+  // onboarding tracker in the detail dialog stays in step with reality.
+  const recordStage = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/workflow`, { stage: "approval_emailed" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id, "activities"] });
+    },
+  });
+
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${plain}`);
-      toast({ description: t("copiedToClipboard") });
-    } catch {
-      toast({ description: "Copy failed", variant: "destructive" });
-    }
+    const ok = await copyText(`To: ${cooEmail}\nCc: ${CC_EMAIL}\nSubject: ${subject}\n\n${plain}`);
+    toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
   };
 
   return (
@@ -389,7 +406,10 @@ export function ApprovalEmailDialog({ advisor, open, onOpenChange }: {
               size="sm"
               className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
               disabled={!cooEmail}
-              onClick={() => { window.location.href = mailtoHref; }}
+              onClick={() => {
+                recordStage.mutate();
+                window.location.href = mailtoHref;
+              }}
               data-testid="button-open-mail"
             >
               <Mail className="h-3.5 w-3.5 mr-1.5" /> {t("openInMail")}
@@ -412,7 +432,17 @@ export interface ExtractedAdvisor {
   roles?: Array<{ title: string; organization?: string | null; isPrimary?: number }>;
 }
 
-export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (data: ExtractedAdvisor) => void }) {
+// Identity hints from the form being edited — the rule-based layer that locks
+// auto-sync onto the advisor the record is about (name first, then LinkedIn
+// slug and email handle).
+export interface SyncIdentity {
+  name?: string;
+  nameCn?: string;
+  linkedinUrl?: string;
+  emails?: string;
+}
+
+export function LinkedinSyncControl({ url, identity, onApply }: { url: string; identity?: SyncIdentity; onApply: (data: ExtractedAdvisor) => void }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -420,7 +450,13 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
 
   const extract = useMutation({
     mutationFn: async (body: { url?: string; text?: string }) => {
-      const res = await apiRequest("POST", "/api/ai/advisor-extract", body);
+      const res = await apiRequest("POST", "/api/ai/advisor-extract", {
+        ...body,
+        expectedName: identity?.name?.trim() || undefined,
+        expectedNameCn: identity?.nameCn?.trim() || undefined,
+        linkedinUrl: identity?.linkedinUrl?.trim() || undefined,
+        emails: identity?.emails?.trim() || undefined,
+      });
       return res.json();
     },
     onSuccess: (data: ExtractedAdvisor) => {
@@ -431,7 +467,17 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
     },
     onError: (e: any) => {
       const msg = String(e?.message ?? e);
-      if (msg.includes("fetchFailed") || msg.includes("422")) {
+      if (msg.includes("person_mismatch")) {
+        let found = "";
+        try { found = JSON.parse(msg.slice(msg.indexOf("{"))).found ?? ""; } catch {}
+        toast({
+          description: `${t("syncMismatch")}${found ? ` — ${found}` : ""}. ${t("syncMismatchHint")}`,
+          variant: "destructive",
+        });
+        setPasteOpen(false);
+      } else if (msg.includes("fetchFailed") || msg.includes("422")) {
+        // Explain the fallback — an unexplained paste box after clicking Auto-sync reads as a bug
+        toast({ description: t("syncFetchFallback") });
         setPasteOpen(true);
       } else {
         toast({ description: msg, variant: "destructive" });
@@ -445,8 +491,8 @@ export function LinkedinSyncControl({ url, onApply }: { url: string; onApply: (d
         type="button"
         size="sm"
         variant="outline"
-        disabled={!url.trim() || extract.isPending}
-        onClick={() => extract.mutate({ url: url.trim() })}
+        disabled={(!url.trim() && !identity?.linkedinUrl?.trim()) || extract.isPending}
+        onClick={() => extract.mutate({ url: url.trim() || undefined })}
         title={t("linkedinSyncHint")}
         data-testid="button-linkedin-sync"
       >

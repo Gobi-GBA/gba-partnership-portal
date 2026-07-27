@@ -27,6 +27,7 @@ export const users = sqliteTable("users", {
   resetTokenHash: text("reset_token_hash"), // sha256 of the emailed reset token
   resetExpires: text("reset_expires"), // ISO timestamp
   editRequestedAt: text("edit_requested_at"), // ISO timestamp — viewer asked an admin for edit rights
+  mustChangePassword: integer("must_change_password").notNull().default(0), // 0 | 1 — set by admin force-reset; cleared on next password change
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -58,6 +59,7 @@ export type SafeUser = Omit<
 // Profile fields a user may edit about themselves
 export const profileUpdateSchema = z.object({
   name: z.string().min(1).max(80).optional(),
+  email: z.string().trim().toLowerCase().email().max(160).optional(), // v6.01 — mandatory in the UI; feeds sync/auto-workflows
   title: z.string().max(120).nullable().optional(),
   avatarUrl: z.string().max(400_000).nullable().optional(), // allows small data URIs
 });
@@ -109,8 +111,12 @@ export const rdItemInputSchema = z.object({
 export type RdItemInput = z.infer<typeof rdItemInputSchema>;
 
 // ---------- Partnerships ----------
-// Pipeline: 01 New/Target → 02 Engaged → 03 MOU/Agreement → 04 Progressive → 05 Strategic
-export const STAGES = ["s1_new", "s2_engaged", "s3_agreement", "s4_progressive", "s5_strategic"] as const;
+// Pipeline (v6.03, 4 levels):
+// 01 New/Target — on our radar, no relationship developed yet
+// 02 Engaged — first meeting, activity or contact done
+// 03 Progress Partnership — advanced meetings, collaborations done, track record
+// 04 Strategic Partnership — MoU signed, strategic framework or deeper
+export const STAGES = ["s1_new", "s2_engaged", "s3_progress", "s4_strategic"] as const;
 
 export const CATEGORIES = [
   "university",  // 高校
@@ -197,7 +203,7 @@ export const partnerships = sqliteTable("partnerships", {
   startDate: text("start_date"), // ISO date string
   photos: text("photos", { mode: "json" }).$type<string[]>(), // gallery photo URLs (carousel)
   stage: text("stage").notNull().default("s1_new"),
-  collabLevel: integer("collab_level").notNull().default(1), // 1-5
+  collabLevel: integer("collab_level").notNull().default(1), // 1-4 (derived from stage)
   hallOfFame: integer("hall_of_fame").notNull().default(0), // 0 | 1
   isDomainKnowledgePartner: integer("is_domain_knowledge_partner").notNull().default(0), // 0 | 1 — org serves as a domain knowledge partner in the advisory network
   lpStatus: text("lp_status").notNull().default("na"), // 'na' | 'target' | 'lp' — visible to IR team only
@@ -217,7 +223,7 @@ export const insertPartnershipSchema = createInsertSchema(partnerships).omit({
   stage: z.enum(STAGES),
   category: z.enum(CATEGORIES),
   region: z.enum(REGIONS),
-  collabLevel: z.number().int().min(1).max(5),
+  collabLevel: z.number().int().min(1).max(4),
   parentId: z.number().int().nullable().optional(),
   picNames: z.array(z.string()).max(8).nullable().optional(),
   photos: z.array(z.string()).max(12).nullable().optional(),
@@ -269,10 +275,24 @@ export const advisors = sqliteTable("advisors", {
   birthDay: integer("birth_day"),   // 1-31 — CRM birthday, staff-visible only (v5.5)
   birthMonth: integer("birth_month"), // 1-12
   birthYear: integer("birth_year"),  // optional, e.g. 1968
-  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  mobile: text("mobile"),            // CRM mobile incl. country code, staff-visible only (v5.9)
+  wechatId: text("wechat_id"),       // CRM WeChat ID, staff-visible only (v5.9)
+  originStaff: text("origin_staff", { mode: "json" }).$type<string[]>(), // who sourced the advisor — permanent, survives staff departure (v5.9)
+  status: text("status").notNull().default("pending"), // approval gating: 'pending' | 'approved' | 'rejected'
+  // ---- v5.8 lifecycle + onboarding workflow ----
+  lifecycleStatus: text("lifecycle_status").notNull().default("proposed"), // 'proposed' | 'onboarded' | 'terminated'
+  onboardedAt: text("onboarded_at"),      // date the advisor reached Onboarded (scoreboard time factor)
+  // Approval workflow stage timestamps (null = not yet done)
+  approvalEmailedAt: text("approval_emailed_at"), // internal approval email sent to COO office + Fred
+  approvedAt: text("approved_at"),                // admin approved onboarding
+  letterIssuedAt: text("letter_issued_at"),       // invitation letter PDF issued
+  signedBackAt: text("signed_back_at"),           // advisor signed & returned -> done
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
 });
+
+export const ADVISOR_LIFECYCLE = ["proposed", "onboarded", "terminated"] as const;
+export type AdvisorLifecycle = (typeof ADVISOR_LIFECYCLE)[number];
 
 export type Advisor = typeof advisors.$inferSelect;
 
@@ -374,9 +394,13 @@ export const advisorInputSchema = z.object({
   cohort: z.string().max(20).nullable().optional(),
   engagement: z.string().max(4000).nullable().optional(),
   publicClearance: z.number().int().min(0).max(1).optional(), // v5.5 — default stays 0 (No)
+  lifecycleStatus: z.enum(ADVISOR_LIFECYCLE).optional(), // v5.8 lifecycle
   birthDay: z.number().int().min(1).max(31).nullable().optional(),
   birthMonth: z.number().int().min(1).max(12).nullable().optional(),
   birthYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  mobile: z.string().max(40).nullable().optional(), // v5.9 CRM — incl. country code, e.g. "+852 9123 4567"
+  wechatId: z.string().max(80).nullable().optional(), // v5.9 CRM
+  originStaff: z.array(z.string().max(60)).max(8).nullable().optional(), // v5.9 — who sourced the advisor
   tagIds: z.array(z.number().int()).max(20).optional(), // sector tag ids (v5.5)
   roles: z.array(advisorRoleInputSchema).max(12).default([]),
 });
@@ -410,6 +434,37 @@ export const attachmentInputSchema = z.object({
   data: z.string().min(1), // base64
 });
 export type AttachmentInput = z.infer<typeof attachmentInputSchema>;
+
+// ---------- v6.01 Photo assets (activity photos: uploaded files, server-stored, grouped per owner) ----------
+// thumbData feeds carousels/lists (fast); hdData is the original for HD download.
+export const PHOTO_OWNER_TYPES = ["partnership", "advisor"] as const;
+export type PhotoOwnerType = (typeof PHOTO_OWNER_TYPES)[number];
+
+export const photoAssets = sqliteTable("photo_assets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ownerType: text("owner_type").notNull().default("partnership"), // PHOTO_OWNER_TYPES
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(), // HD size in bytes
+  thumbData: text("thumb_data").notNull(), // base64 JPEG, client-resized to ≤640px edge
+  hdData: text("hd_data").notNull(), // base64 original
+  uploadedBy: integer("uploaded_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type PhotoAsset = typeof photoAssets.$inferSelect;
+export type PhotoAssetMeta = Omit<PhotoAsset, "thumbData" | "hdData">;
+
+export const photoAssetInputSchema = z.object({
+  ownerType: z.enum(PHOTO_OWNER_TYPES),
+  ownerId: z.number().int().positive(),
+  filename: z.string().min(1).max(200),
+  mime: z.string().min(1).max(80),
+  thumbData: z.string().min(1).max(500_000), // ≤ ~360KB binary
+  hdData: z.string().min(1).max(11_000_000), // ≤ ~8MB binary
+});
+export type PhotoAssetInput = z.infer<typeof photoAssetInputSchema>;
 
 // ---------- Change requests (staff propose edits; admin approves) ----------
 export const changeRequests = sqliteTable("change_requests", {

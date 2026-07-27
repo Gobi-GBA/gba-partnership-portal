@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Layout } from "@/components/shared";
+import { Layout, RestrictedBadge } from "@/components/shared";
+import { useAuth } from "@/lib/auth";
+import { FeedbackStatusBadge } from "@/pages/updates";
 import { UserAvatar } from "@/components/user-panels";
 import { useLang } from "@/lib/i18n";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -12,8 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { RD_KINDS, RD_STATUSES, GOBI_STAFF, type RdItem, type RdKind, type RdStatus } from "@shared/schema";
-import { FlaskConical, Plus, Pencil, Trash2, X, CalendarRange } from "lucide-react";
+import { RD_KINDS, RD_STATUSES, FEEDBACK_STATUSES, GOBI_STAFF, type RdItem, type RdKind, type RdStatus, type Feedback, type FeedbackStatus } from "@shared/schema";
+import { FlaskConical, Plus, Pencil, Trash2, X, CalendarRange, ListChecks, ChevronDown, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Status palette — aligned with the portal's navy/aqua/gold identity
@@ -344,6 +346,105 @@ function RdItemDialog({ item, open, onClose, existingProjects }: { item: RdItem 
   );
 }
 
+// ---------------- System requests log (v6.0, moved from Admin → Feedback) ----------------
+function RequestRow({ fb, isAdmin }: { fb: Feedback; isAdmin: boolean }) {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [note, setNote] = useState(fb.adminNote ?? "");
+
+  const patch = useMutation({
+    mutationFn: async (data: { status?: FeedbackStatus; adminNote?: string | null }) =>
+      (await apiRequest("PATCH", `/api/feedback/${fb.id}`, data)).json(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }),
+    onError: (e: any) => toast({ title: String(e?.message ?? "Update failed"), variant: "destructive" }),
+  });
+
+  const date = new Date(fb.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "2-digit", month: "short", day: "numeric" });
+  return (
+    <div className="px-3 py-2" data-testid={`row-request-${fb.id}`}>
+      <button type="button" onClick={() => setExpanded((v) => !v)} className="flex w-full items-center gap-2 text-left" data-testid={`button-expand-request-${fb.id}`}>
+        <span className="w-20 shrink-0 text-[11px] tabular-nums text-muted-foreground">{date}</span>
+        <span className="w-28 shrink-0 truncate text-xs font-semibold">{fb.userName}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fb.message}</span>
+        <FeedbackStatusBadge status={fb.status as FeedbackStatus} />
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-2 pl-1">
+          <p className="whitespace-pre-wrap text-sm" data-testid={`text-request-msg-${fb.id}`}>{fb.message}</p>
+          {fb.adminNote && !isAdmin && (
+            <p className="rounded-md bg-muted/60 px-2 py-1.5 text-xs text-muted-foreground">{fb.adminNote}</p>
+          )}
+          {isAdmin && (
+            <div className="flex flex-wrap items-start gap-2">
+              <Select value={fb.status} onValueChange={(v) => patch.mutate({ status: v as FeedbackStatus })}>
+                <SelectTrigger className="h-8 w-36 text-xs" data-testid={`select-request-status-${fb.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FEEDBACK_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{t(`fbStatus_${s}` as any)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t("fbNotePlaceholder")}
+                rows={2}
+                maxLength={2000}
+                className="min-w-[200px] flex-1 text-sm"
+                data-testid={`input-request-note-${fb.id}`}
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                title={t("save")}
+                disabled={patch.isPending || note === (fb.adminNote ?? "")}
+                onClick={() => patch.mutate({ adminNote: note.trim() ? note.trim() : null })}
+                data-testid={`button-save-request-note-${fb.id}`}
+              >
+                <Save className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SystemRequestsLog() {
+  const { t } = useLang();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const { data: list } = useQuery<Feedback[]>({ queryKey: ["/api/feedback"] });
+  const items = list ?? [];
+  const open = items.filter((f) => f.status === "open" || f.status === "in_progress");
+  const closed = items.filter((f) => f.status === "solved" || f.status === "declined");
+
+  return (
+    <section data-testid="rd-requests">
+      <div className="mb-2 flex items-center gap-2">
+        <ListChecks className="h-4 w-4 text-[hsl(var(--gold))]" />
+        <h2 className="text-sm font-bold">{t("rdRequestsTitle")}</h2>
+        <Badge variant="secondary" className="text-[11px] tabular-nums" data-testid="badge-open-requests">{open.length}</Badge>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">{t("rdRequestsSub")}</p>
+      {items.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground" data-testid="text-no-requests">{t("noRequests")}</p>
+      ) : (
+        <div className="divide-y divide-border/60 rounded-lg border border-card-border bg-card">
+          {[...open, ...closed].map((fb) => (
+            <RequestRow key={fb.id} fb={fb} isAdmin={Boolean(isAdmin)} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ---------------- Page ----------------
 export default function RdPlanner() {
   const { t, lang } = useLang();
@@ -374,7 +475,7 @@ export default function RdPlanner() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <FlaskConical className="h-5 w-5 text-[hsl(193,52%,38%)]" />
-                <h1 className="font-display text-xl font-bold" data-testid="text-rd-title">{t("rdTitle")}</h1>
+                <h1 className="font-display text-xl font-bold" data-testid="text-rd-title">{t("rdTitle")}<RestrictedBadge tip={t("restrictedTipRd")} /></h1>
               </div>
               <p className="max-w-2xl text-sm text-muted-foreground">{t("rdSub")}</p>
             </div>
@@ -383,6 +484,9 @@ export default function RdPlanner() {
             </Button>
           </div>
         </section>
+
+        {/* v6.0: incoming system requests, logged at the top of R&D */}
+        <SystemRequestsLog />
 
         {isLoading ? (
           <div className="space-y-3">

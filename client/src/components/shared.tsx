@@ -4,11 +4,14 @@ import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { GalaxyBackground } from "@/components/galaxy-bg";
+import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
+import { photoThumbSrc, photoHdDownloadHref, isAssetToken } from "@/lib/photos";
+import { Input } from "@/components/ui/input";
+import { GalaxyBackground, WarpOverlay, consumePendingWarp } from "@/components/galaxy-bg";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -20,7 +23,7 @@ import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STA
 import { useQuery } from "@tanstack/react-query";
 import { API_BASE, getAuthToken } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { VersionLogDialog, ProfileDialog, UserAvatar } from "@/components/user-panels";
+import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
 
 // Auto-open the version log once per browser session after login (memory only — no storage APIs).
@@ -199,14 +202,26 @@ export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }
         {photos.map((src, i) => (
           <img
             key={src}
-            src={src}
+            src={photoThumbSrc(src)}
             alt={`${alt} — ${i + 1}`}
             loading={i === 0 ? "eager" : "lazy"}
-            className="h-52 sm:h-60 w-full shrink-0 object-cover"
+            className="h-52 sm:h-60 w-full min-w-0 shrink-0 grow-0 basis-full object-cover"
             data-testid={`img-photo-${i}`}
           />
         ))}
       </div>
+      {/* v6.01 — HD download for uploaded photos */}
+      {isAssetToken(photos[idx] ?? "") && (
+        <a
+          href={photoHdDownloadHref(photos[idx])}
+          className="absolute top-2 right-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/65"
+          aria-label="Download HD photo"
+          title="HD"
+          data-testid="button-download-hd"
+        >
+          <Download className="h-4 w-4" />
+        </a>
+      )}
       {photos.length > 1 && (
         <>
           <button
@@ -284,31 +299,59 @@ export function BrandMark({ className }: { className?: string }) {
   );
 }
 
+// ---------------- Restricted-access sticker (v6.0) ----------------
+// Small amber "sticker" marking pages with special access rights (R&D, Admin).
+export function RestrictedBadge({ tip }: { tip?: string }) {
+  const { t } = useLang();
+  return (
+    <span
+      title={tip}
+      className="ml-1.5 inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 align-middle"
+      data-testid="badge-restricted"
+    >
+      <Lock className="h-2.5 w-2.5" />
+      {t("restrictedLabel")}
+    </span>
+  );
+}
+
 // ---------------- Layout ----------------
 export function Layout({ children }: { children: ReactNode }) {
   const { lang, setLang, t } = useLang();
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [showTestBanner, setShowTestBanner] = useState(true);
   const [showVersions, setShowVersions] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
+  // v6.0: play the post-sign-in warp from Layout — the login page itself is
+  // unmounted the instant `user` is set (login-first tree swap in App.tsx),
+  // so it hands the request over via a module-level flag.
+  const [warping, setWarping] = useState(false);
   useEffect(() => {
-    if (user && !versionLogShown) {
+    if (user && consumePendingWarp()) setWarping(true);
+  }, [user]);
+
+  useEffect(() => {
+    // Skip the what's-new dialog on the transient /login layout — it would be
+    // unmounted by the post-warp navigation and the once-per-session flag
+    // would be burned before anyone saw it.
+    if (user && !versionLogShown && !location.startsWith("/login")) {
       versionLogShown = true;
       setShowVersions(true);
     }
-  }, [user]);
+  }, [user, location]);
 
-  const links: { href: string; label: string; show: boolean; soon?: boolean }[] = [
+  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
     { href: "/updates", label: t("navUpdates"), show: true },
-    { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1 },
-    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin" },
+    // v5.12 — the scoreboard moved inside the admin portal (Admin → Scoreboard tab).
+    { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1, restrictedTip: t("restrictedTipRd") },
+    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin") },
   ];
 
   return (
@@ -316,7 +359,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
-          <a href="https://www.gobi.vc" target="_blank" rel="noopener noreferrer" data-testid="link-home" className="flex items-center gap-3 shrink-0">
+          <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
               alt="Gobi Partners"
@@ -325,9 +368,8 @@ export function Layout({ children }: { children: ReactNode }) {
             />
             <span className="leading-tight border-l border-border pl-3 hidden sm:block">
               <span className="block text-sm font-bold tracking-tight">{t("brandTitle")}</span>
-              <span className="block text-[11px] text-muted-foreground">{t("brandSub")}</span>
             </span>
-          </a>
+          </Link>
 
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {links.filter((l) => l.show).map((l) => (
@@ -344,8 +386,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))] align-middle">
                       {t("soonTag")}
-                    </span>
+                      {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
+                </span>
                   )}
+                  {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
                 </span>
               </Link>
             ))}
@@ -415,8 +459,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">
                       {t("soonTag")}
-                    </span>
+                      {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
+                </span>
                   )}
+                  {l.restrictedTip && <RestrictedBadge tip={l.restrictedTip} />}
                 </span>
               </Link>
             ))}
@@ -475,8 +521,18 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
+      {warping && (
+        <WarpOverlay
+          onDone={() => {
+            setWarping(false);
+            if (location.startsWith("/login")) navigate("/");
+          }}
+        />
+      )}
+
       {user && <VersionLogDialog open={showVersions} onClose={() => setShowVersions(false)} />}
       {user && showProfile && <ProfileDialog open={showProfile} onClose={() => setShowProfile(false)} />}
+      {user && !!user.mustChangePassword && <ForcedPasswordDialog />}
 
       <footer className="border-t border-border bg-background/70 backdrop-blur-sm py-8 mt-16">
         <div className="mx-auto max-w-6xl px-4 flex flex-col gap-3">
@@ -593,12 +649,42 @@ export function NewBadge({ p }: { p: Pick<Partnership, "createdAt"> }) {
 }
 
 // ---------------- Stage badge ----------------
+// v6.03 — every stage badge explains its level on hover (fast tooltip)
 export function StageBadge({ stage }: { stage: Stage }) {
   const { t } = useLang();
   return (
-    <Badge className={cn("font-medium tabular-nums", STAGE_STYLES[stage])} data-testid={`badge-stage-${stage}`}>
-      {STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}
-    </Badge>
+    <Tooltip delayDuration={100}>
+      <TooltipTrigger asChild>
+        <Badge className={cn("font-medium tabular-nums cursor-default", STAGE_STYLES[stage])} data-testid={`badge-stage-${stage}`}>
+          {STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[280px] text-xs" data-testid={`tooltip-stage-${stage}`}>
+        {t(`stage_def_${stage}` as any)}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// v6.03 — compact level guide for the register / edit interfaces
+export function StageGuide({ selected }: { selected?: string }) {
+  const { t } = useLang();
+  return (
+    <div className="mt-2 rounded-md border bg-muted/40 p-2.5 space-y-1" data-testid="note-stage-guide">
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t("levelGuide")}</p>
+      {STAGES.map((s) => (
+        <p
+          key={s}
+          className={cn(
+            "text-[11px] leading-snug",
+            s === selected ? "text-foreground font-medium" : "text-muted-foreground",
+          )}
+          data-testid={`guide-row-${s}`}
+        >
+          <span className="tabular-nums font-semibold">{STAGE_NUM[s]}</span> · {t(`stage_${s}` as any)} — {t(`stage_def_${s}` as any)}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -634,16 +720,32 @@ export function PicAvatar({ name, size = "sm", withName = false }: { name?: stri
 }
 
 // Checklist picker for multiple Gobi PICs, grouped by office
-export function PicChecklist({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function PicChecklist({
+  value, onChange, testid = "button-pic-checklist", optionPrefix = "pic", placeholderKey = "selectPics",
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  /** Overrides so several checklists can coexist in one form (v5.9: origin staff + PIC). */
+  testid?: string;
+  optionPrefix?: string;
+  placeholderKey?: "selectPics" | "selectOriginStaff";
+}) {
   const { t } = useLang();
+  const [q, setQ] = useState("");
   const toggle = (name: string) =>
     onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
+  // v6.0: quick filter by name / title / office (EN + CJK substring)
+  const query = q.trim().toLowerCase();
+  const matches = (s: (typeof GOBI_STAFF)[number]) =>
+    !query || `${s.name} ${s.title} ${s.office}`.toLowerCase().includes(query);
+  const anyMatch = GOBI_STAFF.some(matches);
+  // modal — required for wheel/trackpad scrolling when the popover opens inside a Dialog (Radix scroll-lock)
   return (
-    <Popover>
+    <Popover modal>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="w-full justify-between font-normal" data-testid="button-pic-checklist">
+        <Button type="button" variant="outline" className="w-full justify-between font-normal" data-testid={testid}>
           <span className="truncate text-left">
-            {value.length > 0 ? value.join(", ") : t("selectPics")}
+            {value.length > 0 ? value.join(", ") : t(placeholderKey)}
           </span>
           <span className="ml-2 shrink-0 text-xs text-muted-foreground">
             {value.length > 0 ? `${value.length} ${t("picsSelected")}` : ""}
@@ -656,12 +758,43 @@ export function PicChecklist({ value, onChange }: { value: string[]; onChange: (
         collisionPadding={12}
         avoidCollisions
       >
+        <div className="space-y-2 border-b border-border p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t("staffSearchPlaceholder")}
+              className="h-8 pl-7 text-sm"
+              data-testid={`${testid}-search`}
+            />
+          </div>
+          {value.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {value.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => toggle(n)}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium hover:bg-destructive/10 hover:text-destructive"
+                  data-testid={`${optionPrefix}-chip-${n.replace(/\s+/g, "-").toLowerCase()}`}
+                >
+                  {n}
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div
           className="overflow-y-auto overscroll-contain"
-          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height, 18rem))" }}
+          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height, 18rem))", WebkitOverflowScrolling: "touch" }}
         >
+          {!anyMatch && (
+            <p className="px-4 py-3 text-sm text-muted-foreground" data-testid="text-staff-no-match">{t("staffNoMatch")}</p>
+          )}
           {GOBI_OFFICES.map((office) => {
-            const staff = GOBI_STAFF.filter((s) => s.office === office);
+            const staff = GOBI_STAFF.filter((s) => s.office === office && matches(s));
             if (!staff.length) return null;
             return (
               <div key={office} className="p-2 border-b border-border last:border-0">
@@ -670,7 +803,7 @@ export function PicChecklist({ value, onChange }: { value: string[]; onChange: (
                   <label
                     key={s.name}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-muted"
-                    data-testid={`check-pic-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                    data-testid={`check-${optionPrefix}-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                   >
                     <Checkbox checked={value.includes(s.name)} onCheckedChange={() => toggle(s.name)} />
                     <span className="min-w-0 flex-1 truncate">{s.name}</span>
@@ -719,8 +852,8 @@ export function CategoryBadge({ category }: { category: Category }) {
 export function LevelDots({ level, showLabel = false }: { level: number; showLabel?: boolean }) {
   const { t } = useLang();
   return (
-    <span className="inline-flex items-center gap-1" title={`${t("collabLevel")}: ${level}/5`} data-testid={`level-dots-${level}`}>
-      {[1, 2, 3, 4, 5].map((i) => (
+    <span className="inline-flex items-center gap-1" title={`${t("collabLevel")}: ${level}/4`} data-testid={`level-dots-${level}`}>
+      {[1, 2, 3, 4].map((i) => (
         <span
           key={i}
           className={cn(
@@ -759,7 +892,7 @@ export function PipelineProgress({ stage }: { stage: Stage }) {
       <div className="mt-2 flex justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>01 {t("stage_s1_new")}</span>
         <span className="font-semibold text-foreground">{STAGE_NUM[stage]} · {t(`stage_${stage}` as any)}</span>
-        <span>05 {t("stage_s5_strategic")}</span>
+        <span>04 {t("stage_s4_strategic")}</span>
       </div>
     </div>
   );
@@ -865,7 +998,7 @@ export function PartnershipDetailDialog({
   const partnerName = (x: Partnership) => (lang === "cn" && x.nameCn ? x.nameCn : x.nameEn);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden [&>*]:min-w-0">
         <DialogHeader>
           <div className="flex items-center gap-4">
             <PartnerLogo p={p} size="lg" />
@@ -951,7 +1084,7 @@ export function PartnershipDetailDialog({
 
           <PipelineProgress stage={p.stage as Stage} />
 
-          {desc && <p className="text-sm leading-relaxed">{desc}</p>}
+          {desc && <p className="text-sm leading-relaxed break-words">{desc}</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label={t("partnershipType")} value={p.partnershipType} />
@@ -985,7 +1118,7 @@ export function PartnershipDetailDialog({
           {p.context && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-xs font-semibold text-muted-foreground mb-1">{t("contextLabel")}</p>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{p.context}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{p.context}</p>
             </div>
           )}
 
@@ -1032,7 +1165,7 @@ export function PartnershipDetailDialog({
           {p.notes && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-xs font-semibold text-muted-foreground mb-1">{t("notes")}</p>
-              <p className="text-sm whitespace-pre-wrap">{p.notes}</p>
+              <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{p.notes}</p>
             </div>
           )}
 

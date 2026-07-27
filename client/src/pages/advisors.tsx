@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo } from "@/components/shared";
+import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars } from "@/components/shared";
+import { useUnsavedGuard } from "@/components/unsaved-guard";
+import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,21 +21,34 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag } from "@shared/schema";
-import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS } from "@shared/schema";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle } from "@shared/schema";
+import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
-  LayoutGrid, List, SlidersHorizontal, Send, Cake,
+  LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
+  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit,
 } from "lucide-react";
+import { AdvisorStarMap } from "@/components/network-graph";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
-  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, type ExtractedAdvisor,
+  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { OutreachDialog } from "@/components/advisor-outreach";
+import { downloadWithAuth, openHtmlWithAuth, preopenTab } from "@/lib/download";
 import { cn } from "@/lib/utils";
+
+// ---------- Grouping (v5.9) ----------
+type GroupBy = "none" | "pillar" | "tag" | "lifecycle" | "track" | "cohort";
+interface AdvisorGroup { key: string; label: string; items: AdvisorWithRoles[] }
 
 // ---------- Pillar & track styling ----------
 const PILLAR_STYLES: Record<Pillar, string> = {
@@ -116,6 +131,274 @@ function PillarBadge({ pillar }: { pillar: Pillar }) {
   );
 }
 
+// ---------- Lifecycle status (v5.8, restyled v5.9) ----------
+// Deliberately unlike the sector tags: transparent background, status-coloured
+// outline and a leading dot, so the lifecycle state reads as record status
+// rather than as another taxonomy chip.
+const LIFECYCLE_OUTLINE: Record<string, string> = {
+  proposed: "border-slate-400/70 text-slate-600 dark:border-slate-500/70 dark:text-slate-300",
+  onboarded: "border-emerald-500/70 text-emerald-700 dark:text-emerald-400",
+  terminated: "border-rose-500/70 text-rose-700 dark:text-rose-400",
+};
+
+const LIFECYCLE_DOT: Record<string, string> = {
+  proposed: "bg-slate-400",
+  onboarded: "bg-emerald-500",
+  terminated: "bg-rose-500",
+};
+
+function LifecyclePill({ status, advisorId, className }: { status: string; advisorId?: number; className?: string }) {
+  const { t } = useLang();
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-transparent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        LIFECYCLE_OUTLINE[status] ?? LIFECYCLE_OUTLINE.proposed,
+        className,
+      )}
+      data-testid={advisorId ? `badge-lifecycle-${advisorId}` : "badge-lifecycle"}
+    >
+      <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", LIFECYCLE_DOT[status] ?? LIFECYCLE_DOT.proposed)} />
+      {t(`lifecycle_${status}` as any)}
+    </span>
+  );
+}
+
+// ---------- Mobile country codes (v5.9) ----------
+const MOBILE_CODES: Array<{ code: string; region: string }> = [
+  { code: "+852", region: "HK" },
+  { code: "+86", region: "CN" },
+  { code: "+853", region: "MO" },
+  { code: "+886", region: "TW" },
+  { code: "+65", region: "SG" },
+  { code: "+60", region: "MY" },
+  { code: "+62", region: "ID" },
+  { code: "+66", region: "TH" },
+  { code: "+84", region: "VN" },
+  { code: "+63", region: "PH" },
+  { code: "+81", region: "JP" },
+  { code: "+82", region: "KR" },
+  { code: "+91", region: "IN" },
+  { code: "+971", region: "UAE" },
+  { code: "+966", region: "KSA" },
+  { code: "+1", region: "US/CA" },
+  { code: "+44", region: "UK" },
+  { code: "+33", region: "FR" },
+  { code: "+49", region: "DE" },
+  { code: "+61", region: "AU" },
+];
+
+const DEFAULT_MOBILE_CC = "+852";
+
+/** Split a stored "+852 9123 4567" into picker + number. Unknown codes fall back to the default. */
+function parseMobile(value: string | null | undefined): { cc: string; number: string } {
+  const raw = (value ?? "").trim();
+  if (!raw) return { cc: DEFAULT_MOBILE_CC, number: "" };
+  const match = MOBILE_CODES
+    .filter((c) => raw.startsWith(c.code))
+    .sort((a, b) => b.code.length - a.code.length)[0];
+  if (match) return { cc: match.code, number: raw.slice(match.code.length).trim() };
+  return { cc: DEFAULT_MOBILE_CC, number: raw };
+}
+
+function joinMobile(cc: string, number: string): string | null {
+  const n = number.trim();
+  return n ? `${cc} ${n}` : null;
+}
+
+// ---------- Form section wrapper (v5.9) ----------
+function FormSection({ id, step, title, children }: { id: string; step: number; title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-lg border border-border p-3" data-testid={`section-adv-${id}`}>
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--gold))]/15 text-[10px] font-bold text-[hsl(var(--gold))]">
+          {step}
+        </span>
+        {title}
+      </p>
+      {children}
+    </section>
+  );
+}
+
+// ---------- Onboarding workflow tracker (v5.8) ----------
+type WorkflowStage = "approval_emailed" | "approved" | "letter_issued" | "signed_back";
+
+const WORKFLOW_STEPS: Array<{
+  stage: WorkflowStage;
+  field: "approvalEmailedAt" | "approvedAt" | "letterIssuedAt" | "signedBackAt";
+  labelKey: "wfApprovalEmailed" | "wfApproved" | "wfLetterIssued" | "wfSignedBack";
+  adminOnly: boolean;
+}> = [
+  { stage: "approval_emailed", field: "approvalEmailedAt", labelKey: "wfApprovalEmailed", adminOnly: false },
+  { stage: "approved", field: "approvedAt", labelKey: "wfApproved", adminOnly: true },
+  { stage: "letter_issued", field: "letterIssuedAt", labelKey: "wfLetterIssued", adminOnly: true },
+  { stage: "signed_back", field: "signedBackAt", labelKey: "wfSignedBack", adminOnly: false },
+];
+
+function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id, "activities"] });
+  };
+
+  const advance = useMutation({
+    mutationFn: async (body: { stage: WorkflowStage; undo?: boolean }) => {
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, body);
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const letter = useMutation({
+    mutationFn: async (target: Window | null) => {
+      const opened = await openHtmlWithAuth(`/api/advisors/${a.id}/invitation-letter`, target);
+      if (!opened) throw new Error(t("wfLetterFailed"));
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, { stage: "letter_issued" });
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  // v5.10 — same letter as an editable Word document; also records the letter stage
+  const letterDocx = useMutation({
+    mutationFn: async () => {
+      await downloadWithAuth(`/api/advisors/${a.id}/invitation-letter.docx`, `Gobi-Advisory-Network-Letter.docx`);
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/workflow`, { stage: "letter_issued" });
+      return res.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const doneAt = (field: (typeof WORKFLOW_STEPS)[number]["field"]) => a[field] ?? null;
+  // The most recently completed step is the only one that can be undone.
+  let lastDone = -1;
+  WORKFLOW_STEPS.forEach((s, i) => { if (doneAt(s.field)) lastDone = i; });
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="workflow-tracker">
+      <p className="mb-3 text-xs font-semibold text-muted-foreground">{t("wfTrackerTitle")}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        {WORKFLOW_STEPS.map((s, i) => {
+          const done = doneAt(s.field);
+          const canAct = !s.adminOnly || isAdmin;
+          return (
+            <div key={s.stage} className="flex flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
+              <div className="flex items-start gap-1.5">
+                {done ? (
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                ) : (
+                  <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                )}
+                <div className="min-w-0">
+                  <p className={cn("text-[11px] font-semibold leading-snug", !done && "text-muted-foreground")}>{t(s.labelKey)}</p>
+                  <p className="text-[10px] text-muted-foreground tabular-nums" data-testid={`text-workflow-date-${s.stage}`}>
+                    {done ? formatDMY(String(done).slice(0, 10)) : t("wfPending")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {!done && canAct && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={advance.isPending}
+                    onClick={() => advance.mutate({ stage: s.stage })}
+                    data-testid={`button-workflow-done-${s.stage}`}
+                  >
+                    {t("wfMarkDone")}
+                  </Button>
+                )}
+                {done && isAdmin && i === lastDone && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={advance.isPending}
+                    onClick={() => advance.mutate({ stage: s.stage, undo: true })}
+                    data-testid={`button-workflow-undo-${s.stage}`}
+                  >
+                    <Undo2 className="mr-1 h-3 w-3" /> {t("wfUndo")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isAdmin && (
+        <div className="mt-3 border-t border-border pt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={letter.isPending}
+            onClick={() => letter.mutate(preopenTab())}
+            data-testid="button-issue-letter"
+          >
+            {letter.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
+            {t("wfGenerateLetter")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="ml-2"
+            disabled={letterDocx.isPending}
+            onClick={() => letterDocx.mutate()}
+            data-testid="button-issue-letter-docx"
+          >
+            {letterDocx.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileDown className="mr-1.5 h-3.5 w-3.5" />}
+            {t("wfLetterDocx")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- CSV export buttons (v5.8) ----------
+export function ExportCsvButtons({ className }: { className?: string }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState<"advisors" | "partners" | null>(null);
+
+  const run = async (kind: "advisors" | "partners") => {
+    setBusy(kind);
+    try {
+      await downloadWithAuth(`/api/export/${kind}.csv`, `gobi-${kind}.csv`);
+    } catch (e: any) {
+      toast({ description: `${t("exportFailed")} — ${String(e?.message ?? e)}`, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-wrap gap-2", className)}>
+      <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => run("advisors")} data-testid="button-export-advisors">
+        {busy === "advisors" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+        {t("exportAdvisorsCsv")}
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => run("partners")} data-testid="button-export-partners">
+        {busy === "partners" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+        {t("exportPartnersCsv")}
+      </Button>
+    </div>
+  );
+}
+
 // ---------- Add / edit form ----------
 type RoleDraft = AdvisorRoleInput & { key: number };
 
@@ -124,7 +407,127 @@ const EMPTY_FORM = {
   pillar: "other" as Pillar, emailsText: "", domains: "", background: "", profileUrl: "", linkedinUrl: "",
   cohort: "", engagement: "", gobiPics: [] as string[], photoUrl: "", photoThumbUrl: "",
   publicClearance: false, birthDay: "", birthMonth: "", birthYear: "", tagIds: [] as number[],
+  // v5.9 CRM additions
+  mobileCc: DEFAULT_MOBILE_CC, mobileNumber: "", wechatId: "", originStaff: [] as string[],
 };
+
+// v5.15 — unified organization picker: one searchable combobox (shadcn Command)
+// that sets both the display text and the partner link. Free text stays possible;
+// unknown orgs can be created as new partner records in one click.
+const ORG_FILTER_STOP = ["the", "of", "and", "for", "at", "in", "a", "an"];
+// Custom cmdk filter: substring match plus acronym support so "HKU" finds
+// "The University of Hong Kong" (initials uhk — word-order-free comparison).
+function orgFilter(value: string, search: string): number {
+  const v = value.toLowerCase();
+  const s = search.toLowerCase().trim();
+  if (!s) return 1;
+  if (v.includes(s)) return 1;
+  const toks = v.split(/[^a-z0-9\u4e00-\u9fff]+/).filter((t) => t.length > 0 && !ORG_FILTER_STOP.includes(t));
+  // Initials from latin tokens only — a CJK name token must not pollute the acronym
+  const inits = toks.filter((t) => /^[a-z0-9]/.test(t)).map((t) => t[0]).join("");
+  const sc = s.replace(/[^a-z0-9]/g, "");
+  if (sc.length >= 2 && inits.includes(sc)) return 0.9;
+  if (sc.length >= 3 && sc.length <= 6 && inits.length >= 3 &&
+      sc.split("").sort().join("") === inits.split("").sort().join("")) return 0.8;
+  return 0;
+}
+
+function OrgCombobox({ organization, partnershipId, partners, onPick, testId }: {
+  organization: string;
+  partnershipId: number | null;
+  partners: Partnership[];
+  onPick: (organization: string, partnershipId: number | null) => void;
+  testId: string;
+}) {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const pname = (p: Partnership) => (lang === "cn" && p.nameCn ? p.nameCn : p.nameEn);
+  const linked = partnershipId ? partners.find((p) => p.id === partnershipId) : undefined;
+  const create = useMutation({
+    mutationFn: async (nameEn: string) => {
+      const res = await apiRequest("POST", "/api/partnerships", {
+        nameEn,
+        startDate: new Date().toISOString().slice(0, 10),
+        stage: "s1_new",
+        collabLevel: 1,
+        category: "other",
+        region: "hongkong",
+      });
+      return res.json();
+    },
+    onSuccess: (p: Partnership) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partnerships"] });
+      onPick(p.nameEn, p.id);
+      toast({ description: t("orgCreated") });
+      setOpen(false);
+      setQ("");
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" role="combobox" aria-expanded={open}
+          className="h-9 w-full justify-between px-3 font-normal" data-testid={testId}>
+          <span className={cn("flex items-center gap-1.5 truncate", !organization && !linked && "text-muted-foreground")}>
+            {linked ? (
+              <>
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold))]" />
+                <span className="truncate">{pname(linked)}</span>
+              </>
+            ) : (organization || t("roleOrg"))}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0" align="start">
+        <Command filter={orgFilter}>
+          <CommandInput placeholder={t("orgSearchPlaceholder")} value={q} onValueChange={setQ} data-testid={`${testId}-search`} />
+          <CommandList className="max-h-56">
+            <CommandEmpty>{t("orgNoMatch")}</CommandEmpty>
+            {q.trim().length > 0 && (
+              <CommandGroup>
+                <CommandItem value={`__text__ ${q}`} data-testid={`${testId}-use-text`}
+                  onSelect={() => { onPick(q.trim(), null); setOpen(false); setQ(""); }}>
+                  <Pencil className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="truncate">{t("orgUseAsText")} “{q.trim()}”</span>
+                </CommandItem>
+                <CommandItem value={`__create__ ${q}`} disabled={create.isPending} data-testid={`${testId}-create`}
+                  onSelect={() => create.mutate(q.trim())}>
+                  {create.isPending
+                    ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    : <Plus className="mr-2 h-3.5 w-3.5 text-muted-foreground" />}
+                  <span className="truncate">{t("orgCreateNew")} “{q.trim()}”</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+            <CommandGroup>
+              {linked && (
+                <CommandItem value="__unlink__" data-testid={`${testId}-unlink`}
+                  onSelect={() => { onPick(organization, null); setOpen(false); }}>
+                  <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> {t("roleNone")}
+                </CommandItem>
+              )}
+              {partners.map((p) => {
+                const parent = p.parentId ? partners.find((x) => x.id === p.parentId) : undefined;
+                return (
+                  <CommandItem key={p.id} value={`${p.nameEn} ${p.nameCn ?? ""}`} data-testid={`${testId}-opt-${p.id}`}
+                    onSelect={() => { onPick(pname(p), p.id); setOpen(false); setQ(""); }}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", partnershipId === p.id ? "opacity-100" : "opacity-0")} />
+                    <span className="truncate">{pname(p)}</span>
+                    {parent && <span className="ml-1.5 truncate text-[11px] text-muted-foreground">· {pname(parent)}</span>}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function AdvisorFormDialog({
   open, onOpenChange, editing, partnerships,
@@ -143,6 +546,7 @@ function AdvisorFormDialog({
   const [photoBusy, setPhotoBusy] = useState(false);
   const keyRef = useRef(1);
   const [loadedFor, setLoadedFor] = useState<number | "new" | null>(null);
+  const [advSnapshot, setAdvSnapshot] = useState<string | null>("");
 
   // Seed the form when the dialog opens (edit uses the detail endpoint for the HD photo)
   const { data: fullEditing } = useQuery<AdvisorWithRoles>({
@@ -167,14 +571,29 @@ function AdvisorFormDialog({
         birthMonth: target.birthMonth ? String(target.birthMonth) : "",
         birthYear: target.birthYear ? String(target.birthYear) : "",
         tagIds: (target.tags ?? []).map((tg) => tg.id),
+        mobileCc: parseMobile(target.mobile).cc,
+        mobileNumber: parseMobile(target.mobile).number,
+        wechatId: target.wechatId ?? "",
+        originStaff: target.originStaff ?? [],
       });
       setRoles((target.roles ?? []).map((r) => ({ key: keyRef.current++, title: r.title, organization: r.organization ?? "", partnershipId: r.partnershipId, isPrimary: r.isPrimary })));
     } else {
       setForm(EMPTY_FORM);
       setRoles([{ key: keyRef.current++, title: "", organization: "", partnershipId: null, isPrimary: 1 }]);
     }
+    setAdvSnapshot(null); // re-baselined on the next render, after both states settle
   }
   if (!open && loadedFor !== null) setLoadedFor(null);
+
+  // v6.01 — dirty tracking: fingerprint of form + roles (role keys are transient)
+  const advFingerprint = JSON.stringify({ form, roles: roles.map(({ key, ...r }) => r) });
+  if (open && advSnapshot === null) setAdvSnapshot(advFingerprint);
+  const advDirty = open && !!advSnapshot && advFingerprint !== advSnapshot;
+  const { requestClose, guard } = useUnsavedGuard({
+    dirty: advDirty,
+    onDiscard: () => onOpenChange(false),
+    onSave: () => save.mutate(),
+  });
 
   const partnerName = (p: Partnership) => (lang === "cn" && p.nameCn ? p.nameCn : p.nameEn);
   const sortedPartners = useMemo(
@@ -197,8 +616,13 @@ function AdvisorFormDialog({
         photoThumbUrl: form.photoThumbUrl || null,
         profileUrl: form.profileUrl.trim() || null,
         // Single profile link now; keep linkedinUrl consistent for legacy records
-        linkedinUrl: /linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null,
+        linkedinUrl: form.linkedinUrl.trim()
+          || (/linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null),
         gobiPics: form.gobiPics,
+        // v5.9 — staff-only CRM fields; origin staff is a permanent sourcing record
+        mobile: joinMobile(form.mobileCc, form.mobileNumber),
+        wechatId: form.wechatId.trim() || null,
+        originStaff: form.originStaff.length > 0 ? form.originStaff : null,
         cohort: form.cohort.trim() || null,
         engagement: form.engagement.trim() || null,
         publicClearance: form.publicClearance ? 1 : 0,
@@ -219,6 +643,7 @@ function AdvisorFormDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
       toast({ description: user?.role === "admin" || editing ? t("advisorSaved") : t("advisorSubmitted") });
       onOpenChange(false);
+      thankYou();
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
@@ -238,21 +663,21 @@ function AdvisorFormDialog({
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (o) onOpenChange(true); else requestClose(); }}>
       <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto" data-testid="dialog-advisor-form">
         <DialogHeader>
-          <DialogTitle>{editing ? t("editAdvisor") : t("addAdvisor")}</DialogTitle>
-          <DialogDescription>{t("rolesHint")}</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 pt-1">
-          {/* Profile URL — first, so the team can sync before filling anything */}
-          <div className="space-y-1">
-            <Label>{t("advisorProfileUrl")}</Label>
-            <div className="flex gap-2">
-              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+          {/* v5.14 — auto-sync is a record-level action (it harvests the profile
+              URL, LinkedIn URL and identity fields together), so it lives in the
+              dialog's top-right corner rather than next to a single field. */}
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div className="space-y-1.5">
+              <DialogTitle>{editing ? t("editAdvisor") : t("addAdvisor")}</DialogTitle>
+              <DialogDescription>{t("rolesHint")}</DialogDescription>
+            </div>
+            <div className="flex shrink-0 gap-2">
               <LinkedinSyncControl
                 url={form.profileUrl}
+                identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
                 onApply={(d: ExtractedAdvisor) => {
                   setForm((f) => ({
                     ...f,
@@ -276,80 +701,97 @@ function AdvisorFormDialog({
                 }}
               />
             </div>
-            <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
           </div>
+        </DialogHeader>
 
-          {/* Photo */}
-          <div className="flex items-center gap-4">
-            <AdvisorAvatar a={{ name: form.name || "?", nameCn: null, photoThumbUrl: form.photoThumbUrl || null }} size="lg" />
-            <div className="space-y-1.5">
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" data-testid="input-advisor-photo"
-                onChange={(e) => onPhoto(e.target.files?.[0])} />
+        <div className="space-y-4 pt-1">
+          {/* 1. Source — the profile link comes first so auto-sync (top right)
+              has material to harvest. */}
+          <FormSection id="source" step={1} title={t("advSectionSource")}>
+            <div className="space-y-1">
+              <Label>{t("advisorProfileUrl")}</Label>
+              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+              <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
+            </div>
+            <div className="space-y-1">
+              <Label>LinkedIn URL</Label>
+              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
+            </div>
+          </FormSection>
+
+          {/* 2. Contact */}
+          <FormSection id="contact" step={2} title={t("advSectionContact")}>
+            <div className="space-y-1">
+              <Label>{t("advisorEmails")}</Label>
+              <Input value={form.emailsText} onChange={set("emailsText")} data-testid="input-adv-emails" />
+            </div>
+            <div className="space-y-1">
+              <Label>{t("advisorMobile")}</Label>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant="outline" disabled={photoBusy} onClick={() => fileRef.current?.click()} data-testid="button-upload-photo">
-                  <ImagePlus className="h-3.5 w-3.5 mr-1.5" /> {photoBusy ? "…" : t("advisorPhoto")}
-                </Button>
-                {form.photoThumbUrl && (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setForm((f) => ({ ...f, photoUrl: "", photoThumbUrl: "" }))} data-testid="button-remove-photo">
-                    <X className="h-3.5 w-3.5 mr-1" /> {t("advisorPhotoRemove")}
-                  </Button>
-                )}
+                <Select value={form.mobileCc} onValueChange={(v) => setForm((f) => ({ ...f, mobileCc: v }))}>
+                  <SelectTrigger className="w-40 shrink-0" aria-label={t("advisorMobileCc")} data-testid="select-mobile-cc">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {MOBILE_CODES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={form.mobileNumber}
+                  onChange={set("mobileNumber")}
+                  inputMode="tel"
+                  placeholder="9123 4567"
+                  data-testid="input-mobile"
+                />
               </div>
-              <p className="text-[11px] text-muted-foreground">{t("advisorPhotoHint")}</p>
+              <p className="text-[11px] text-muted-foreground">{t("advisorMobileHint")}</p>
             </div>
-          </div>
+            <div className="space-y-1">
+              <Label>{t("advisorWechat")}</Label>
+              <Input value={form.wechatId} onChange={set("wechatId")} data-testid="input-wechat" />
+            </div>
+          </FormSection>
 
-          {/* Names */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>{t("advisorNameEn")}</Label>
-              <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
+          {/* 3. Identity */}
+          <FormSection id="identity" step={3} title={t("advSectionIdentity")}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{t("advisorNameEn")}</Label>
+                <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("advisorNameCn")}</Label>
+                <Input value={form.nameCn} onChange={set("nameCn")} data-testid="input-adv-name-cn" />
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <AdvisorAvatar a={{ name: form.name || "?", nameCn: null, photoThumbUrl: form.photoThumbUrl || null }} size="lg" />
+              <div className="space-y-1.5">
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" data-testid="input-advisor-photo"
+                  onChange={(e) => onPhoto(e.target.files?.[0])} />
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={photoBusy} onClick={() => fileRef.current?.click()} data-testid="button-upload-photo">
+                    <ImagePlus className="h-3.5 w-3.5 mr-1.5" /> {photoBusy ? "…" : t("advisorPhoto")}
+                  </Button>
+                  {form.photoThumbUrl && (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setForm((f) => ({ ...f, photoUrl: "", photoThumbUrl: "" }))} data-testid="button-remove-photo">
+                      <X className="h-3.5 w-3.5 mr-1" /> {t("advisorPhotoRemove")}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{t("advisorPhotoHint")}</p>
+              </div>
             </div>
             <div className="space-y-1">
-              <Label>{t("advisorNameCn")}</Label>
-              <Input value={form.nameCn} onChange={set("nameCn")} data-testid="input-adv-name-cn" />
+              <Label>{t("advisorBackground")}</Label>
+              <Textarea rows={4} value={form.background} onChange={set("background")} data-testid="input-adv-background" />
             </div>
-          </div>
+          </FormSection>
 
-          {/* Classification */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label>{t("advisorRoleLabel")}</Label>
-              <Select value={form.advisorType} onValueChange={(v) => setForm((f) => ({ ...f, advisorType: v as AdvisorRoleType }))}>
-                <SelectTrigger data-testid="select-adv-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ADVISOR_ROLE_TYPES.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`advisorRole_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>{t("trackLabel")}</Label>
-              <Select value={form.track} onValueChange={(v) => setForm((f) => ({ ...f, track: v as AdvisorTrack }))}>
-                <SelectTrigger data-testid="select-adv-track"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ADVISOR_TRACKS.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`track_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>{t("pillarLabel")}</Label>
-              <Select value={form.pillar} onValueChange={(v) => setForm((f) => ({ ...f, pillar: v as Pillar }))}>
-                <SelectTrigger data-testid="select-adv-pillar"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PILLARS.map((r) => (
-                    <SelectItem key={r} value={r}>{t(`pillar_${r}` as any)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Roles editor */}
-          <div className="space-y-2 rounded-lg border border-border p-3">
+          {/* 4. Roles */}
+          <FormSection id="roles" step={4} title={t("advSectionRoles")}>
             <div className="flex items-center justify-between">
               <Label className="font-semibold">{t("rolesLabel")}</Label>
               <Button type="button" size="sm" variant="outline" data-testid="button-add-role"
@@ -361,24 +803,13 @@ function AdvisorFormDialog({
               <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-start rounded-md bg-secondary/40 p-2" data-testid={`row-role-${i}`}>
                 <Input placeholder={t("roleTitle")} value={r.title} data-testid={`input-role-title-${i}`}
                   onChange={(e) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, title: e.target.value } : x)))} />
-                <div className="space-y-2">
-                  <Input placeholder={t("roleOrg")} value={r.organization ?? ""} data-testid={`input-role-org-${i}`}
-                    onChange={(e) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, organization: e.target.value } : x)))} />
-                  <Select
-                    value={r.partnershipId ? String(r.partnershipId) : "none"}
-                    onValueChange={(v) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, partnershipId: v === "none" ? null : Number(v) } : x)))}
-                  >
-                    <SelectTrigger className="h-9" data-testid={`select-role-partner-${i}`}>
-                      <SelectValue placeholder={t("roleLinkPartner")} />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64">
-                      <SelectItem value="none">{t("roleNone")}</SelectItem>
-                      {sortedPartners.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>{partnerName(p)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <OrgCombobox
+                  organization={r.organization ?? ""}
+                  partnershipId={r.partnershipId ?? null}
+                  partners={sortedPartners}
+                  onPick={(org, pid) => setRoles((rs) => rs.map((x) => (x.key === r.key ? { ...x, organization: org, partnershipId: pid } : x)))}
+                  testId={`combo-role-org-${i}`}
+                />
                 <div className="flex items-center gap-1.5 pt-1.5">
                   <button type="button" title={t("rolePrimary")} data-testid={`button-role-primary-${i}`}
                     onClick={() => setRoles((rs) => rs.map((x) => ({ ...x, isPrimary: x.key === r.key ? 1 : 0 })))}
@@ -392,67 +823,106 @@ function AdvisorFormDialog({
                 </div>
               </div>
             ))}
-          </div>
+          </FormSection>
 
-          {/* Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 5. Classification */}
+          <FormSection id="classification" step={5} title={t("advSectionClassification")}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label>{t("advisorRoleLabel")}</Label>
+                <Select value={form.advisorType} onValueChange={(v) => setForm((f) => ({ ...f, advisorType: v as AdvisorRoleType }))}>
+                  <SelectTrigger data-testid="select-adv-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ADVISOR_ROLE_TYPES.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`advisorRole_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>{t("trackLabel")}</Label>
+                <Select value={form.track} onValueChange={(v) => setForm((f) => ({ ...f, track: v as AdvisorTrack }))}>
+                  <SelectTrigger data-testid="select-adv-track"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ADVISOR_TRACKS.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`track_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>{t("pillarLabel")}</Label>
+                <Select value={form.pillar} onValueChange={(v) => setForm((f) => ({ ...f, pillar: v as Pillar }))}>
+                  <SelectTrigger data-testid="select-adv-pillar"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PILLARS.map((r) => (
+                      <SelectItem key={r} value={r}>{t(`pillar_${r}` as any)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-1">
-              <Label>{t("advisorEmails")}</Label>
-              <Input value={form.emailsText} onChange={set("emailsText")} data-testid="input-adv-emails" />
+              <Label>{t("advisorDomains")}</Label>
+              <Input value={form.domains} onChange={set("domains")} data-testid="input-adv-domains" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("sectorTags")}</Label>
+              <TagPicker selected={form.tagIds} onChange={(ids) => setForm((f) => ({ ...f, tagIds: ids }))} />
+            </div>
+          </FormSection>
+
+          {/* 6. Internal */}
+          <FormSection id="internal" step={6} title={t("advSectionInternal")}>
+            <div className="space-y-1" data-testid="control-origin-staff">
+              <Label>{t("originStaffLabel")}</Label>
+              <PicChecklist
+                value={form.originStaff}
+                onChange={(v) => setForm((f) => ({ ...f, originStaff: v }))}
+                testid="button-origin-staff-checklist"
+                optionPrefix="origin-staff"
+                placeholderKey="selectOriginStaff"
+              />
+              <p className="text-[11px] text-muted-foreground">{t("originStaffHint")}</p>
             </div>
             <div className="space-y-1">
-              <Label>{t("cohortLabel")}</Label>
-              <Input value={form.cohort} onChange={set("cohort")} placeholder="2025" data-testid="input-adv-cohort" />
+              <Label>{t("currentPicLabel")}</Label>
+              <PicChecklist value={form.gobiPics} onChange={(v) => setForm((f) => ({ ...f, gobiPics: v }))} />
             </div>
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorDomains")}</Label>
-            <Input value={form.domains} onChange={set("domains")} data-testid="input-adv-domains" />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorBackground")}</Label>
-            <Textarea rows={4} value={form.background} onChange={set("background")} data-testid="input-adv-background" />
-          </div>
-          <div className="space-y-1">
-            <Label>{t("advisorEngagement")}</Label>
-            <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
-          </div>
-          {/* Sector tags */}
-          <div className="space-y-1.5">
-            <Label>{t("sectorTags")}</Label>
-            <TagPicker selected={form.tagIds} onChange={(ids) => setForm((f) => ({ ...f, tagIds: ids }))} />
-          </div>
-
-          {/* CRM: date of birth */}
-          <div className="space-y-1">
-            <Label>{t("birthdayLabel")}</Label>
-            <div className="flex gap-2">
-              <Input className="w-20" inputMode="numeric" placeholder="DD" maxLength={2} value={form.birthDay} onChange={set("birthDay")} data-testid="input-adv-birth-day" />
-              <Input className="w-20" inputMode="numeric" placeholder="MM" maxLength={2} value={form.birthMonth} onChange={set("birthMonth")} data-testid="input-adv-birth-month" />
-              <Input className="w-28" inputMode="numeric" placeholder="YYYY" maxLength={4} value={form.birthYear} onChange={set("birthYear")} data-testid="input-adv-birth-year" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{t("cohortLabel")}</Label>
+                <Input value={form.cohort} onChange={set("cohort")} placeholder="2025" data-testid="input-adv-cohort" />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("birthdayLabel")}</Label>
+                <div className="flex gap-2">
+                  <Input className="w-20" inputMode="numeric" placeholder="DD" maxLength={2} value={form.birthDay} onChange={set("birthDay")} data-testid="input-adv-birth-day" />
+                  <Input className="w-20" inputMode="numeric" placeholder="MM" maxLength={2} value={form.birthMonth} onChange={set("birthMonth")} data-testid="input-adv-birth-month" />
+                  <Input className="w-28" inputMode="numeric" placeholder="YYYY" maxLength={4} value={form.birthYear} onChange={set("birthYear")} data-testid="input-adv-birth-year" />
+                </div>
+              </div>
             </div>
-          </div>
-
-          {/* Public clearance */}
-          <div className="flex items-start gap-2 rounded-lg border border-border p-3">
-            <Checkbox
-              id="adv-clearance"
-              checked={form.publicClearance}
-              onCheckedChange={(v) => setForm((f) => ({ ...f, publicClearance: v === true }))}
-              data-testid="checkbox-adv-clearance"
-            />
-            <div className="space-y-0.5">
-              <Label htmlFor="adv-clearance" className="cursor-pointer">{t("publicClearance")}</Label>
-              <p className="text-[11px] text-muted-foreground">{t("publicClearanceHint")}</p>
+            <div className="space-y-1">
+              <Label>{t("advisorEngagement")}</Label>
+              <Textarea rows={2} value={form.engagement} onChange={set("engagement")} data-testid="input-adv-engagement" />
             </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Gobi PIC</Label>
-            <PicChecklist value={form.gobiPics} onChange={(v) => setForm((f) => ({ ...f, gobiPics: v }))} />
-          </div>
+            <div className="flex items-start gap-2 rounded-lg border border-border p-3">
+              <Checkbox
+                id="adv-clearance"
+                checked={form.publicClearance}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, publicClearance: v === true }))}
+                data-testid="checkbox-adv-clearance"
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor="adv-clearance" className="cursor-pointer">{t("publicClearance")}</Label>
+                <p className="text-[11px] text-muted-foreground">{t("publicClearanceHint")}</p>
+              </div>
+            </div>
+          </FormSection>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-advisor">{t("cancel")}</Button>
+            <Button variant="outline" onClick={requestClose} data-testid="button-cancel-advisor">{t("cancel")}</Button>
             <Button
               onClick={() => save.mutate()}
               disabled={!form.name.trim() || save.isPending}
@@ -463,6 +933,7 @@ function AdvisorFormDialog({
             </Button>
           </div>
         </div>
+        {guard}
       </DialogContent>
     </Dialog>
   );
@@ -481,9 +952,15 @@ function AdvisorDetailDialog({
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  // v5.12 — render instantly from the cached list row (thumbnail, roles, tags);
+  // the detail fetch only tops up the HD photo when it arrives.
   const { data: a, isLoading } = useQuery<AdvisorWithRoles>({
     queryKey: ["/api/advisors", id ?? 0],
     enabled: id !== null,
+    placeholderData: () =>
+      queryClient
+        .getQueryData<AdvisorWithRoles[]>(["/api/advisors"])
+        ?.find((row) => row.id === id),
   });
   const isStaff = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
@@ -498,6 +975,21 @@ function AdvisorDetailDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
       toast({ description: t("advisorSaved") });
     },
+  });
+
+  // v5.8 — lifecycle status (admin only; the server rejects other roles with 403)
+  const setLifecycle = useMutation({
+    mutationFn: async (lifecycleStatus: AdvisorLifecycle) => {
+      const res = await apiRequest("POST", `/api/advisors/${id}/workflow`, { lifecycleStatus });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", id ?? 0] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", id ?? 0, "activities"] });
+      toast({ description: t("advisorSaved") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
   const del = useMutation({
@@ -538,6 +1030,7 @@ function AdvisorDetailDialog({
                     {a.status === "pending" && (
                       <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
                     )}
+                    <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
                   </DialogTitle>
                   {altName && <DialogDescription>{altName}</DialogDescription>}
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -597,6 +1090,33 @@ function AdvisorDetailDialog({
                   )}
                 </div>
               )}
+
+              {/* v5.8 — lifecycle status control (admin only) */}
+              {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="control-lifecycle">
+                  <span className="text-xs font-semibold text-muted-foreground">{t("lifecycleSetLabel")}</span>
+                  {ADVISOR_LIFECYCLE.map((s) => (
+                    <Button
+                      key={s}
+                      type="button"
+                      size="sm"
+                      variant={a.lifecycleStatus === s ? "default" : "outline"}
+                      className={cn("h-7 px-2.5 text-[11px]", a.lifecycleStatus === s && "bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]")}
+                      disabled={setLifecycle.isPending || a.lifecycleStatus === s}
+                      onClick={() => {
+                        if (s === "terminated" && !confirm(t("lifecycleConfirmTerminate"))) return;
+                        setLifecycle.mutate(s);
+                      }}
+                      data-testid={`button-lifecycle-${s}`}
+                    >
+                      {t(`lifecycle_${s}` as any)}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {/* v5.8 — onboarding workflow tracker */}
+              {isStaff && <WorkflowTracker a={a} isAdmin={isAdmin} />}
 
               {/* Roles */}
               {a.roles.length > 0 && (
@@ -658,6 +1178,33 @@ function AdvisorDetailDialog({
                       ))}
                     </div>
                   )}
+                  {/* v5.9 — mobile and WeChat are staff-only; the server nulls them for other roles */}
+                  {(a.mobile || a.wechatId) && (
+                    <div className="flex flex-wrap gap-2">
+                      {a.mobile && (
+                        <a
+                          href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
+                          data-testid="link-advisor-mobile"
+                        >
+                          <Phone className="h-3 w-3" /> {a.mobile}
+                        </a>
+                      )}
+                      {a.wechatId && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(a.wechatId ?? "");
+                            toast({ description: t("advisorWechatCopied") });
+                          }}
+                          data-testid="text-advisor-wechat"
+                        >
+                          <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {a.engagement && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground mb-1">{t("advisorEngagement")}</p>
@@ -675,9 +1222,16 @@ function AdvisorDetailDialog({
                 <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
               )}
 
+              {isStaff && (a.originStaff ?? []).length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("originStaffLabel")}</p>
+                  <p className="text-sm" data-testid="text-advisor-origin-staff">{(a.originStaff ?? []).join(", ")}</p>
+                </div>
+              )}
+
               {(a.gobiPics ?? []).length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">Gobi PIC</p>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("currentPicLabel")}</p>
                   <p className="text-sm">{(a.gobiPics ?? []).join(", ")}</p>
                 </div>
               )}
@@ -720,8 +1274,12 @@ export default function Advisors() {
   const [cohort, setCohort] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [momentumFilter, setMomentumFilter] = useState<string[]>([]);
+  const [lifecycle, setLifecycle] = useState<string[]>([]);
+  const [outreachOpen, setOutreachOpen] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "activity">("name");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [view, setView] = useState<"grid" | "list" | "map">("grid");
   const [showTags, setShowTags] = useState(true);
   const [showMomentum, setShowMomentum] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -752,6 +1310,7 @@ export default function Advisors() {
       .filter((a) => (cohort.length === 0 || (a.cohort && cohort.includes(a.cohort))))
       .filter((a) => (tagFilter.length === 0 || (a.tags ?? []).some((tg) => tagFilter.includes(String(tg.id)))))
       .filter((a) => (momentumFilter.length === 0 || momentumFilter.includes(momentumOf(a.lastActivityAt))))
+      .filter((a) => (lifecycle.length === 0 || lifecycle.includes(a.lifecycleStatus)))
       .filter((a) => {
         if (!q) return true;
         const hay = [a.name, a.nameCn, a.domains, ...(a.tags ?? []).flatMap((tg) => [tg.nameEn, tg.nameCn]), ...(a.roles ?? []).flatMap((r) => [r.title, r.organization])]
@@ -766,7 +1325,37 @@ export default function Advisors() {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, sortBy]);
+  }, [advisors, search, pillar, track, advisorType, cohort, tagFilter, momentumFilter, lifecycle, sortBy]);
+
+  // v5.9 — optional grouping of the filtered set. Sector tags can place an
+  // advisor in several groups; everything else is single-valued.
+  const groups = useMemo<AdvisorGroup[]>(() => {
+    if (groupBy === "none") return [{ key: "all", label: "", items: filtered }];
+    const buckets = new Map<string, { label: string; items: AdvisorWithRoles[] }>();
+    const push = (key: string, label: string, a: AdvisorWithRoles) => {
+      const b = buckets.get(key);
+      if (b) b.items.push(a);
+      else buckets.set(key, { label, items: [a] });
+    };
+    for (const a of filtered) {
+      if (groupBy === "pillar") push(a.pillar, t(`pillar_${a.pillar}` as any), a);
+      else if (groupBy === "track") push(a.track, t(`track_${a.track}` as any), a);
+      else if (groupBy === "lifecycle") push(a.lifecycleStatus, t(`lifecycle_${a.lifecycleStatus}` as any), a);
+      else if (groupBy === "cohort") push(a.cohort || "__none", a.cohort || t("groupUngrouped"), a);
+      else if (groupBy === "tag") {
+        const tags = a.tags ?? [];
+        if (tags.length === 0) push("__none", t("groupUngrouped"), a);
+        else for (const tg of tags) push(`tag-${tg.id}`, lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn, a);
+      }
+    }
+    return Array.from(buckets.entries())
+      .map(([key, v]) => ({ key, label: v.label, items: v.items }))
+      .sort((x, y) => {
+        if (x.key === "__none") return 1;
+        if (y.key === "__none") return -1;
+        return x.label.localeCompare(y.label);
+      });
+  }, [filtered, groupBy, lang, t]);
 
   const dkpOrgs = useMemo(
     () => (partnerships ?? []).filter((p) => p.isDomainKnowledgePartner === 1 && p.status === "approved")
@@ -795,6 +1384,105 @@ export default function Advisors() {
 
   const displayName = (a: AdvisorWithRoles) => (lang === "cn" && a.nameCn ? a.nameCn : a.name);
   const primaryRole = (a: AdvisorWithRoles) => a.roles.find((r) => r.isPrimary === 1) ?? a.roles[0];
+  // v5.9 — one renderer shared by the ungrouped roster and every group section.
+  const renderRoster = (items: AdvisorWithRoles[]) =>
+    view === "grid" ? (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map((a) => {
+          const pr = primaryRole(a);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => navigate(`/advisors/${a.id}`)}
+              className="group relative rounded-xl border border-border bg-card/80 p-4 text-left backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[hsl(var(--gold))]/50 hover:shadow-lg"
+              data-testid={`card-advisor-${a.id}`}
+            >
+              {/* Lifecycle state anchors the card corner so it never competes with the sector tags */}
+              <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} className="absolute right-3 top-3" />
+              <div className="flex items-start gap-3">
+                <AdvisorAvatar a={a} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 pr-24">
+                    <p className="min-w-0 truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
+                    {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                  </div>
+                  {pr && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      {pr.title}{orgSuffix(pr)}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <PillarBadge pillar={a.pillar as Pillar} />
+                    {a.status === "pending" && (
+                      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
+                    )}
+                  </div>
+                  {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
+                  {(a.gobiPics ?? []).length > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5" data-testid={`text-advisor-pic-${a.id}`}>
+                      <PicAvatars names={a.gobiPics} />
+                      <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                        {t("picLabel")} · {(a.gobiPics ?? []).join(", ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="divide-y divide-border rounded-xl border border-border bg-card/80 backdrop-blur">
+        {items.map((a) => {
+          const pr = primaryRole(a);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => navigate(`/advisors/${a.id}`)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
+              data-testid={`row-advisor-${a.id}`}
+            >
+              <AdvisorAvatar a={a} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold">{displayName(a)}</p>
+                  {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
+                  {a.status === "pending" && (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">{t("advisorPendingBadge")}</Badge>
+                  )}
+                </div>
+                {pr && (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {pr.title}{orgSuffix(pr)}
+                  </p>
+                )}
+              </div>
+              <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[40%]">
+                {(a.gobiPics ?? []).length > 0 && (
+                  <span
+                    className="inline-flex items-center"
+                    title={`${t("picLabel")} · ${(a.gobiPics ?? []).join(", ")}`}
+                    data-testid={`text-advisor-pic-${a.id}`}
+                  >
+                    <PicAvatars names={a.gobiPics} />
+                  </span>
+                )}
+                {showTags && <TagBadges tags={a.tags} />}
+                <PillarBadge pillar={a.pillar as Pillar} />
+              </div>
+              {/* Lifecycle gets its own trailing column so the column reads top to bottom */}
+              <div className="flex w-28 shrink-0 justify-end">
+                <LifecyclePill status={a.lifecycleStatus} advisorId={a.id} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+
   const orgSuffix = (r: { title: string; organization: string | null }) => {
     if (!r.organization) return "";
     const base = r.organization.split(/[(\uFF08\u2014\u2013]/)[0].trim().toLowerCase();
@@ -814,9 +1502,15 @@ export default function Advisors() {
             <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{t("advisorsSub")}</p>
           </div>
           {canSubmit && (
-            <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-add-advisor">
-              <Plus className="h-4 w-4 mr-1.5" /> {t("addAdvisor")}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportCsvButtons />
+              <Button variant="outline" size="sm" onClick={() => setOutreachOpen(true)} data-testid="button-outreach">
+                <Send className="h-3.5 w-3.5 mr-1.5" /> {t("outreachTitle")}
+              </Button>
+              <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]" data-testid="button-add-advisor">
+                <Plus className="h-4 w-4 mr-1.5" /> {t("addAdvisor")}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -840,6 +1534,8 @@ export default function Advisors() {
             <MultiSelectFilter label={t("sectorTags")} testid="select-tags" selected={tagFilter} onChange={setTagFilter}
               options={(allTags ?? []).map((tg) => ({ value: String(tg.id), label: lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn }))} />
           )}
+          <MultiSelectFilter label={t("lifecycleStatusLabel")} testid="select-lifecycle" selected={lifecycle} onChange={setLifecycle}
+            options={ADVISOR_LIFECYCLE.map((s) => ({ value: s, label: t(`lifecycle_${s}` as any) }))} />
           {canSubmit && (
             <MultiSelectFilter label={t("momentumLabel")} testid="select-momentum" selected={momentumFilter} onChange={setMomentumFilter}
               options={(["active", "warm", "dormant", "none"] as const).map((m) => ({ value: m, label: t(`momentum_${m}` as any) }))} />
@@ -868,6 +1564,14 @@ export default function Advisors() {
             >
               <List className="h-3.5 w-3.5" /> {t("viewList")}
             </button>
+            <button
+              type="button"
+              onClick={() => setView("map")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${view === "map" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              data-testid="button-view-map"
+            >
+              <Orbit className="h-3.5 w-3.5" /> {t("viewMap")}
+            </button>
           </div>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "activity")}>
             <SelectTrigger className="h-9 w-44" data-testid="select-sort">
@@ -876,6 +1580,19 @@ export default function Advisors() {
             <SelectContent>
               <SelectItem value="name">{t("sortByName")}</SelectItem>
               {canSubmit && <SelectItem value="activity">{t("sortByActivity")}</SelectItem>}
+            </SelectContent>
+          </Select>
+          <Select value={groupBy} onValueChange={(v) => { setGroupBy(v as GroupBy); setCollapsed([]); }}>
+            <SelectTrigger className="h-9 w-48" data-testid="select-group-by">
+              <span className="mr-1 text-xs text-muted-foreground">{t("groupByLabel")}:</span> <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t("groupByNone")}</SelectItem>
+              <SelectItem value="pillar">{t("groupByPillar")}</SelectItem>
+              <SelectItem value="tag">{t("groupByTag")}</SelectItem>
+              <SelectItem value="lifecycle">{t("groupByLifecycle")}</SelectItem>
+              <SelectItem value="track">{t("groupByTrack")}</SelectItem>
+              <SelectItem value="cohort">{t("groupByCohort")}</SelectItem>
             </SelectContent>
           </Select>
           <DropdownMenu>
@@ -898,82 +1615,44 @@ export default function Advisors() {
           </DropdownMenu>
         </div>
 
-        {/* Grid */}
+        {/* Roster — grid or list, optionally grouped */}
         {isLoading ? (
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
           </div>
         ) : filtered.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground" data-testid="text-advisors-empty">{t("advisorEmpty")}</p>
-        ) : view === "grid" ? (
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((a) => {
-              const pr = primaryRole(a);
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => navigate(`/advisors/${a.id}`)}
-                  className="group rounded-xl border border-border bg-card/80 p-4 text-left backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[hsl(var(--gold))]/50 hover:shadow-lg"
-                  data-testid={`card-advisor-${a.id}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <AdvisorAvatar a={a} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 truncate font-semibold" data-testid={`text-advisor-name-${a.id}`}>{displayName(a)}</p>
-                        {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
-                      </div>
-                      {pr && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                          {pr.title}{orgSuffix(pr)}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <PillarBadge pillar={a.pillar as Pillar} />
-                        {a.status === "pending" && (
-                          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[11px]">{t("advisorPendingBadge")}</Badge>
-                        )}
-                      </div>
-                      {showTags && <TagBadges tags={a.tags} className="mt-1.5" />}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+        ) : view === "map" ? (
+          <div className="mt-6">
+            <p className="mb-3 text-xs text-muted-foreground" data-testid="text-advisor-map-hint">{t("advisorMapHint")}</p>
+            <AdvisorStarMap advisors={filtered} partnerships={partnerships ?? []} onSelect={(id) => navigate(`/advisors/${id}`)} height={620} />
           </div>
+        ) : groupBy === "none" ? (
+          <div className="mt-6">{renderRoster(filtered)}</div>
         ) : (
-          <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-card/80 backdrop-blur">
-            {filtered.map((a) => {
-              const pr = primaryRole(a);
+          <div className="mt-6 space-y-3">
+            {groups.map((g) => {
+              const isOpen = !collapsed.includes(g.key);
               return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => navigate(`/advisors/${a.id}`)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
-                  data-testid={`row-advisor-${a.id}`}
+                <Collapsible
+                  key={g.key}
+                  open={isOpen}
+                  onOpenChange={(o) => setCollapsed((c) => (o ? c.filter((k) => k !== g.key) : [...c, g.key]))}
+                  data-testid={`group-${g.key}`}
                 >
-                  <AdvisorAvatar a={a} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="min-w-0 truncate text-sm font-semibold">{displayName(a)}</p>
-                      {canSubmit && showMomentum && <MomentumDot lastActivityAt={a.lastActivityAt} />}
-                      {a.status === "pending" && (
-                        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">{t("advisorPendingBadge")}</Badge>
-                      )}
-                    </div>
-                    {pr && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {pr.title}{orgSuffix(pr)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 max-w-[45%]">
-                    {showTags && <TagBadges tags={a.tags} />}
-                    <PillarBadge pillar={a.pillar as Pillar} />
-                  </div>
-                </button>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-left transition-colors hover:bg-secondary/50"
+                      data-testid={`button-group-toggle-${g.key}`}
+                    >
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !isOpen && "-rotate-90")} />
+                      <span className="text-sm font-semibold">{g.label}</span>
+                      <span className="text-xs text-muted-foreground" data-testid={`text-group-count-${g.key}`}>{g.items.length}</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">{renderRoster(g.items)}</CollapsibleContent>
+                </Collapsible>
               );
             })}
           </div>
@@ -1045,6 +1724,7 @@ export default function Advisors() {
         partnerships={partnerships ?? []}
       />
       <AdvisorFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} partnerships={partnerships ?? []} />
+      {canSubmit && <OutreachDialog open={outreachOpen} onOpenChange={setOutreachOpen} advisors={filtered} />}
     </Layout>
   );
 }
