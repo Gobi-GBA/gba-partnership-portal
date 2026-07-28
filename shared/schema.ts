@@ -28,6 +28,8 @@ export const users = sqliteTable("users", {
   resetExpires: text("reset_expires"), // ISO timestamp
   editRequestedAt: text("edit_requested_at"), // ISO timestamp — viewer asked an admin for edit rights
   mustChangePassword: integer("must_change_password").notNull().default(0), // 0 | 1 — set by admin force-reset; cleared on next password change
+  lastSeenVersion: text("last_seen_version"), // v6.05 — last portal version whose update notes the user has seen (Updates badge)
+  lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05 — ISO timestamp of the last Updates-page visit (my-requests badge)
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

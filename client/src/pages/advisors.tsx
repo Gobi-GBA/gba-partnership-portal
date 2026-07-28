@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/command";
 import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle, FileAssetMeta } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
+import { normalizeUrl } from "@shared/urls";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
@@ -618,6 +619,10 @@ function AdvisorFormDialog({
   const keyRef = useRef(1);
   const [loadedFor, setLoadedFor] = useState<number | "new" | null>(null);
   const [advSnapshot, setAdvSnapshot] = useState<string | null>("");
+  // v6.05 — step-0 source chooser (new records only) + paste-dialog trigger
+  const [chooserDone, setChooserDone] = useState(false);
+  const [pasteSignal, setPasteSignal] = useState(0);
+  const profileUrlRef = useRef<HTMLInputElement>(null);
 
   // Seed the form when the dialog opens (edit uses the detail endpoint for the HD photo)
   const { data: fullEditing } = useQuery<AdvisorWithRoles>({
@@ -651,6 +656,7 @@ function AdvisorFormDialog({
     } else {
       setForm(EMPTY_FORM);
       setRoles([{ key: keyRef.current++, title: "", organization: "", partnershipId: null, isPrimary: 1 }]);
+      setChooserDone(false);
     }
     setAdvSnapshot(null); // re-baselined on the next render, after both states settle
   }
@@ -750,7 +756,9 @@ function AdvisorFormDialog({
                 url={form.profileUrl}
                 advisorId={editing?.id ?? null}
                 identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
+                openPasteSignal={pasteSignal}
                 onApply={(d: ExtractedAdvisor) => {
+                  setChooserDone(true);
                   setForm((f) => ({
                     ...f,
                     name: d.name?.trim() || f.name,
@@ -777,17 +785,43 @@ function AdvisorFormDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
+          {/* v6.05 — step 0: source chooser for brand-new records */}
+          {!editing && !chooserDone && (
+            <div className="rounded-lg border border-[hsl(var(--aqua))]/40 bg-[hsl(var(--aqua))]/5 p-3 space-y-2" data-testid="panel-source-chooser">
+              <p className="text-sm font-semibold">{t("chooserTitle")}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-paste"
+                  onClick={() => { setChooserDone(true); setPasteSignal((n) => n + 1); }}>
+                  <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserPaste")}</span>
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-link"
+                  onClick={() => { setChooserDone(true); setTimeout(() => profileUrlRef.current?.focus(), 50); }}>
+                  <Linkedin className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserLink")}</span>
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-manual"
+                  onClick={() => setChooserDone(true)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserManual")}</span>
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("chooserHint")}</p>
+            </div>
+          )}
+
           {/* 1. Source — the profile link comes first so auto-sync (top right)
               has material to harvest. */}
           <FormSection id="source" step={1} title={t("advSectionSource")}>
             <div className="space-y-1">
               <Label>{t("advisorProfileUrl")}</Label>
-              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+              <Input ref={profileUrlRef} value={form.profileUrl} onChange={set("profileUrl")}
+                onBlur={() => setForm((f) => ({ ...f, profileUrl: normalizeUrl(f.profileUrl) || f.profileUrl }))}
+                placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
               <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
             </div>
             <div className="space-y-1">
               <Label>LinkedIn URL</Label>
-              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
+              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")}
+                onBlur={() => setForm((f) => ({ ...f, linkedinUrl: normalizeUrl(f.linkedinUrl) || f.linkedinUrl }))}
+                placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
             </div>
           </FormSection>
 
@@ -829,8 +863,11 @@ function AdvisorFormDialog({
           {/* 3. Identity */}
           <FormSection id="identity" step={3} title={t("advSectionIdentity")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>{t("advisorNameEn")}</Label>
+              <div className={cn("space-y-1", !form.name.trim() && "rounded-md p-2 -m-1 ring-2 ring-amber-400/70 bg-amber-400/10")} data-testid="field-adv-name">
+                <Label>
+                  {t("advisorNameEn")} <span className="text-amber-600 dark:text-amber-400">*</span>
+                  {!form.name.trim() && <span className="ml-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">({t("requiredHint")})</span>}
+                </Label>
                 <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
               </div>
               <div className="space-y-1">

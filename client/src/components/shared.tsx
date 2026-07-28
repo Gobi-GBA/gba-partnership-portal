@@ -344,15 +344,47 @@ export function Layout({ children }: { children: ReactNode }) {
     }
   }, [user, location]);
 
-  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string }[] = [
+  // v6.05 — pending-item badges ("missed call" indicators). Updates: unseen
+  // version notes + answered requests. Admin: everything in the approval queues.
+  const { data: notif } = useQuery<{
+    lastSeenVersion: string | null;
+    myRequestsResolved: number;
+    pendingUsers?: number;
+    pendingPartnerships?: number;
+    pendingAdvisors?: number;
+    pendingChangeRequests?: number;
+    openRequests?: number;
+  }>({
+    queryKey: ["/api/me/notifications"],
+    enabled: !!user,
+    refetchInterval: 60_000,
+  });
+  const updatesBadge = notif ? (notif.lastSeenVersion === CURRENT_VERSION ? 0 : 1) + (notif.myRequestsResolved ?? 0) : 0;
+  const adminBadge = notif
+    ? (notif.pendingUsers ?? 0) + (notif.pendingPartnerships ?? 0) + (notif.pendingAdvisors ?? 0) + (notif.pendingChangeRequests ?? 0) + (notif.openRequests ?? 0)
+    : 0;
+
+  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string; badge?: number }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
-    { href: "/updates", label: t("navUpdates"), show: true },
+    { href: "/updates", label: t("navUpdates"), show: true, badge: updatesBadge },
     // v5.12 — the scoreboard moved inside the admin portal (Admin → Scoreboard tab).
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1, restrictedTip: t("restrictedTipRd") },
-    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin") },
+    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin"), badge: adminBadge },
   ];
+
+  // gold count dot, shared by desktop and mobile nav
+  const NavCountBadge = ({ count, id }: { count: number; id: string }) =>
+    count > 0 ? (
+      <span
+        data-testid={`badge-nav-${id}`}
+        title={t("pendingBadgeTip")}
+        className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--gold))] px-1 text-[10px] font-bold leading-none text-[hsl(var(--navy))] align-middle"
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    ) : null;
 
   return (
     <div className="relative min-h-screen flex flex-col text-foreground">
@@ -383,6 +415,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 >
                   {l.label}
+                  <NavCountBadge count={l.badge ?? 0} id={l.href.replace(/\//g, "") || "home"} />
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))] align-middle">
                       {t("soonTag")}
@@ -456,6 +489,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 >
                   {l.label}
+                  <NavCountBadge count={l.badge ?? 0} id={`m-${l.href.replace(/\//g, "") || "home"}`} />
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">
                       {t("soonTag")}

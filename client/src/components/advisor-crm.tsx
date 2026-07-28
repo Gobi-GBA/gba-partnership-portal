@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { thankYou } from "@/components/thank-you";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
@@ -452,10 +452,14 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function LinkedinSyncControl({ url, identity, advisorId, onApply }: { url: string; identity?: SyncIdentity; advisorId?: number | null; onApply: (data: ExtractedAdvisor) => void }) {
+export function LinkedinSyncControl({ url, identity, advisorId, onApply, openPasteSignal }: { url: string; identity?: SyncIdentity; advisorId?: number | null; onApply: (data: ExtractedAdvisor) => void; openPasteSignal?: number }) {
   const { t } = useLang();
   const { toast } = useToast();
   const [pasteOpen, setPasteOpen] = useState(false);
+  // v6.05 — the guided source chooser (step 0) can pop the paste dialog open
+  useEffect(() => {
+    if (openPasteSignal) setPasteOpen(true);
+  }, [openPasteSignal]);
   const [pasteText, setPasteText] = useState("");
   const cvInputRef = useRef<HTMLInputElement>(null);
   const [cvName, setCvName] = useState("");

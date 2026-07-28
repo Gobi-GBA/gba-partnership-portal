@@ -22,6 +22,8 @@ export const usersPg = pgTable("users", {
   resetExpires: text("reset_expires"),
   editRequestedAt: text("edit_requested_at"),
   mustChangePassword: integer("must_change_password").notNull().default(0),
+  lastSeenVersion: text("last_seen_version"), // v6.05
+  lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05
 });
 
 export const sessionsPg = pgTable("sessions", {

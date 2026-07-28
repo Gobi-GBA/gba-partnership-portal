@@ -138,6 +138,8 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "reset_token_hash", "reset_token_hash TEXT");
   ensureColumn("users", "reset_expires", "reset_expires TEXT");
   ensureColumn("users", "must_change_password", "must_change_password INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("users", "last_seen_version", "last_seen_version TEXT");
+  ensureColumn("users", "last_seen_updates_at", "last_seen_updates_at TEXT");
   ensureColumn("users", "edit_requested_at", "edit_requested_at TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
   // v6.04 — generalized audit log (partnership | advisor)
@@ -310,7 +312,7 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
           User,
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-          | "resetTokenHash" | "resetExpires" | "mustChangePassword"
+          | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
         >
       >
     ) {

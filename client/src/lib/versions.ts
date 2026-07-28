@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.04";
+export const CURRENT_VERSION = "6.05";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.05",
+    date: "2026-07-28",
+    by: "Fred Li",
+    titleEn: "v6.05 — smarter link sync, automatic photo & logo pull, guided input flow, pending-item badges",
+    titleCn: "v6.05 — 更智能的链接同步、自动提取照片与标志、引导式填写流程、待办事项提示标记",
+    itemsEn: [
+      "Link sync now repairs what you type: a bare www.linkedin.com/in/... or missing https:// is fixed automatically, both as you leave the field and again on the server, so sync no longer fails on a technically-imperfect URL",
+      "Sturdier page fetching: pages are fetched with a real browser identity first, then a crawler identity, then a text-reader fallback — LinkedIn and other guarded sites succeed far more often",
+      "Photos and logos come along: advisor sync picks up the profile photo where available, and partnership sync now pulls the organisation's logo from its website into the logo field (only when the field is empty)",
+      "Guided input: adding a new advisor or partnership starts with a simple choice — paste a document, sync from a link, or fill in manually",
+      "Mandatory fields are highlighted in amber with a required tag until filled, and submitting jumps to the first missing one",
+      "Missed-call style badges: a gold dot on Updates when a new version or an answer to your request is waiting, and a gold count on Admin for pending approvals and open requests — visiting the Updates page clears it",
+    ],
+    itemsCn: [
+      "链接同步会自动修复输入：纯 www.linkedin.com/in/... 或缺少 https:// 的链接会在离开输入框时及服务器端自动补全，不再因格式小问题而同步失败",
+      "更稳健的网页抓取：先以真实浏览器身份抓取，再以爬虫身份，最后回退到文本阅读器 — LinkedIn 等受保护网站的成功率大幅提升",
+      "照片与标志一并带回：顾问同步会在可用时提取个人照片，合作伙伴同步会从机构官网提取标志填入标志字段（仅当该字段为空时）",
+      "引导式填写：新增顾问或合作伙伴时先做一个简单选择 — 粘贴文档、从链接同步、或手动填写",
+      "必填项在填写前以琥珀色高亮并标注「必填」，提交时自动跳转到第一个缺失项",
+      "未接来电式提示：有新版本或您的请求获得回复时，「更新」栏出现金色圆点；管理员的「管理」栏显示待审批与未处理请求的金色计数 — 访问更新页面即可清除",
+    ],
+  },
   {
     version: "6.04",
     date: "2026-07-28",
