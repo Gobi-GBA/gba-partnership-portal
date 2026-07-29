@@ -9,9 +9,22 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.05";
+export const CURRENT_VERSION = "6.06";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.06",
+    date: "2026-07-29",
+    by: "Analyst01",
+    titleEn: "v6.06 — rapid-click camel sprints and corrected caravan direction",
+    titleCn: "v6.06 — 连点骆驼冲刺与正确行进方向",
+    itemsEn: [
+      "Camels now face left as the caravan travels left; rapidly clicking the same camel three times within one second sends it into a playful 1.5-second sprint with faster legs and a fiery trail",
+    ],
+    itemsCn: [
+      "骆驼现在面向左方，与商队行进方向一致；一秒内连续点击同一只骆驼三次，它会加快步伐冲刺 1.5 秒，并在身后拖出火焰",
+    ],
+  },
   {
     version: "6.05",
     date: "2026-07-28",

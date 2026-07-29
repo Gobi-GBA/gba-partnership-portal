@@ -138,45 +138,86 @@ export function GalaxyBackground() {
       ctx!.fill();
     }
 
-    // A camel silhouette walking on the ridge. x,y = ground point under the body.
+    // A camel silhouette walking left on the ridge. x,y = ground point under the body.
     function drawCamel(x: number, y: number, s: number, t: number, color: string, shadow: string) {
+      ctx!.save();
+      ctx!.translate(x, y);
+      ctx!.scale(-1, 1);
+
       ctx!.beginPath();
-      ctx!.ellipse(x - s * 0.5, y + s * 0.06, s * 1.15, s * 0.11, 0, 0, Math.PI * 2);
+      ctx!.ellipse(-s * 0.5, s * 0.06, s * 1.15, s * 0.11, 0, 0, Math.PI * 2);
       ctx!.fillStyle = shadow;
       ctx!.fill();
 
       ctx!.fillStyle = color;
       ctx!.strokeStyle = color;
       ctx!.lineWidth = Math.max(1, s * 0.07);
-      const hip = y - s * 0.52;
+      const hip = -s * 0.52;
       for (let i = 0; i < 4; i++) {
-        const lx = x - s * 0.34 + i * s * 0.23;
+        const lx = -s * 0.34 + i * s * 0.23;
         const swing = Math.sin(t * 2.2 + i * Math.PI * 0.9) * s * 0.06;
         ctx!.beginPath();
         ctx!.moveTo(lx, hip);
-        ctx!.lineTo(lx + swing, y);
+        ctx!.lineTo(lx + swing, 0);
         ctx!.stroke();
       }
       ctx!.beginPath();
-      ctx!.ellipse(x, y - s * 0.6, s * 0.48, s * 0.2, 0, 0, Math.PI * 2);
+      ctx!.ellipse(0, -s * 0.6, s * 0.48, s * 0.2, 0, 0, Math.PI * 2);
       ctx!.fill();
       ctx!.beginPath();
-      ctx!.ellipse(x - s * 0.16, y - s * 0.78, s * 0.15, s * 0.13, 0, 0, Math.PI * 2);
-      ctx!.ellipse(x + s * 0.14, y - s * 0.76, s * 0.14, s * 0.12, 0, 0, Math.PI * 2);
+      ctx!.ellipse(-s * 0.16, -s * 0.78, s * 0.15, s * 0.13, 0, 0, Math.PI * 2);
+      ctx!.ellipse(s * 0.14, -s * 0.76, s * 0.14, s * 0.12, 0, 0, Math.PI * 2);
       ctx!.fill();
       ctx!.lineWidth = Math.max(1.2, s * 0.11);
       ctx!.beginPath();
-      ctx!.moveTo(x + s * 0.42, y - s * 0.62);
-      ctx!.quadraticCurveTo(x + s * 0.62, y - s * 0.85, x + s * 0.66, y - s * 1.0);
+      ctx!.moveTo(s * 0.42, -s * 0.62);
+      ctx!.quadraticCurveTo(s * 0.62, -s * 0.85, s * 0.66, -s * 1.0);
       ctx!.stroke();
       ctx!.beginPath();
-      ctx!.ellipse(x + s * 0.72, y - s * 1.02, s * 0.11, s * 0.06, 0.35, 0, Math.PI * 2);
+      ctx!.ellipse(s * 0.72, -s * 1.02, s * 0.11, s * 0.06, 0.35, 0, Math.PI * 2);
       ctx!.fill();
       ctx!.lineWidth = Math.max(1, s * 0.05);
       ctx!.beginPath();
-      ctx!.moveTo(x - s * 0.46, y - s * 0.62);
-      ctx!.quadraticCurveTo(x - s * 0.58, y - s * 0.5, x - s * 0.54, y - s * 0.38);
+      ctx!.moveTo(-s * 0.46, -s * 0.62);
+      ctx!.quadraticCurveTo(-s * 0.58, -s * 0.5, -s * 0.54, -s * 0.38);
       ctx!.stroke();
+      ctx!.restore();
+    }
+
+    function drawCamelFire(x: number, y: number, s: number, t: number, progress: number) {
+      const envelope = Math.max(0, Math.min(1, progress * 8, (1 - progress) * 8));
+      const flicker = 0.9 + Math.sin(t * 24) * 0.12;
+      const baseX = x + s * 0.5;
+      const baseY = y - s * 0.54;
+      const length = s * 1.05 * flicker * envelope;
+      const width = s * 0.24 * envelope;
+
+      ctx!.save();
+      ctx!.globalAlpha = envelope;
+      ctx!.beginPath();
+      ctx!.moveTo(baseX, baseY - width);
+      ctx!.quadraticCurveTo(baseX + length * 0.55, baseY - width * 1.2, baseX + length, baseY + Math.sin(t * 17) * width * 0.35);
+      ctx!.quadraticCurveTo(baseX + length * 0.5, baseY + width * 1.15, baseX, baseY + width);
+      ctx!.closePath();
+      ctx!.fillStyle = "hsl(10, 88%, 48%)";
+      ctx!.fill();
+
+      ctx!.beginPath();
+      ctx!.moveTo(baseX, baseY - width * 0.66);
+      ctx!.quadraticCurveTo(baseX + length * 0.42, baseY - width * 0.7, baseX + length * 0.72, baseY);
+      ctx!.quadraticCurveTo(baseX + length * 0.38, baseY + width * 0.7, baseX, baseY + width * 0.66);
+      ctx!.closePath();
+      ctx!.fillStyle = "hsl(28, 96%, 55%)";
+      ctx!.fill();
+
+      ctx!.beginPath();
+      ctx!.moveTo(baseX, baseY - width * 0.32);
+      ctx!.quadraticCurveTo(baseX + length * 0.24, baseY - width * 0.3, baseX + length * 0.43, baseY);
+      ctx!.quadraticCurveTo(baseX + length * 0.22, baseY + width * 0.3, baseX, baseY + width * 0.32);
+      ctx!.closePath();
+      ctx!.fillStyle = "hsl(49, 100%, 68%)";
+      ctx!.fill();
+      ctx!.restore();
     }
 
     // A walking human silhouette (part of the caravan team). x,y = ground point.
@@ -260,8 +301,22 @@ export function GalaxyBackground() {
     // Clicking an empty part of the page hit-tests the scene; the nearest
     // actor (caravan member, palm or star) reacts once for ~1.2s through the
     // existing rAF loop — purely cosmetic, no extra render cost when idle.
-    type Reaction = { kind: "member" | "palm" | "star" | "twinkle" | "celestial"; index: number; start: number; x: number; y: number };
+    type Reaction = { kind: "member" | "camelSprint" | "palm" | "star" | "twinkle" | "celestial"; index: number; start: number; x: number; y: number };
     let reaction: Reaction | null = null;
+    let camelClickStreak: { index: number; times: number[] } = { index: -1, times: [] };
+
+    function registerCamelClick(index: number, now: number) {
+      const times = camelClickStreak.index === index
+        ? camelClickStreak.times.filter((time) => now - time <= 1000)
+        : [];
+      times.push(now);
+      if (times.length >= 3) {
+        camelClickStreak = { index: -1, times: [] };
+        return true;
+      }
+      camelClickStreak = { index, times };
+      return false;
+    }
 
     // v6.02 — small canvas heart for the sun/moon reaction
     function drawHeart(hx: number, hy: number, d: number, fill: string) {
@@ -310,8 +365,9 @@ export function GalaxyBackground() {
     function drawScene(now: number, dark: boolean) {
       const t = now / 1000;
       const drift = reduced ? 0 : t;
-      // v6.01 — progress of the active one-shot reaction (0..1, expires itself)
-      const rProg = reaction ? Math.min(1, (now - reaction.start) / 1200) : 0;
+      // Progress of the active one-shot reaction (0..1, expires itself).
+      const reactionDuration = reaction?.kind === "camelSprint" ? 1500 : 1200;
+      const rProg = reaction ? Math.min(1, (now - reaction.start) / reactionDuration) : 0;
       if (reaction && rProg >= 1) reaction = null;
 
       // ----- Sky -----
@@ -446,19 +502,27 @@ export function GalaxyBackground() {
         const m = MEMBERS[i];
         const cx = caravanX + m.dx;
         if (cx < -90 || cx > w + 90) continue;
-        const gy = duneY(cx, h * 0.72, h * 0.05, 1.7, drift * 0.014 + 3.6);
+        const sprinting = reaction?.kind === "camelSprint" && reaction.index === i;
+        const sprintDx = sprinting && !reduced ? -Math.sin(Math.PI * rProg) * m.s * 1.45 : 0;
+        const drawX = cx + sprintDx;
+        const gy = duneY(drawX, h * 0.72, h * 0.05, 1.7, drift * 0.014 + 3.6);
         // v6.01 — clicked member says hi: a light hop, nothing more
         let dy = 0;
         if (reaction && reaction.kind === "member" && reaction.index === i) {
           dy = -Math.sin(Math.PI * rProg) * m.s * 0.35;
         }
-        if (m.kind === "camel") drawCamel(cx, gy + 2 + dy, m.s, reduced ? 0 : t + i * 1.3, silhouette, silShadow);
-        else drawHuman(cx, gy + 2 + dy, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow);
+        if (m.kind === "camel") {
+          if (sprinting) drawCamelFire(drawX, gy + 2 + dy, m.s, t, rProg);
+          const gaitTime = reduced ? 0 : (sprinting ? t * 3 : t) + i * 1.3;
+          drawCamel(drawX, gy + 2 + dy, m.s, gaitTime, silhouette, silShadow);
+        } else {
+          drawHuman(drawX, gy + 2 + dy, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow);
+        }
         if (dy < -1) {
           // a tiny greeting sparkle above the head while hopping
           const sy = gy - m.s * 1.25 + dy;
           ctx!.beginPath();
-          ctx!.arc(cx, sy, 1.6, 0, Math.PI * 2);
+          ctx!.arc(drawX, sy, 1.6, 0, Math.PI * 2);
           ctx!.fillStyle = `hsla(43, 90%, 70%, ${0.8 * Math.sin(Math.PI * rProg)})`;
           ctx!.fill();
         }
@@ -587,22 +651,8 @@ export function GalaxyBackground() {
       const px = e.clientX;
       const py = e.clientY;
       const now = performance.now();
-      if (reduced) {
-        // reduced motion — one static frame: a heart on the sun/moon, else a quiet twinkle
-        const cdr = Math.hypot(px - w * 0.78, py - h * 0.2);
-        reaction =
-          cdr < 64
-            ? { kind: "celestial", index: 0, start: now - 360, x: w * 0.78, y: h * 0.2 }
-            : { kind: "twinkle", index: 0, start: now - 360, x: px, y: py };
-        raf = requestAnimationFrame(frame);
-        window.setTimeout(() => {
-          reaction = null;
-          raf = requestAnimationFrame(frame);
-        }, 1200);
-        return;
-      }
       const t = now / 1000;
-      const drift = t;
+      const drift = reduced ? 0 : t;
       let best: Reaction | null = null;
       let bestD = 60; // px pick radius
       // v6.02 — sun (day) / moon (night): both live at the same spot
@@ -615,7 +665,7 @@ export function GalaxyBackground() {
       }
       // caravan members
       const span = w + 640;
-      const caravanX = w + 300 - ((t * 14) % span);
+      const caravanX = reduced ? w * 0.58 : w + 300 - ((t * 14) % span);
       for (let i = 0; i < MEMBERS.length; i++) {
         const m = MEMBERS[i];
         const cx = caravanX + m.dx;
@@ -642,7 +692,7 @@ export function GalaxyBackground() {
         let starD = Math.min(bestD, 36);
         for (let i = 0; i < stars.length; i++) {
           const s = stars[i];
-          const sx = ((s.x + t * s.drift * 0.01) % 1) * w;
+          const sx = ((s.x + (reduced ? 0 : t * s.drift * 0.01)) % 1) * w;
           const sy = s.y * h * 0.72;
           const d = Math.hypot(px - sx, py - sy);
           if (d < starD) {
@@ -650,6 +700,34 @@ export function GalaxyBackground() {
             best = { kind: "star", index: i, start: now, x: sx, y: sy };
           }
         }
+      }
+
+      if (best?.kind === "member" && MEMBERS[best.index]?.kind === "camel") {
+        if (registerCamelClick(best.index, now)) {
+          reaction = { ...best, kind: "camelSprint", start: reduced ? now - 450 : now };
+          if (reduced) {
+            raf = requestAnimationFrame(frame);
+            window.setTimeout(() => {
+              reaction = null;
+              raf = requestAnimationFrame(frame);
+            }, 1500);
+          }
+        }
+        return;
+      }
+
+      camelClickStreak = { index: -1, times: [] };
+      if (reduced) {
+        // Reduced motion uses one static frame: a heart on the sun/moon, else a quiet twinkle.
+        reaction = best?.kind === "celestial"
+          ? { ...best, start: now - 360 }
+          : { kind: "twinkle", index: 0, start: now - 360, x: px, y: py };
+        raf = requestAnimationFrame(frame);
+        window.setTimeout(() => {
+          reaction = null;
+          raf = requestAnimationFrame(frame);
+        }, 1200);
+        return;
       }
       if (best) reaction = best;
     }
