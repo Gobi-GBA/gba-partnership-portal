@@ -1460,7 +1460,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
     isStaffUser(user)
       ? a
-      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, wechatId: null, originStaff: null };
+      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, mobiles: null, wechatId: null, originStaff: null };
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
   async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
@@ -1593,6 +1593,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return bestLevel > 0 && matches.length === 1 ? matches[0] : null;
   }
 
+  function normalizeAdvisorMobiles(values: string[] | null | undefined): string[] {
+    return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean))).slice(0, 3);
+  }
+
   app.post("/api/advisors", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const parsed = advisorInputSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1600,6 +1604,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const isAdmin = req.user!.role === "admin";
     const { roles, tagIds, ...data } = parsed.data;
+    const mobiles = normalizeAdvisorMobiles(data.mobiles ?? (data.mobile ? [data.mobile] : []));
     const created = await storage.createAdvisor({
       name: data.name,
       nameCn: data.nameCn ?? null,
@@ -1620,7 +1625,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       birthDay: data.birthDay ?? null,
       birthMonth: data.birthMonth ?? null,
       birthYear: data.birthYear ?? null,
-      mobile: data.mobile ?? null,
+      mobile: mobiles[0] ?? null,
+      mobiles: mobiles.length > 0 ? mobiles : null,
       wechatId: data.wechatId ?? null,
       originStaff: data.originStaff ?? data.gobiPics ?? null, // default: origin = initial PIC
       lifecycleStatus: data.lifecycleStatus ?? "proposed",
@@ -1664,6 +1670,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const { roles, status, tagIds, lifecycleStatus, ...data } = parsed.data;
     const patch: Partial<Advisor> = { ...data } as Partial<Advisor>;
+    if (data.mobiles !== undefined) {
+      const mobiles = normalizeAdvisorMobiles(data.mobiles);
+      patch.mobiles = mobiles.length > 0 ? mobiles : null;
+      patch.mobile = mobiles[0] ?? null;
+    } else if (data.mobile !== undefined) {
+      const mobiles = normalizeAdvisorMobiles(data.mobile ? [data.mobile] : []);
+      patch.mobiles = mobiles.length > 0 ? mobiles : null;
+      patch.mobile = mobiles[0] ?? null;
+    }
     if (isAdmin && status) patch.status = status;
     // Lifecycle status is admin-only and normally changes via /workflow; allow admins to set it here too.
     if (isAdmin && lifecycleStatus) {
@@ -1976,7 +1991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       lines.push(csvRow([
         a.name, a.nameCn ?? "", a.lifecycleStatus, a.advisorType, a.track, a.pillar,
         primary?.title ?? "", primary?.organization ?? "",
-        (a.emails ?? []).join("; "), a.mobile ?? "", a.wechatId ?? "", a.domains ?? "",
+        (a.emails ?? []).join("; "), (a.mobiles?.length ? a.mobiles : a.mobile ? [a.mobile] : []).join("; "), a.wechatId ?? "", a.domains ?? "",
         (a.originStaff ?? []).join("; "), (a.gobiPics ?? []).join("; "),
         a.cohort ?? "", a.onboardedAt ?? "", a.profileUrl ?? a.linkedinUrl ?? "",
       ]));

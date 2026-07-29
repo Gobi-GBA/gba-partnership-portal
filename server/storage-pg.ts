@@ -141,6 +141,7 @@ const BOOTSTRAP: string[] = [
     gobi_pics JSONB,
     cohort TEXT,
     engagement TEXT,
+    mobiles JSONB,
     status TEXT NOT NULL DEFAULT 'pending',
     submitted_by INTEGER,
     created_at TEXT NOT NULL
@@ -183,6 +184,9 @@ const BOOTSTRAP: string[] = [
   `UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`,
   // ---- v5.9 advisor CRM basics + origin staff ----
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS mobile TEXT`,
+  // ---- v6.07 multiple advisor mobile numbers ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS mobiles JSONB`,
+  `UPDATE advisors SET mobiles = jsonb_build_array(mobile) WHERE mobiles IS NULL AND mobile IS NOT NULL AND btrim(mobile) <> ''`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS wechat_id TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS origin_staff JSONB`,
   `UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`,

@@ -190,6 +190,8 @@ const MOBILE_CODES: Array<{ code: string; region: string }> = [
 ];
 
 const DEFAULT_MOBILE_CC = "+852";
+const MAX_MOBILES = 3;
+type MobileDraft = { cc: string; number: string };
 
 /** Split a stored "+852 9123 4567" into picker + number. Unknown codes fall back to the default. */
 function parseMobile(value: string | null | undefined): { cc: string; number: string } {
@@ -205,6 +207,16 @@ function parseMobile(value: string | null | undefined): { cc: string; number: st
 function joinMobile(cc: string, number: string): string | null {
   const n = number.trim();
   return n ? `${cc} ${n}` : null;
+}
+
+function mobileDrafts(values: string[] | null | undefined, legacy: string | null | undefined): MobileDraft[] {
+  const stored = values?.length ? values : legacy ? [legacy] : [];
+  const rows = stored.slice(0, MAX_MOBILES).map(parseMobile);
+  return rows.length > 0 ? rows : [{ cc: DEFAULT_MOBILE_CC, number: "" }];
+}
+
+function joinedMobiles(rows: MobileDraft[]): string[] {
+  return Array.from(new Set(rows.map((row) => joinMobile(row.cc, row.number)).filter((value): value is string => !!value)));
 }
 
 // ---------- Form section wrapper (v5.9) ----------
@@ -313,7 +325,7 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
           const done = doneAt(s.field);
           const canAct = !s.adminOnly || isAdmin;
           return (
-            <div key={s.stage} className="flex flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
+            <div key={s.stage} className="flex min-w-0 flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
               <div className="flex items-start gap-1.5">
                 {done ? (
                   <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
@@ -327,13 +339,13 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex min-w-0 flex-col items-stretch gap-1">
                 {!done && canAct && (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
                     disabled={advance.isPending}
                     onClick={() => advance.mutate({ stage: s.stage })}
                     data-testid={`button-workflow-done-${s.stage}`}
@@ -346,7 +358,7 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
                     disabled={advance.isPending}
                     onClick={() => advance.mutate({ stage: s.stage, undo: true })}
                     data-testid={`button-workflow-undo-${s.stage}`}
@@ -359,13 +371,13 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
                     disabled={uploadLetter.isPending}
                     onClick={() => letterInputRef.current?.click()}
                     data-testid="button-upload-letter"
                   >
-                    {uploadLetter.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Upload className="mr-1 h-3 w-3" />}
-                    {t("uploadSignedLetter")}
+                    {uploadLetter.isPending ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <Upload className="h-3 w-3 shrink-0" />}
+                    <span className="min-w-0 break-words">{t("uploadSignedLetter")}</span>
                   </Button>
                 )}
               </div>
@@ -479,8 +491,8 @@ const EMPTY_FORM = {
   pillar: "other" as Pillar, emailsText: "", domains: "", background: "", profileUrl: "", linkedinUrl: "",
   cohort: "", engagement: "", gobiPics: [] as string[], photoUrl: "", photoThumbUrl: "",
   publicClearance: false, birthDay: "", birthMonth: "", birthYear: "", tagIds: [] as number[],
-  // v5.9 CRM additions
-  mobileCc: DEFAULT_MOBILE_CC, mobileNumber: "", wechatId: "", originStaff: [] as string[],
+  // v5.9/v6.07 CRM additions
+  mobiles: [{ cc: DEFAULT_MOBILE_CC, number: "" }] as MobileDraft[], wechatId: "", originStaff: [] as string[],
 };
 
 // v5.15 — unified organization picker: one searchable combobox (shadcn Command)
@@ -647,8 +659,7 @@ function AdvisorFormDialog({
         birthMonth: target.birthMonth ? String(target.birthMonth) : "",
         birthYear: target.birthYear ? String(target.birthYear) : "",
         tagIds: (target.tags ?? []).map((tg) => tg.id),
-        mobileCc: parseMobile(target.mobile).cc,
-        mobileNumber: parseMobile(target.mobile).number,
+        mobiles: mobileDrafts(target.mobiles, target.mobile),
         wechatId: target.wechatId ?? "",
         originStaff: target.originStaff ?? [],
       });
@@ -680,6 +691,7 @@ function AdvisorFormDialog({
 
   const save = useMutation({
     mutationFn: async () => {
+      const mobiles = joinedMobiles(form.mobiles);
       const payload = {
         name: form.name.trim(),
         nameCn: form.nameCn.trim() || null,
@@ -697,7 +709,8 @@ function AdvisorFormDialog({
           || (/linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null),
         gobiPics: form.gobiPics,
         // v5.9 — staff-only CRM fields; origin staff is a permanent sourcing record
-        mobile: joinMobile(form.mobileCc, form.mobileNumber),
+        mobiles,
+        mobile: mobiles[0] ?? null,
         wechatId: form.wechatId.trim() || null,
         originStaff: form.originStaff.length > 0 ? form.originStaff : null,
         cohort: form.cohort.trim() || null,
@@ -741,7 +754,7 @@ function AdvisorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (o) onOpenChange(true); else requestClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto" data-testid="dialog-advisor-form">
+      <DialogContent className="min-w-0 max-w-2xl max-h-[88vh] overflow-y-auto [&>*]:min-w-0" data-testid="dialog-advisor-form">
         <DialogHeader>
           {/* v5.14 — auto-sync is a record-level action (it harvests the profile
               URL, LinkedIn URL and identity fields together), so it lives in the
@@ -833,24 +846,82 @@ function AdvisorFormDialog({
             </div>
             <div className="space-y-1">
               <Label>{t("advisorMobile")}</Label>
-              <div className="flex gap-2">
-                <Select value={form.mobileCc} onValueChange={(v) => setForm((f) => ({ ...f, mobileCc: v }))}>
-                  <SelectTrigger className="w-40 shrink-0" aria-label={t("advisorMobileCc")} data-testid="select-mobile-cc">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {MOBILE_CODES.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.mobileNumber}
-                  onChange={set("mobileNumber")}
-                  inputMode="tel"
-                  placeholder="9123 4567"
-                  data-testid="input-mobile"
-                />
+              <div className="space-y-2">
+                {form.mobiles.map((mobile, index) => (
+                  <div key={index} className="flex min-w-0 gap-2" data-testid={`mobile-row-${index}`}>
+                    <Select
+                      value={mobile.cc}
+                      onValueChange={(value) => setForm((current) => ({
+                        ...current,
+                        mobiles: current.mobiles.map((row, rowIndex) => rowIndex === index ? { ...row, cc: value } : row),
+                      }))}
+                    >
+                      <SelectTrigger
+                        className="w-32 shrink-0 sm:w-40"
+                        aria-label={`${t("advisorMobileCc")} ${index + 1}`}
+                        data-testid={index === 0 ? "select-mobile-cc" : `select-mobile-cc-${index}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {MOBILE_CODES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      className="min-w-0"
+                      value={mobile.number}
+                      onChange={(event) => {
+                        const number = event.target.value;
+                        setForm((current) => ({
+                          ...current,
+                          mobiles: current.mobiles.map((row, rowIndex) => rowIndex === index ? { ...row, number } : row),
+                        }));
+                      }}
+                      inputMode="tel"
+                      placeholder="9123 4567"
+                      aria-label={`${t("advisorMobile")} ${index + 1}`}
+                      data-testid={index === 0 ? "input-mobile" : `input-mobile-${index}`}
+                    />
+                    {index > 0 && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0"
+                        aria-label={t("advisorMobileRemove")}
+                        title={t("advisorMobileRemove")}
+                        onClick={() => setForm((current) => ({
+                          ...current,
+                          mobiles: current.mobiles.filter((_, rowIndex) => rowIndex !== index),
+                        }))}
+                        data-testid={`button-remove-mobile-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                {form.mobiles.length < MAX_MOBILES && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    aria-label={t("advisorMobileAdd")}
+                    title={t("advisorMobileAdd")}
+                    onClick={() => setForm((current) => ({
+                      ...current,
+                      mobiles: [...current.mobiles, {
+                        cc: current.mobiles[current.mobiles.length - 1]?.cc ?? DEFAULT_MOBILE_CC,
+                        number: "",
+                      }],
+                    }))}
+                    data-testid="button-add-mobile"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
               <p className="text-[11px] text-muted-foreground">{t("advisorMobileHint")}</p>
             </div>
@@ -1124,7 +1195,7 @@ function AdvisorDetailDialog({
 
   return (
     <Dialog open={id !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-advisor-detail">
+      <DialogContent className="min-w-0 max-w-lg max-h-[85vh] overflow-y-auto [&>*]:min-w-0" data-testid="dialog-advisor-detail">
         {isLoading || !a ? (
           <div className="space-y-3 py-6">
             <Skeleton className="h-20 w-20 rounded-full" />
@@ -1290,7 +1361,8 @@ function AdvisorDetailDialog({
                   {(() => {
                     const link = a.profileUrl || a.linkedinUrl;
                     const isLinkedin = /linkedin\.com/i.test(link ?? "");
-                    const hasContact = (a.emails ?? []).length > 0 || a.mobile || a.wechatId;
+                    const mobiles = a.mobiles?.length ? a.mobiles : a.mobile ? [a.mobile] : [];
+                    const hasContact = (a.emails ?? []).length > 0 || mobiles.length > 0 || a.wechatId;
                     const hasLinks = link || (cvFiles ?? []).length > 0;
                     const hasMeta = (a.originStaff ?? []).length > 0 || (a.gobiPics ?? []).length > 0 || formatBirthday(a);
                     if (!hasContact && !hasLinks && !hasMeta) return null;
@@ -1304,15 +1376,16 @@ function AdvisorDetailDialog({
                                 <Mail className="h-3 w-3" /> {e}
                               </a>
                             ))}
-                            {a.mobile && (
+                            {mobiles.map((mobile, index) => (
                               <a
-                                href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
+                                key={mobile}
+                                href={`tel:${mobile.replace(/[^+\d]/g, "")}`}
                                 className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
-                                data-testid="link-advisor-mobile"
+                                data-testid={index === 0 ? "link-advisor-mobile" : `link-advisor-mobile-${index}`}
                               >
-                                <Phone className="h-3 w-3" /> {a.mobile}
+                                <Phone className="h-3 w-3" /> {mobile}
                               </a>
-                            )}
+                            ))}
                             {a.wechatId && (
                               <button
                                 type="button"

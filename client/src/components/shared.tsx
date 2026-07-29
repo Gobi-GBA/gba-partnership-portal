@@ -390,7 +390,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="relative min-h-screen flex flex-col text-foreground">
       <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
+        <div className="mx-auto max-w-[1400px] px-4 h-16 flex items-center gap-3">
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
@@ -403,7 +403,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1 ml-6">
+          <nav className="hidden xl:flex items-center gap-1 ml-3">
             {links.filter((l) => l.show).map((l) => (
               <Link key={l.href} href={l.href} data-testid={`link-nav-${l.href.replace(/\//g, "") || "home"}`}>
                 <span
@@ -443,7 +443,7 @@ export function Layout({ children }: { children: ReactNode }) {
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             {user ? (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden xl:flex items-center gap-2">
                 <button
                   onClick={() => setShowProfile(true)}
                   className="flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-2 hover:bg-secondary transition-colors"
@@ -451,7 +451,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   data-testid="button-open-profile"
                 >
                   <UserAvatar name={user.name} avatarUrl={user.avatarUrl} size="md" />
-                  <span className="text-left leading-tight max-w-[130px]">
+                  <span className="hidden max-w-[130px] text-left leading-tight 2xl:block">
                     <span className="block truncate text-xs font-semibold" data-testid="text-username">{user.name}</span>
                     {user.title && <span className="block truncate text-[10px] text-muted-foreground" data-testid="text-usertitle">{user.title}</span>}
                   </span>
@@ -461,14 +461,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 </Button>
               </div>
             ) : (
-              <Link href="/login" data-testid="link-login" className="hidden md:block">
+              <Link href="/login" data-testid="link-login" className="hidden xl:block">
                 <Button size="sm">{t("navLogin")}</Button>
               </Link>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="xl:hidden"
               onClick={() => setOpen((o) => !o)}
               data-testid="button-mobile-menu"
             >
@@ -478,7 +478,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {open && (
-          <div className="md:hidden border-t border-border bg-background px-4 py-3 space-y-1">
+          <div className="xl:hidden border-t border-border bg-background px-4 py-3 space-y-1">
             {links.filter((l) => l.show).map((l) => (
               <Link key={l.href} href={l.href}>
                 <span

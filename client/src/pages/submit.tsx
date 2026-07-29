@@ -11,10 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye, Link as LinkIcon, Type, FileText } from "lucide-react";
+import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye, Link as LinkIcon, Type, FileText, Check, ChevronDown, MapPin } from "lucide-react";
 import type { Partnership, Stage, AttachmentInput } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf, levelOfStage } from "@/lib/constants";
 import { normalizeUrl } from "@shared/urls";
@@ -42,6 +44,95 @@ const emptyForm = {
 };
 
 type FormState = typeof emptyForm;
+
+function PartnerTargetCombobox({
+  value,
+  partners,
+  onSelect,
+}: {
+  value: string;
+  partners: Partnership[];
+  onSelect: (id: string) => void;
+}) {
+  const { t, lang } = useLang();
+  const [open, setOpen] = useState(false);
+  const selected = partners.find((partner) => String(partner.id) === value);
+  const partnerName = (partner: Partnership) => lang === "cn" && partner.nameCn ? partner.nameCn : partner.nameEn;
+  const groups = useMemo(
+    () => REGIONS.map((region) => ({
+      region,
+      partners: partners
+        .filter((partner) => (partner.region ?? "global") === region)
+        .sort((a, b) => partnerName(a).localeCompare(partnerName(b), lang === "cn" ? "zh-Hans" : "en")),
+    })).filter((group) => group.partners.length > 0),
+    [partners, lang],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-auto min-h-9 w-full min-w-0 justify-between px-3 py-2 font-normal"
+          data-testid="select-change-target"
+        >
+          {selected ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{partnerName(selected)}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t(`region_${selected.region ?? "global"}` as any)}
+              </span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">{t("selectPartner")}</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+        align="start"
+        collisionPadding={16}
+      >
+        <Command>
+          <CommandInput placeholder={t("searchPartners")} data-testid="input-search-change-target" />
+          <CommandList className="max-h-72">
+            <CommandEmpty>{t("noPartnerMatches")}</CommandEmpty>
+            {groups.map((group) => (
+              <CommandGroup
+                key={group.region}
+                heading={t(`region_${group.region}` as any)}
+                data-testid={`partner-group-${group.region}`}
+              >
+                {group.partners.map((partner) => (
+                  <CommandItem
+                    key={partner.id}
+                    value={`${partner.nameEn} ${partner.nameCn ?? ""} ${t(`region_${group.region}` as any)}`}
+                    onSelect={() => {
+                      onSelect(String(partner.id));
+                      setOpen(false);
+                    }}
+                    data-testid={`partner-option-${partner.id}`}
+                  >
+                    <Check className={cn("h-4 w-4", value === String(partner.id) ? "opacity-100" : "opacity-0")} />
+                    <span className="min-w-0 flex-1 truncate">{partnerName(partner)}</span>
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      {t(`region_${group.region}` as any)}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -347,18 +438,7 @@ export default function Submit() {
               <CardDescription>{t("suggestChangesBody")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Select value={targetId} onValueChange={loadTarget}>
-                <SelectTrigger data-testid="select-change-target">
-                  <SelectValue placeholder={t("selectPartner")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(allPartners ?? []).map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PartnerTargetCombobox value={targetId} partners={allPartners ?? []} onSelect={loadTarget} />
             </CardContent>
           </Card>
         )}

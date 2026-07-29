@@ -156,6 +156,7 @@ export const advisorsPg = pgTable("advisors", {
   birthMonth: integer("birth_month"),
   birthYear: integer("birth_year"),
   mobile: text("mobile"),
+  mobiles: jsonb("mobiles").$type<string[]>(),
   wechatId: text("wechat_id"),
   originStaff: jsonb("origin_staff").$type<string[]>(),
   status: text("status").notNull().default("pending"),

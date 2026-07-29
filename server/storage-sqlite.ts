@@ -164,6 +164,7 @@ export function createSqliteStorage(): IStorage {
     gobi_pics TEXT,
     cohort TEXT,
     engagement TEXT,
+    mobiles TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     submitted_by INTEGER,
     created_at TEXT NOT NULL
@@ -192,6 +193,9 @@ export function createSqliteStorage(): IStorage {
   try { sqlite.exec(`UPDATE advisors SET lifecycle_status = 'onboarded', onboarded_at = COALESCE(onboarded_at, created_at) WHERE status = 'approved' AND lifecycle_status = 'proposed'`); } catch {}
   // ---- v5.9 advisor CRM basics + origin staff ----
   ensureColumn("advisors", "mobile", "mobile TEXT");
+  // ---- v6.07 multiple advisor mobile numbers ----
+  ensureColumn("advisors", "mobiles", "mobiles TEXT");
+  try { sqlite.exec(`UPDATE advisors SET mobiles = json_array(mobile) WHERE mobiles IS NULL AND mobile IS NOT NULL AND trim(mobile) <> ''`); } catch {}
   ensureColumn("advisors", "wechat_id", "wechat_id TEXT");
   ensureColumn("advisors", "origin_staff", "origin_staff TEXT");
   try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}

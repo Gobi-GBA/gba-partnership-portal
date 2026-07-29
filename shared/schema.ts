@@ -278,6 +278,7 @@ export const advisors = sqliteTable("advisors", {
   birthMonth: integer("birth_month"), // 1-12
   birthYear: integer("birth_year"),  // optional, e.g. 1968
   mobile: text("mobile"),            // CRM mobile incl. country code, staff-visible only (v5.9)
+  mobiles: text("mobiles", { mode: "json" }).$type<string[]>(), // CRM mobiles, first item mirrors mobile (v6.07)
   wechatId: text("wechat_id"),       // CRM WeChat ID, staff-visible only (v5.9)
   originStaff: text("origin_staff", { mode: "json" }).$type<string[]>(), // who sourced the advisor — permanent, survives staff departure (v5.9)
   status: text("status").notNull().default("pending"), // approval gating: 'pending' | 'approved' | 'rejected'
@@ -401,6 +402,7 @@ export const advisorInputSchema = z.object({
   birthMonth: z.number().int().min(1).max(12).nullable().optional(),
   birthYear: z.number().int().min(1900).max(2100).nullable().optional(),
   mobile: z.string().max(40).nullable().optional(), // v5.9 CRM — incl. country code, e.g. "+852 9123 4567"
+  mobiles: z.array(z.string().trim().min(1).max(40)).max(3).nullable().optional(), // v6.07 CRM
   wechatId: z.string().max(80).nullable().optional(), // v5.9 CRM
   originStaff: z.array(z.string().max(60)).max(8).nullable().optional(), // v5.9 — who sourced the advisor
   tagIds: z.array(z.number().int()).max(20).optional(), // sector tag ids (v5.5)

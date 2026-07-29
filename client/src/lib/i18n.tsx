@@ -437,6 +437,8 @@ const dict = {
     cn: "选择伙伴、修改字段并提交，管理员审核后生效。",
   },
   selectPartner: { en: "Select partner", cn: "选择伙伴" },
+  searchPartners: { en: "Search partners or countries…", cn: "搜索伙伴或国家/地区…" },
+  noPartnerMatches: { en: "No matching partner.", cn: "没有匹配的伙伴。" },
   changeNote: { en: "Note to admin (optional)", cn: "给管理员的备注（可选）" },
   submitChanges: { en: "Submit change request", cn: "提交修改申请" },
   changesSubmitted: { en: "Change request submitted — pending admin review.", cn: "修改申请已提交，等待管理员审核。" },
@@ -852,7 +854,9 @@ const dict = {
   // v5.9 — CRM contact fields
   advisorMobile: { en: "Mobile", cn: "手机" },
   advisorMobileCc: { en: "Country code", cn: "国家/地区代码" },
-  advisorMobileHint: { en: "Pick the country code, then type the number.", cn: "先选择国家/地区代码，再填写号码。" },
+  advisorMobileHint: { en: "Add up to three numbers, each with its country code.", cn: "最多添加三个号码，并为每个号码选择国家/地区代码。" },
+  advisorMobileAdd: { en: "Add another mobile number", cn: "添加另一个手机号码" },
+  advisorMobileRemove: { en: "Remove mobile number", cn: "移除手机号码" },
   advisorWechat: { en: "WeChat ID", cn: "微信号" },
   advisorWechatCopied: { en: "WeChat ID copied", cn: "微信号已复制" },
 

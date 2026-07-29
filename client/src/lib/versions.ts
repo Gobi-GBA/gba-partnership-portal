@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.06";
+export const CURRENT_VERSION = "6.07";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.07",
+    date: "2026-07-29",
+    by: "Analyst01",
+    titleEn: "v6.07 — multiple advisor mobiles and faster country-based partner selection",
+    titleCn: "v6.07 — 顾问多手机号码与按国家快速选择合作伙伴",
+    itemsEn: [
+      "Advisor records now support up to three mobile numbers, each with its own country code, and show every saved number as a tap-to-call contact",
+      "The signed-letter filing action now wraps cleanly inside its workflow step while preserving the existing four-column desktop workflow",
+      "Suggest changes now offers a searchable partner picker organized by country or territory, with localized partner and region labels",
+      "Tablet navigation now uses the compact menu until the full desktop header has enough room, preventing horizontal page overflow",
+    ],
+    itemsCn: [
+      "顾问记录现在最多支持三个手机号码，每个号码可独立选择国家或地区代码，并以可点击拨号的联系方式显示",
+      "签署函件存档按钮现在会在流程步骤内自动换行，同时保留现有桌面端四栏流程布局",
+      "建议修改现有记录时，合作伙伴选择器现在支持搜索并按国家或地区分组，同时显示本地化伙伴及地区名称",
+      "平板设备现在会在桌面导航有足够空间前使用紧凑菜单，避免页面横向溢出",
+    ],
+  },
   {
     version: "6.06",
     date: "2026-07-29",
