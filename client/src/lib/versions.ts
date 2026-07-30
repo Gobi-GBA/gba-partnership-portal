@@ -9,9 +9,24 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.07";
+export const CURRENT_VERSION = "6.08";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.08",
+    date: "2026-07-30",
+    by: "Ameen",
+    titleEn: "v6.08 — Google first, manual auth on demand",
+    titleCn: "v6.08 — 先用 Google，手动登录/注册按需展开",
+    itemsEn: [
+      "Login now puts Google sign-in first, with a manual sign-in option that expands the email/password fields only when needed",
+      "Register now also puts Google first, then reveals the original manual registration form on demand",
+    ],
+    itemsCn: [
+      "登录页现在把 Google 登录放在首位，手动登录选项会在需要时才展开邮箱与密码输入框",
+      "注册页同样优先显示 Google 登录，再按需展开原来的手动注册表单",
+    ],
+  },
   {
     version: "6.07",
     date: "2026-07-29",

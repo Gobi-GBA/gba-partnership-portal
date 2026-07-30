@@ -292,6 +292,9 @@ const dict = {
   registerTab: { en: "Register", cn: "注册" },
   loginTab: { en: "Sign in", cn: "登录" },
   googleSignIn: { en: "Continue with Google", cn: "使用 Google 继续" },
+  manualSignIn: { en: "Sign in manually", cn: "手动登录" },
+  manualRegister: { en: "Register manually", cn: "手动注册" },
+  manualAuthHint: { en: "Use this option if you want to enter your email and password directly.", cn: "如果你想直接输入邮箱和密码，请使用这个选项。" },
   googleSignInPending: {
     en: "Your Google account was created and is awaiting admin approval.",
     cn: "您的 Google 账号已创建，正在等待管理员审批。",
