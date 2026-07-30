@@ -35,6 +35,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [remember, setRemember] = useState(false);
   const [tab, setTab] = useState("login");
+  const [showManualLogin, setShowManualLogin] = useState(false);
+  const [showManualRegister, setShowManualRegister] = useState(false);
 
   // Forgot-password flow state
   const [forgot, setForgot] = useState(false);
@@ -58,6 +60,11 @@ export default function Login() {
     }
     navigate("/login", { replace: true });
   }, [navigate, t, toast]);
+
+  useEffect(() => {
+    setShowManualLogin(false);
+    setShowManualRegister(false);
+  }, [tab]);
 
   const handleGoogleSignIn = () => {
     setBusy(true);
@@ -325,129 +332,162 @@ export default function Login() {
                 </TabsList>
 
                 <TabsContent value="login">
-                  <form onSubmit={handleLogin} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="login-email">{t("email")}</Label>
-                      <Input
-                        id="login-email" type="email" required value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        data-testid="input-login-email"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="login-password">{t("password")}</Label>
-                      <Input
-                        id="login-password" type="password" required value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        data-testid="input-login-password"
-                      />
-                    </div>
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={remember}
-                        onChange={(e) => setRemember(e.target.checked)}
-                        className="h-4 w-4 rounded border-input accent-[hsl(193,52%,38%)]"
-                        data-testid="checkbox-remember-me"
-                      />
-                      {t("rememberMe")}
-                    </label>
-                    <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
-                      {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                      {t("signIn")}
-                    </Button>
-                    <button
+                  <div className="space-y-4">
+                    <Button
                       type="button"
-                      className="block w-full text-center text-sm text-[hsl(193,52%,38%)] hover:underline"
-                      onClick={() => { setForgot(true); setFEmail(loginEmail); }}
-                      data-testid="link-forgot-password"
+                      className="w-full bg-white text-black border border-input hover:bg-slate-50"
+                      disabled={busy}
+                      onClick={handleGoogleSignIn}
+                      data-testid="button-google-sign-in"
                     >
-                      {t("forgotPassword")}
-                    </button>
-                  </form>
+                      {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                      {t("googleSignIn")}
+                    </Button>
+
+                    {!showManualLogin ? (
+                      <button
+                        type="button"
+                        className="block w-full text-center text-sm text-[hsl(193,52%,38%)] hover:underline"
+                        onClick={() => setShowManualLogin(true)}
+                        data-testid="button-show-manual-login"
+                      >
+                        {t("manualSignIn")}
+                      </button>
+                    ) : (
+                      <div className="space-y-4 rounded-lg border border-border p-4">
+                        <p className="text-xs text-muted-foreground">{t("manualAuthHint")}</p>
+                        <form onSubmit={handleLogin} className="space-y-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="login-email">{t("email")}</Label>
+                            <Input
+                              id="login-email" type="email" required value={loginEmail}
+                              onChange={(e) => setLoginEmail(e.target.value)}
+                              data-testid="input-login-email"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="login-password">{t("password")}</Label>
+                            <Input
+                              id="login-password" type="password" required value={loginPassword}
+                              onChange={(e) => setLoginPassword(e.target.value)}
+                              data-testid="input-login-password"
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={remember}
+                              onChange={(e) => setRemember(e.target.checked)}
+                              className="h-4 w-4 rounded border-input accent-[hsl(193,52%,38%)]"
+                              data-testid="checkbox-remember-me"
+                            />
+                            {t("rememberMe")}
+                          </label>
+                          <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
+                            {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            {t("signIn")}
+                          </Button>
+                          <button
+                            type="button"
+                            className="block w-full text-center text-sm text-[hsl(193,52%,38%)] hover:underline"
+                            onClick={() => { setForgot(true); setFEmail(loginEmail); }}
+                            data-testid="link-forgot-password"
+                          >
+                            {t("forgotPassword")}
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="register">
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Button
+                    <Button
+                      type="button"
+                      className="w-full bg-white text-black border border-input hover:bg-slate-50"
+                      disabled={busy}
+                      onClick={handleGoogleSignIn}
+                      data-testid="button-google-sign-in"
+                    >
+                      {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                      {t("googleSignIn")}
+                    </Button>
+
+                    {!showManualRegister ? (
+                      <button
                         type="button"
-                        className="w-full bg-white text-black border border-input hover:bg-slate-50"
-                        disabled={busy}
-                        onClick={handleGoogleSignIn}
-                        data-testid="button-google-sign-in"
+                        className="block w-full text-center text-sm text-[hsl(193,52%,38%)] hover:underline"
+                        onClick={() => setShowManualRegister(true)}
+                        data-testid="button-show-manual-register"
                       >
-                        {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        {t("googleSignIn")}
-                      </Button>
-                    </div>
+                        {t("manualRegister")}
+                      </button>
+                    ) : (
+                      <div className="space-y-4 rounded-lg border border-border p-4">
+                        <p className="text-xs text-muted-foreground">{t("manualAuthHint")}</p>
+                        <form onSubmit={handleRegister} className="space-y-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="reg-name">{t("name")}</Label>
+                            <Input
+                              id="reg-name" required value={regName}
+                              onChange={(e) => setRegName(e.target.value)}
+                              data-testid="input-register-name"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="reg-email">{t("email")}</Label>
+                            <Input
+                              id="reg-email" type="email" required value={regEmail}
+                              onChange={(e) => setRegEmail(e.target.value)}
+                              data-testid="input-register-email"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="reg-password">{t("password")}</Label>
+                            <Input
+                              id="reg-password" type="password" required minLength={6} value={regPassword}
+                              onChange={(e) => setRegPassword(e.target.value)}
+                              data-testid="input-register-password"
+                            />
+                          </div>
 
-                    <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
-                      <span className="h-px flex-1 bg-border" />
-                      <span>or</span>
-                      <span className="h-px flex-1 bg-border" />
-                    </div>
+                          <div className="rounded-md border border-border p-3 space-y-3">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              {t("secretQuestionsTitle")}
+                            </p>
+                            <div className="space-y-1.5">
+                              <Label>{t("secretQuestion1")}</Label>
+                              {questionSelect(regQ1, setRegQ1, regQ2, "select-secret-q1")}
+                              <Input
+                                required placeholder={t("secretAnswer")} value={regA1}
+                                onChange={(e) => setRegA1(e.target.value)}
+                                data-testid="input-secret-a1"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>{t("secretQuestion2")}</Label>
+                              {questionSelect(regQ2, setRegQ2, regQ1, "select-secret-q2")}
+                              <Input
+                                required placeholder={t("secretAnswer")} value={regA2}
+                                onChange={(e) => setRegA2(e.target.value)}
+                                data-testid="input-secret-a2"
+                              />
+                            </div>
+                          </div>
 
-                    <form onSubmit={handleRegister} className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="reg-name">{t("name")}</Label>
-                        <Input
-                          id="reg-name" required value={regName}
-                          onChange={(e) => setRegName(e.target.value)}
-                          data-testid="input-register-name"
-                        />
+                          <p className="text-xs text-muted-foreground">{t("pendingApproval")}</p>
+                          <Button
+                            type="submit" className="w-full"
+                            disabled={busy || !regQ1 || !regQ2}
+                            data-testid="button-submit-register"
+                          >
+                            {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            {t("createAccount")}
+                          </Button>
+                        </form>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="reg-email">{t("email")}</Label>
-                        <Input
-                          id="reg-email" type="email" required value={regEmail}
-                          onChange={(e) => setRegEmail(e.target.value)}
-                          data-testid="input-register-email"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="reg-password">{t("password")}</Label>
-                        <Input
-                          id="reg-password" type="password" required minLength={6} value={regPassword}
-                          onChange={(e) => setRegPassword(e.target.value)}
-                          data-testid="input-register-password"
-                        />
-                      </div>
-
-                      <div className="rounded-md border border-border p-3 space-y-3">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          {t("secretQuestionsTitle")}
-                        </p>
-                        <div className="space-y-1.5">
-                          <Label>{t("secretQuestion1")}</Label>
-                          {questionSelect(regQ1, setRegQ1, regQ2, "select-secret-q1")}
-                          <Input
-                            required placeholder={t("secretAnswer")} value={regA1}
-                            onChange={(e) => setRegA1(e.target.value)}
-                            data-testid="input-secret-a1"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>{t("secretQuestion2")}</Label>
-                          {questionSelect(regQ2, setRegQ2, regQ1, "select-secret-q2")}
-                          <Input
-                            required placeholder={t("secretAnswer")} value={regA2}
-                            onChange={(e) => setRegA2(e.target.value)}
-                            data-testid="input-secret-a2"
-                          />
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">{t("pendingApproval")}</p>
-                      <Button
-                        type="submit" className="w-full"
-                        disabled={busy || !regQ1 || !regQ2}
-                        data-testid="button-submit-register"
-                      >
-                        {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        {t("createAccount")}
-                      </Button>
-                    </form>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
