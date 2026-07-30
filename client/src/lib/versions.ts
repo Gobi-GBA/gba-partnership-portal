@@ -9,9 +9,91 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.03";
+export const CURRENT_VERSION = "6.07";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.07",
+    date: "2026-07-29",
+    by: "Analyst01",
+    titleEn: "v6.07 — multiple advisor mobiles and faster country-based partner selection",
+    titleCn: "v6.07 — 顾问多手机号码与按国家快速选择合作伙伴",
+    itemsEn: [
+      "Advisor records now support up to three mobile numbers, each with its own country code, and show every saved number as a tap-to-call contact",
+      "The signed-letter filing action now wraps cleanly inside its workflow step while preserving the existing four-column desktop workflow",
+      "Suggest changes now offers a searchable partner picker organized by country or territory, with localized partner and region labels",
+      "Tablet navigation now uses the compact menu until the full desktop header has enough room, preventing horizontal page overflow",
+    ],
+    itemsCn: [
+      "顾问记录现在最多支持三个手机号码，每个号码可独立选择国家或地区代码，并以可点击拨号的联系方式显示",
+      "签署函件存档按钮现在会在流程步骤内自动换行，同时保留现有桌面端四栏流程布局",
+      "建议修改现有记录时，合作伙伴选择器现在支持搜索并按国家或地区分组，同时显示本地化伙伴及地区名称",
+      "平板设备现在会在桌面导航有足够空间前使用紧凑菜单，避免页面横向溢出",
+    ],
+  },
+  {
+    version: "6.06",
+    date: "2026-07-29",
+    by: "Analyst01",
+    titleEn: "v6.06 — rapid-click camel sprints and corrected caravan direction",
+    titleCn: "v6.06 — 连点骆驼冲刺与正确行进方向",
+    itemsEn: [
+      "Camels now face left as the caravan travels left; rapidly clicking the same camel three times within one second sends it into a playful 1.5-second sprint with faster legs and a fiery trail",
+    ],
+    itemsCn: [
+      "骆驼现在面向左方，与商队行进方向一致；一秒内连续点击同一只骆驼三次，它会加快步伐冲刺 1.5 秒，并在身后拖出火焰",
+    ],
+  },
+  {
+    version: "6.05",
+    date: "2026-07-28",
+    by: "Fred Li",
+    titleEn: "v6.05 — smarter link sync, automatic photo & logo pull, guided input flow, pending-item badges",
+    titleCn: "v6.05 — 更智能的链接同步、自动提取照片与标志、引导式填写流程、待办事项提示标记",
+    itemsEn: [
+      "Link sync now repairs what you type: a bare www.linkedin.com/in/... or missing https:// is fixed automatically, both as you leave the field and again on the server, so sync no longer fails on a technically-imperfect URL",
+      "Sturdier page fetching: pages are fetched with a real browser identity first, then a crawler identity, then a text-reader fallback — LinkedIn and other guarded sites succeed far more often",
+      "Photos and logos come along: advisor sync picks up the profile photo where available, and partnership sync now pulls the organisation's logo from its website into the logo field (only when the field is empty)",
+      "Guided input: adding a new advisor or partnership starts with a simple choice — paste a document, sync from a link, or fill in manually",
+      "Mandatory fields are highlighted in amber with a required tag until filled, and submitting jumps to the first missing one",
+      "Missed-call style badges: a gold dot on Updates when a new version or an answer to your request is waiting, and a gold count on Admin for pending approvals and open requests — visiting the Updates page clears it",
+    ],
+    itemsCn: [
+      "链接同步会自动修复输入：纯 www.linkedin.com/in/... 或缺少 https:// 的链接会在离开输入框时及服务器端自动补全，不再因格式小问题而同步失败",
+      "更稳健的网页抓取：先以真实浏览器身份抓取，再以爬虫身份，最后回退到文本阅读器 — LinkedIn 等受保护网站的成功率大幅提升",
+      "照片与标志一并带回：顾问同步会在可用时提取个人照片，合作伙伴同步会从机构官网提取标志填入标志字段（仅当该字段为空时）",
+      "引导式填写：新增顾问或合作伙伴时先做一个简单选择 — 粘贴文档、从链接同步、或手动填写",
+      "必填项在填写前以琥珀色高亮并标注「必填」，提交时自动跳转到第一个缺失项",
+      "未接来电式提示：有新版本或您的请求获得回复时，「更新」栏出现金色圆点；管理员的「管理」栏显示待审批与未处理请求的金色计数 — 访问更新页面即可清除",
+    ],
+  },
+  {
+    version: "6.04",
+    date: "2026-07-28",
+    by: "Fred Li & Ameen",
+    titleEn: "v6.04 — advisor change log, CV filing with AI extraction, signed letter filing, tidier contact card, Google sign-in & security hardening",
+    titleCn: "v6.04 — 顾问变更日志、简历存档与AI提取、签署函件存档、更整洁的联系卡片、Google登录与安全加固",
+    itemsEn: [
+      "Advisor change log: every create, edit, approval, rejection, deletion and workflow step on an advisor record is now logged with who did it and when — shown at the bottom of the advisor detail view for staff; only field names are recorded, never sensitive values",
+      "CV filing: the From CV / bio dialog now accepts a PDF, Word or TXT file upload — the file is stored on the advisor record for later download, and AI reads it to fill the form",
+      "Standardised experience format: AI-extracted backgrounds now come as a clean chronology — one line per position, most recent first, in the shape Year–Year — Organization — Role & scope, followed by education",
+      "Signed letter filing: the onboarding workflow's Signed back step now takes the actual signed letter file — uploading it files the document for record and completes the step automatically",
+      "Contact & links tidied: emails, mobile, WeChat, profile links, filed CVs, origin staff, current PIC and birthday are now grouped in one orderly card instead of scattered rows",
+      "Sign in with Google: staff can now sign in with their Google account alongside the usual email and password (by Ameen)",
+      "Security hardening: sessions moved from browser-stored tokens to httpOnly cookies, session tokens no longer appear in URLs, API response bodies are redacted from request logs, and sensitive fields gain two-way encryption (by Ameen)",
+      "Engineering: a written SOP now requires every GitHub update to be recorded in the repository update log (docs/UPDATE_LOG.md) — check first, work, log back",
+    ],
+    itemsCn: [
+      "顾问变更日志：顾问记录的每次创建、编辑、批准、拒绝、删除及流程操作现在都会记录操作人与时间——员工可在顾问详情底部查看；日志只记录字段名称，绝不记录敏感内容",
+      "简历存档：「从简历/传记提取」对话框现在支持上传 PDF、Word 或 TXT 文件——文件存档在顾问记录中可随时下载，并由 AI 读取内容自动填表",
+      "经历格式标准化：AI 提取的背景信息现在以清晰的时间线呈现——每段职务一行、由近及远，格式为 年份–年份 — 机构 — 职务与职责，学历同格式列于其后",
+      "签署函件存档：入职流程的「已签回」步骤现在可直接上传签署好的函件文件——上传即存档备查，并自动完成该步骤",
+      "联系方式整理：邮箱、手机、微信、主页链接、已存档简历、来源同事、当前负责人与生日现在归入一张整齐的卡片，不再散落各处",
+      "Google 登录：员工现在除邮箱密码外，也可使用 Google 账号登录（由 Ameen 开发）",
+      "安全加固：会话由浏览器存储令牌改为 httpOnly Cookie，会话令牌不再出现在 URL 中，请求日志不再记录 API 响应内容，敏感字段增加双向加密（由 Ameen 开发）",
+      "工程规范：新增书面 SOP，要求每次 GitHub 更新必须记入仓库更新日志（docs/UPDATE_LOG.md）——先查后做、做完回记",
+    ],
+  },
   {
     version: "6.03",
     date: "2026-07-26",

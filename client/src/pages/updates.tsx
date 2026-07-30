@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/shared";
@@ -47,6 +47,15 @@ export default function Updates() {
   // v6.01 — personal response tracker
   const [statusFilter, setStatusFilter] = useState<FeedbackStatus | null>(null);
   const [scope, setScope] = useState<"mine" | "all">("all");
+
+  // v6.05 — visiting this page acknowledges the current version and any
+  // answered requests, clearing the gold nav badge.
+  useEffect(() => {
+    if (!user) return;
+    apiRequest("POST", "/api/me/seen-version", { version: CURRENT_VERSION })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["/api/me/notifications"] }))
+      .catch(() => {});
+  }, [user]);
 
   const { data: requests, isLoading } = useQuery<Feedback[]>({
     queryKey: ["/api/feedback"],

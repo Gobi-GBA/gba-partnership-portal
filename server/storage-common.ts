@@ -1,4 +1,4 @@
-import type { User, Partnership, Session, Attachment, AttachmentMeta, PhotoAsset, PhotoAssetMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
+import type { User, Partnership, Session, Attachment, AttachmentMeta, PhotoAsset, PhotoAssetMeta, FileAsset, FileAssetMeta, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 // Initial admin password comes from the environment — never hard-code credentials.
@@ -55,7 +55,7 @@ export interface IStorage {
         User,
         | "status" | "role" | "name" | "email" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
-        | "resetTokenHash" | "resetExpires" | "mustChangePassword"
+        | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
       >
     >
   ): Promise<User | undefined>;
@@ -82,8 +82,15 @@ export interface IStorage {
   createPhotoAsset(data: Omit<PhotoAsset, "id">): Promise<PhotoAssetMeta>;
   deletePhotoAsset(id: number): Promise<void>;
 
+  // v6.04 — document file assets (advisor CVs, signed letters)
+  listFileAssetMeta(ownerType: string, ownerId: number): Promise<FileAssetMeta[]>;
+  getFileAsset(id: number): Promise<FileAsset | undefined>;
+  createFileAsset(data: Omit<FileAsset, "id">): Promise<FileAssetMeta>;
+  deleteFileAsset(id: number): Promise<void>;
+
   createAuditLog(data: Omit<AuditLog, "id">): Promise<AuditLog>;
-  listAuditLogs(partnershipId: number): Promise<AuditLog[]>;
+  // v6.04 — entityType 'partnership' (default) or 'advisor'; entityId is stored in partnership_id
+  listAuditLogs(entityId: number, entityType?: string): Promise<AuditLog[]>;
 
   listChangeRequests(): Promise<ChangeRequest[]>;
   listChangeRequestsByUser(userId: number): Promise<ChangeRequest[]>;

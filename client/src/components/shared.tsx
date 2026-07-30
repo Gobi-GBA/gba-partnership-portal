@@ -344,21 +344,53 @@ export function Layout({ children }: { children: ReactNode }) {
     }
   }, [user, location]);
 
-  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string }[] = [
+  // v6.05 — pending-item badges ("missed call" indicators). Updates: unseen
+  // version notes + answered requests. Admin: everything in the approval queues.
+  const { data: notif } = useQuery<{
+    lastSeenVersion: string | null;
+    myRequestsResolved: number;
+    pendingUsers?: number;
+    pendingPartnerships?: number;
+    pendingAdvisors?: number;
+    pendingChangeRequests?: number;
+    openRequests?: number;
+  }>({
+    queryKey: ["/api/me/notifications"],
+    enabled: !!user,
+    refetchInterval: 60_000,
+  });
+  const updatesBadge = notif ? (notif.lastSeenVersion === CURRENT_VERSION ? 0 : 1) + (notif.myRequestsResolved ?? 0) : 0;
+  const adminBadge = notif
+    ? (notif.pendingUsers ?? 0) + (notif.pendingPartnerships ?? 0) + (notif.pendingAdvisors ?? 0) + (notif.pendingChangeRequests ?? 0) + (notif.openRequests ?? 0)
+    : 0;
+
+  const links: { href: string; label: string; show: boolean; soon?: boolean; restrictedTip?: string; badge?: number }[] = [
     { href: "/", label: t("navDirectory"), show: true },
     { href: "/submit", label: t("navSubmit"), show: true },
     { href: "/advisors", label: t("navAdvisors"), show: true },
-    { href: "/updates", label: t("navUpdates"), show: true },
+    { href: "/updates", label: t("navUpdates"), show: true, badge: updatesBadge },
     // v5.12 — the scoreboard moved inside the admin portal (Admin → Scoreboard tab).
     { href: "/rd", label: t("navRd"), show: user?.role === "admin" || user?.isDev === 1, restrictedTip: t("restrictedTipRd") },
-    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin") },
+    { href: "/admin", label: t("navAdmin"), show: user?.role === "admin", restrictedTip: t("restrictedTipAdmin"), badge: adminBadge },
   ];
+
+  // gold count dot, shared by desktop and mobile nav
+  const NavCountBadge = ({ count, id }: { count: number; id: string }) =>
+    count > 0 ? (
+      <span
+        data-testid={`badge-nav-${id}`}
+        title={t("pendingBadgeTip")}
+        className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--gold))] px-1 text-[10px] font-bold leading-none text-[hsl(var(--navy))] align-middle"
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    ) : null;
 
   return (
     <div className="relative min-h-screen flex flex-col text-foreground">
       <GalaxyBackground />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
+        <div className="mx-auto max-w-[1400px] px-4 h-16 flex items-center gap-3">
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
@@ -371,7 +403,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1 ml-6">
+          <nav className="hidden xl:flex items-center gap-1 ml-3">
             {links.filter((l) => l.show).map((l) => (
               <Link key={l.href} href={l.href} data-testid={`link-nav-${l.href.replace(/\//g, "") || "home"}`}>
                 <span
@@ -383,6 +415,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 >
                   {l.label}
+                  <NavCountBadge count={l.badge ?? 0} id={l.href.replace(/\//g, "") || "home"} />
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))] align-middle">
                       {t("soonTag")}
@@ -410,7 +443,7 @@ export function Layout({ children }: { children: ReactNode }) {
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             {user ? (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden xl:flex items-center gap-2">
                 <button
                   onClick={() => setShowProfile(true)}
                   className="flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-2 hover:bg-secondary transition-colors"
@@ -418,7 +451,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   data-testid="button-open-profile"
                 >
                   <UserAvatar name={user.name} avatarUrl={user.avatarUrl} size="md" />
-                  <span className="text-left leading-tight max-w-[130px]">
+                  <span className="hidden max-w-[130px] text-left leading-tight 2xl:block">
                     <span className="block truncate text-xs font-semibold" data-testid="text-username">{user.name}</span>
                     {user.title && <span className="block truncate text-[10px] text-muted-foreground" data-testid="text-usertitle">{user.title}</span>}
                   </span>
@@ -428,14 +461,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 </Button>
               </div>
             ) : (
-              <Link href="/login" data-testid="link-login" className="hidden md:block">
+              <Link href="/login" data-testid="link-login" className="hidden xl:block">
                 <Button size="sm">{t("navLogin")}</Button>
               </Link>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="xl:hidden"
               onClick={() => setOpen((o) => !o)}
               data-testid="button-mobile-menu"
             >
@@ -445,7 +478,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {open && (
-          <div className="md:hidden border-t border-border bg-background px-4 py-3 space-y-1">
+          <div className="xl:hidden border-t border-border bg-background px-4 py-3 space-y-1">
             {links.filter((l) => l.show).map((l) => (
               <Link key={l.href} href={l.href}>
                 <span
@@ -456,6 +489,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 >
                   {l.label}
+                  <NavCountBadge count={l.badge ?? 0} id={`m-${l.href.replace(/\//g, "") || "home"}`} />
                   {l.soon && (
                     <span className="ml-1.5 whitespace-nowrap rounded-full border border-[hsl(var(--gold))]/40 bg-[hsl(var(--gold))]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--gold))]">
                       {t("soonTag")}
@@ -1169,18 +1203,19 @@ export function PartnershipDetailDialog({
             </div>
           )}
 
-          <AuditSection partnershipId={p.id} open={open} />
+          <AuditSection entityId={p.id} open={open} />
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ---------------- Per-partner change log (audit) ----------------
-function AuditSection({ partnershipId, open }: { partnershipId: number; open: boolean }) {
+// ---------------- Per-entity change log (audit) ----------------
+// v6.04 — generalised: partnerships and advisors share the same audit trail UI.
+export function AuditSection({ entityId, entityType = "partnership", open }: { entityId: number; entityType?: "partnership" | "advisor"; open: boolean }) {
   const { t, lang } = useLang();
   const { data: logs } = useQuery<AuditLog[]>({
-    queryKey: ["/api/partnerships", partnershipId, "audit"],
+    queryKey: [entityType === "advisor" ? "/api/advisors" : "/api/partnerships", entityId, "audit"],
     enabled: open,
   });
   const fmt = (iso: string) => {

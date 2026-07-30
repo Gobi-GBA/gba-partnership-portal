@@ -28,6 +28,8 @@ export const users = sqliteTable("users", {
   resetExpires: text("reset_expires"), // ISO timestamp
   editRequestedAt: text("edit_requested_at"), // ISO timestamp — viewer asked an admin for edit rights
   mustChangePassword: integer("must_change_password").notNull().default(0), // 0 | 1 — set by admin force-reset; cleared on next password change
+  lastSeenVersion: text("last_seen_version"), // v6.05 — last portal version whose update notes the user has seen (Updates badge)
+  lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05 — ISO timestamp of the last Updates-page visit (my-requests badge)
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -276,6 +278,7 @@ export const advisors = sqliteTable("advisors", {
   birthMonth: integer("birth_month"), // 1-12
   birthYear: integer("birth_year"),  // optional, e.g. 1968
   mobile: text("mobile"),            // CRM mobile incl. country code, staff-visible only (v5.9)
+  mobiles: text("mobiles", { mode: "json" }).$type<string[]>(), // CRM mobiles, first item mirrors mobile (v6.07)
   wechatId: text("wechat_id"),       // CRM WeChat ID, staff-visible only (v5.9)
   originStaff: text("origin_staff", { mode: "json" }).$type<string[]>(), // who sourced the advisor — permanent, survives staff departure (v5.9)
   status: text("status").notNull().default("pending"), // approval gating: 'pending' | 'approved' | 'rejected'
@@ -399,6 +402,7 @@ export const advisorInputSchema = z.object({
   birthMonth: z.number().int().min(1).max(12).nullable().optional(),
   birthYear: z.number().int().min(1900).max(2100).nullable().optional(),
   mobile: z.string().max(40).nullable().optional(), // v5.9 CRM — incl. country code, e.g. "+852 9123 4567"
+  mobiles: z.array(z.string().trim().min(1).max(40)).max(3).nullable().optional(), // v6.07 CRM
   wechatId: z.string().max(80).nullable().optional(), // v5.9 CRM
   originStaff: z.array(z.string().max(60)).max(8).nullable().optional(), // v5.9 — who sourced the advisor
   tagIds: z.array(z.number().int()).max(20).optional(), // sector tag ids (v5.5)
@@ -456,6 +460,27 @@ export const photoAssets = sqliteTable("photo_assets", {
 export type PhotoAsset = typeof photoAssets.$inferSelect;
 export type PhotoAssetMeta = Omit<PhotoAsset, "thumbData" | "hdData">;
 
+// ---------- Document file assets (v6.04 — advisor CVs and signed letters) ----------
+// Stores original documents (PDF/DOCX/TXT/images) as base64, mirroring photo_assets.
+export const FILE_OWNER_TYPES = ["advisor_cv", "advisor_letter"] as const;
+export type FileOwnerType = (typeof FILE_OWNER_TYPES)[number];
+
+export const fileAssets = sqliteTable("file_assets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ownerType: text("owner_type").notNull(), // FILE_OWNER_TYPES
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(), // bytes
+  data: text("data").notNull(), // base64 original
+  uploadedBy: integer("uploaded_by"),
+  uploadedByName: text("uploaded_by_name"),
+  createdAt: text("created_at").notNull(),
+});
+
+export type FileAsset = typeof fileAssets.$inferSelect;
+export type FileAssetMeta = Omit<FileAsset, "data">;
+
 export const photoAssetInputSchema = z.object({
   ownerType: z.enum(PHOTO_OWNER_TYPES),
   ownerId: z.number().int().positive(),
@@ -486,9 +511,12 @@ export const changeRequestInputSchema = z.object({
 });
 export type ChangeRequestInput = z.infer<typeof changeRequestInputSchema>;
 
-// ---------- Audit log (who changed what, per partnership) ----------
+// ---------- Audit log (who changed what) ----------
+// v6.04: generalized — entityType 'partnership' (default) or 'advisor';
+// partnershipId doubles as the generic entity id (kept for compatibility).
 export const auditLogs = sqliteTable("audit_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull().default("partnership"), // 'partnership' | 'advisor' (v6.04)
   partnershipId: integer("partnership_id").notNull(),
   userId: integer("user_id"),
   userName: text("user_name").notNull(),

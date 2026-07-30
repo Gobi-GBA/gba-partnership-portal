@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars } from "@/components/shared";
+import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection } from "@/components/shared";
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
@@ -25,13 +25,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
-import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle } from "@shared/schema";
+import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle, FileAssetMeta } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
+import { normalizeUrl } from "@shared/urls";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
   LayoutGrid, List, SlidersHorizontal, Send, Cake, CheckCircle2, Circle, Undo2,
-  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit,
+  FileText, FileDown, Download, Loader2, Phone, MessageCircle, ChevronDown, Orbit, Upload,
 } from "lucide-react";
 import { AdvisorStarMap } from "@/components/network-graph";
 import {
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
-  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, type ExtractedAdvisor,
+  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, fileToBase64, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OutreachDialog } from "@/components/advisor-outreach";
@@ -189,6 +190,8 @@ const MOBILE_CODES: Array<{ code: string; region: string }> = [
 ];
 
 const DEFAULT_MOBILE_CC = "+852";
+const MAX_MOBILES = 3;
+type MobileDraft = { cc: string; number: string };
 
 /** Split a stored "+852 9123 4567" into picker + number. Unknown codes fall back to the default. */
 function parseMobile(value: string | null | undefined): { cc: string; number: string } {
@@ -204,6 +207,16 @@ function parseMobile(value: string | null | undefined): { cc: string; number: st
 function joinMobile(cc: string, number: string): string | null {
   const n = number.trim();
   return n ? `${cc} ${n}` : null;
+}
+
+function mobileDrafts(values: string[] | null | undefined, legacy: string | null | undefined): MobileDraft[] {
+  const stored = values?.length ? values : legacy ? [legacy] : [];
+  const rows = stored.slice(0, MAX_MOBILES).map(parseMobile);
+  return rows.length > 0 ? rows : [{ cc: DEFAULT_MOBILE_CC, number: "" }];
+}
+
+function joinedMobiles(rows: MobileDraft[]): string[] {
+  return Array.from(new Set(rows.map((row) => joinMobile(row.cc, row.number)).filter((value): value is string => !!value)));
 }
 
 // ---------- Form section wrapper (v5.9) ----------
@@ -277,6 +290,28 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
+  // v6.04 — signed letter filing: the letter document itself is stored for record
+  const letterInputRef = useRef<HTMLInputElement>(null);
+  const { data: letterFiles } = useQuery<FileAssetMeta[]>({
+    queryKey: ["/api/advisors", a.id, "files", "letter"],
+    queryFn: async () => (await apiRequest("GET", `/api/advisors/${a.id}/files?type=letter`)).json(),
+  });
+  const uploadLetter = useMutation({
+    mutationFn: async (file: File) => {
+      const data = await fileToBase64(file);
+      const res = await apiRequest("POST", `/api/advisors/${a.id}/files`, {
+        type: "letter", filename: file.name, mime: file.type || "application/pdf", data,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", a.id, "files"] });
+      toast({ description: t("letterFiled") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
   const doneAt = (field: (typeof WORKFLOW_STEPS)[number]["field"]) => a[field] ?? null;
   // The most recently completed step is the only one that can be undone.
   let lastDone = -1;
@@ -290,7 +325,7 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
           const done = doneAt(s.field);
           const canAct = !s.adminOnly || isAdmin;
           return (
-            <div key={s.stage} className="flex flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
+            <div key={s.stage} className="flex min-w-0 flex-col gap-1.5 rounded-md bg-secondary/40 p-2" data-testid={`workflow-step-${s.stage}`}>
               <div className="flex items-start gap-1.5">
                 {done ? (
                   <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
@@ -304,13 +339,13 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex min-w-0 flex-col items-stretch gap-1">
                 {!done && canAct && (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
                     disabled={advance.isPending}
                     onClick={() => advance.mutate({ stage: s.stage })}
                     data-testid={`button-workflow-done-${s.stage}`}
@@ -323,7 +358,7 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
                     disabled={advance.isPending}
                     onClick={() => advance.mutate({ stage: s.stage, undo: true })}
                     data-testid={`button-workflow-undo-${s.stage}`}
@@ -331,11 +366,60 @@ function WorkflowTracker({ a, isAdmin }: { a: AdvisorWithRoles; isAdmin: boolean
                     <Undo2 className="mr-1 h-3 w-3" /> {t("wfUndo")}
                   </Button>
                 )}
+                {s.stage === "signed_back" && canAct && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-auto min-h-6 min-w-0 max-w-full whitespace-normal px-2 py-1 text-left text-[10px] leading-tight"
+                    disabled={uploadLetter.isPending}
+                    onClick={() => letterInputRef.current?.click()}
+                    data-testid="button-upload-letter"
+                  >
+                    {uploadLetter.isPending ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <Upload className="h-3 w-3 shrink-0" />}
+                    <span className="min-w-0 break-words">{t("uploadSignedLetter")}</span>
+                  </Button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* v6.04 — filed signed letters (hidden input + download chips) */}
+      <input
+        ref={letterInputRef}
+        type="file"
+        accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        data-testid="input-letter-file"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          if (f.size > 10 * 1024 * 1024) {
+            toast({ description: t("fileTooLarge"), variant: "destructive" });
+            return;
+          }
+          uploadLetter.mutate(f);
+        }}
+      />
+      {(letterFiles ?? []).length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="row-letter-files">
+          {(letterFiles ?? []).map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-[11px] hover:bg-secondary/70"
+              onClick={() => downloadWithAuth(`/api/files/${f.id}/download`, f.filename)}
+              title={t("download")}
+              data-testid={`chip-letter-file-${f.id}`}
+            >
+              <FileText className="h-3 w-3 text-emerald-600" /> {f.filename}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isAdmin && (
         <div className="mt-3 border-t border-border pt-3">
@@ -407,8 +491,8 @@ const EMPTY_FORM = {
   pillar: "other" as Pillar, emailsText: "", domains: "", background: "", profileUrl: "", linkedinUrl: "",
   cohort: "", engagement: "", gobiPics: [] as string[], photoUrl: "", photoThumbUrl: "",
   publicClearance: false, birthDay: "", birthMonth: "", birthYear: "", tagIds: [] as number[],
-  // v5.9 CRM additions
-  mobileCc: DEFAULT_MOBILE_CC, mobileNumber: "", wechatId: "", originStaff: [] as string[],
+  // v5.9/v6.07 CRM additions
+  mobiles: [{ cc: DEFAULT_MOBILE_CC, number: "" }] as MobileDraft[], wechatId: "", originStaff: [] as string[],
 };
 
 // v5.15 — unified organization picker: one searchable combobox (shadcn Command)
@@ -547,6 +631,10 @@ function AdvisorFormDialog({
   const keyRef = useRef(1);
   const [loadedFor, setLoadedFor] = useState<number | "new" | null>(null);
   const [advSnapshot, setAdvSnapshot] = useState<string | null>("");
+  // v6.05 — step-0 source chooser (new records only) + paste-dialog trigger
+  const [chooserDone, setChooserDone] = useState(false);
+  const [pasteSignal, setPasteSignal] = useState(0);
+  const profileUrlRef = useRef<HTMLInputElement>(null);
 
   // Seed the form when the dialog opens (edit uses the detail endpoint for the HD photo)
   const { data: fullEditing } = useQuery<AdvisorWithRoles>({
@@ -571,8 +659,7 @@ function AdvisorFormDialog({
         birthMonth: target.birthMonth ? String(target.birthMonth) : "",
         birthYear: target.birthYear ? String(target.birthYear) : "",
         tagIds: (target.tags ?? []).map((tg) => tg.id),
-        mobileCc: parseMobile(target.mobile).cc,
-        mobileNumber: parseMobile(target.mobile).number,
+        mobiles: mobileDrafts(target.mobiles, target.mobile),
         wechatId: target.wechatId ?? "",
         originStaff: target.originStaff ?? [],
       });
@@ -580,6 +667,7 @@ function AdvisorFormDialog({
     } else {
       setForm(EMPTY_FORM);
       setRoles([{ key: keyRef.current++, title: "", organization: "", partnershipId: null, isPrimary: 1 }]);
+      setChooserDone(false);
     }
     setAdvSnapshot(null); // re-baselined on the next render, after both states settle
   }
@@ -603,6 +691,7 @@ function AdvisorFormDialog({
 
   const save = useMutation({
     mutationFn: async () => {
+      const mobiles = joinedMobiles(form.mobiles);
       const payload = {
         name: form.name.trim(),
         nameCn: form.nameCn.trim() || null,
@@ -620,7 +709,8 @@ function AdvisorFormDialog({
           || (/linkedin\.com/i.test(form.profileUrl.trim()) ? form.profileUrl.trim() : null),
         gobiPics: form.gobiPics,
         // v5.9 — staff-only CRM fields; origin staff is a permanent sourcing record
-        mobile: joinMobile(form.mobileCc, form.mobileNumber),
+        mobiles,
+        mobile: mobiles[0] ?? null,
         wechatId: form.wechatId.trim() || null,
         originStaff: form.originStaff.length > 0 ? form.originStaff : null,
         cohort: form.cohort.trim() || null,
@@ -664,7 +754,7 @@ function AdvisorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (o) onOpenChange(true); else requestClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto" data-testid="dialog-advisor-form">
+      <DialogContent className="min-w-0 max-w-2xl max-h-[88vh] overflow-y-auto [&>*]:min-w-0" data-testid="dialog-advisor-form">
         <DialogHeader>
           {/* v5.14 — auto-sync is a record-level action (it harvests the profile
               URL, LinkedIn URL and identity fields together), so it lives in the
@@ -677,8 +767,11 @@ function AdvisorFormDialog({
             <div className="flex shrink-0 gap-2">
               <LinkedinSyncControl
                 url={form.profileUrl}
+                advisorId={editing?.id ?? null}
                 identity={{ name: form.name, nameCn: form.nameCn, linkedinUrl: form.linkedinUrl, emails: form.emailsText }}
+                openPasteSignal={pasteSignal}
                 onApply={(d: ExtractedAdvisor) => {
+                  setChooserDone(true);
                   setForm((f) => ({
                     ...f,
                     name: d.name?.trim() || f.name,
@@ -705,17 +798,43 @@ function AdvisorFormDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
+          {/* v6.05 — step 0: source chooser for brand-new records */}
+          {!editing && !chooserDone && (
+            <div className="rounded-lg border border-[hsl(var(--aqua))]/40 bg-[hsl(var(--aqua))]/5 p-3 space-y-2" data-testid="panel-source-chooser">
+              <p className="text-sm font-semibold">{t("chooserTitle")}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-paste"
+                  onClick={() => { setChooserDone(true); setPasteSignal((n) => n + 1); }}>
+                  <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserPaste")}</span>
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-link"
+                  onClick={() => { setChooserDone(true); setTimeout(() => profileUrlRef.current?.focus(), 50); }}>
+                  <Linkedin className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserLink")}</span>
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-manual"
+                  onClick={() => setChooserDone(true)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserManual")}</span>
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("chooserHint")}</p>
+            </div>
+          )}
+
           {/* 1. Source — the profile link comes first so auto-sync (top right)
               has material to harvest. */}
           <FormSection id="source" step={1} title={t("advSectionSource")}>
             <div className="space-y-1">
               <Label>{t("advisorProfileUrl")}</Label>
-              <Input value={form.profileUrl} onChange={set("profileUrl")} placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
+              <Input ref={profileUrlRef} value={form.profileUrl} onChange={set("profileUrl")}
+                onBlur={() => setForm((f) => ({ ...f, profileUrl: normalizeUrl(f.profileUrl) || f.profileUrl }))}
+                placeholder={t("advisorProfileUrlPlaceholder")} data-testid="input-adv-profile-url" />
               <p className="text-[11px] text-muted-foreground">{t("linkedinSyncHint")}</p>
             </div>
             <div className="space-y-1">
               <Label>LinkedIn URL</Label>
-              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")} placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
+              <Input value={form.linkedinUrl} onChange={set("linkedinUrl")}
+                onBlur={() => setForm((f) => ({ ...f, linkedinUrl: normalizeUrl(f.linkedinUrl) || f.linkedinUrl }))}
+                placeholder="https://www.linkedin.com/in/…" data-testid="input-adv-linkedin-url" />
             </div>
           </FormSection>
 
@@ -727,24 +846,82 @@ function AdvisorFormDialog({
             </div>
             <div className="space-y-1">
               <Label>{t("advisorMobile")}</Label>
-              <div className="flex gap-2">
-                <Select value={form.mobileCc} onValueChange={(v) => setForm((f) => ({ ...f, mobileCc: v }))}>
-                  <SelectTrigger className="w-40 shrink-0" aria-label={t("advisorMobileCc")} data-testid="select-mobile-cc">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {MOBILE_CODES.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.mobileNumber}
-                  onChange={set("mobileNumber")}
-                  inputMode="tel"
-                  placeholder="9123 4567"
-                  data-testid="input-mobile"
-                />
+              <div className="space-y-2">
+                {form.mobiles.map((mobile, index) => (
+                  <div key={index} className="flex min-w-0 gap-2" data-testid={`mobile-row-${index}`}>
+                    <Select
+                      value={mobile.cc}
+                      onValueChange={(value) => setForm((current) => ({
+                        ...current,
+                        mobiles: current.mobiles.map((row, rowIndex) => rowIndex === index ? { ...row, cc: value } : row),
+                      }))}
+                    >
+                      <SelectTrigger
+                        className="w-32 shrink-0 sm:w-40"
+                        aria-label={`${t("advisorMobileCc")} ${index + 1}`}
+                        data-testid={index === 0 ? "select-mobile-cc" : `select-mobile-cc-${index}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {MOBILE_CODES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>{c.code} {c.region}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      className="min-w-0"
+                      value={mobile.number}
+                      onChange={(event) => {
+                        const number = event.target.value;
+                        setForm((current) => ({
+                          ...current,
+                          mobiles: current.mobiles.map((row, rowIndex) => rowIndex === index ? { ...row, number } : row),
+                        }));
+                      }}
+                      inputMode="tel"
+                      placeholder="9123 4567"
+                      aria-label={`${t("advisorMobile")} ${index + 1}`}
+                      data-testid={index === 0 ? "input-mobile" : `input-mobile-${index}`}
+                    />
+                    {index > 0 && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0"
+                        aria-label={t("advisorMobileRemove")}
+                        title={t("advisorMobileRemove")}
+                        onClick={() => setForm((current) => ({
+                          ...current,
+                          mobiles: current.mobiles.filter((_, rowIndex) => rowIndex !== index),
+                        }))}
+                        data-testid={`button-remove-mobile-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                {form.mobiles.length < MAX_MOBILES && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    aria-label={t("advisorMobileAdd")}
+                    title={t("advisorMobileAdd")}
+                    onClick={() => setForm((current) => ({
+                      ...current,
+                      mobiles: [...current.mobiles, {
+                        cc: current.mobiles[current.mobiles.length - 1]?.cc ?? DEFAULT_MOBILE_CC,
+                        number: "",
+                      }],
+                    }))}
+                    data-testid="button-add-mobile"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
               <p className="text-[11px] text-muted-foreground">{t("advisorMobileHint")}</p>
             </div>
@@ -757,8 +934,11 @@ function AdvisorFormDialog({
           {/* 3. Identity */}
           <FormSection id="identity" step={3} title={t("advSectionIdentity")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>{t("advisorNameEn")}</Label>
+              <div className={cn("space-y-1", !form.name.trim() && "rounded-md p-2 -m-1 ring-2 ring-amber-400/70 bg-amber-400/10")} data-testid="field-adv-name">
+                <Label>
+                  {t("advisorNameEn")} <span className="text-amber-600 dark:text-amber-400">*</span>
+                  {!form.name.trim() && <span className="ml-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">({t("requiredHint")})</span>}
+                </Label>
                 <Input value={form.name} onChange={set("name")} data-testid="input-adv-name" />
               </div>
               <div className="space-y-1">
@@ -964,6 +1144,13 @@ function AdvisorDetailDialog({
   });
   const isStaff = user?.role === "admin" || user?.role === "staff";
   const isAdmin = user?.role === "admin";
+
+  // v6.04 — CVs filed against this advisor (staff only)
+  const { data: cvFiles } = useQuery<FileAssetMeta[]>({
+    queryKey: ["/api/advisors", id ?? 0, "files", "cv"],
+    queryFn: async () => (await apiRequest("GET", `/api/advisors/${id}/files?type=cv`)).json(),
+    enabled: id !== null && isStaff,
+  });
   const [approvalOpen, setApprovalOpen] = useState(false);
 
   const setStatus = useMutation({
@@ -1008,7 +1195,7 @@ function AdvisorDetailDialog({
 
   return (
     <Dialog open={id !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-advisor-detail">
+      <DialogContent className="min-w-0 max-w-lg max-h-[85vh] overflow-y-auto [&>*]:min-w-0" data-testid="dialog-advisor-detail">
         {isLoading || !a ? (
           <div className="space-y-3 py-6">
             <Skeleton className="h-20 w-20 rounded-full" />
@@ -1166,90 +1353,122 @@ function AdvisorDetailDialog({
                 </div>
               )}
 
-              {/* Staff-only: contact + engagement */}
+              {/* v6.04 — one tidy "Contact & links" card: contact chips, then links
+                  and filed documents, then origin/PIC/birthday meta. Staff only —
+                  the server nulls emails/mobile/WeChat for other roles. */}
               {isStaff ? (
                 <>
-                  {(a.emails ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {(a.emails ?? []).map((e) => (
-                        <a key={e} href={`mailto:${e}`} className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs" data-testid={`link-email-${e}`}>
-                          <Mail className="h-3 w-3" /> {e}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  {/* v5.9 — mobile and WeChat are staff-only; the server nulls them for other roles */}
-                  {(a.mobile || a.wechatId) && (
-                    <div className="flex flex-wrap gap-2">
-                      {a.mobile && (
-                        <a
-                          href={`tel:${a.mobile.replace(/[^+\d]/g, "")}`}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
-                          data-testid="link-advisor-mobile"
-                        >
-                          <Phone className="h-3 w-3" /> {a.mobile}
-                        </a>
-                      )}
-                      {a.wechatId && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(a.wechatId ?? "");
-                            toast({ description: t("advisorWechatCopied") });
-                          }}
-                          data-testid="text-advisor-wechat"
-                        >
-                          <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    const link = a.profileUrl || a.linkedinUrl;
+                    const isLinkedin = /linkedin\.com/i.test(link ?? "");
+                    const mobiles = a.mobiles?.length ? a.mobiles : a.mobile ? [a.mobile] : [];
+                    const hasContact = (a.emails ?? []).length > 0 || mobiles.length > 0 || a.wechatId;
+                    const hasLinks = link || (cvFiles ?? []).length > 0;
+                    const hasMeta = (a.originStaff ?? []).length > 0 || (a.gobiPics ?? []).length > 0 || formatBirthday(a);
+                    if (!hasContact && !hasLinks && !hasMeta) return null;
+                    return (
+                      <div className="rounded-lg border border-border p-3 space-y-2.5" data-testid="card-contact-links">
+                        <p className="text-xs font-semibold text-muted-foreground">{t("contactLinksTitle")}</p>
+                        {hasContact && (
+                          <div className="flex flex-wrap gap-2">
+                            {(a.emails ?? []).map((e) => (
+                              <a key={e} href={`mailto:${e}`} className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs" data-testid={`link-email-${e}`}>
+                                <Mail className="h-3 w-3" /> {e}
+                              </a>
+                            ))}
+                            {mobiles.map((mobile, index) => (
+                              <a
+                                key={mobile}
+                                href={`tel:${mobile.replace(/[^+\d]/g, "")}`}
+                                className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs"
+                                data-testid={index === 0 ? "link-advisor-mobile" : `link-advisor-mobile-${index}`}
+                              >
+                                <Phone className="h-3 w-3" /> {mobile}
+                              </a>
+                            ))}
+                            {a.wechatId && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs hover:bg-secondary/70"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(a.wechatId ?? "");
+                                  toast({ description: t("advisorWechatCopied") });
+                                }}
+                                data-testid="text-advisor-wechat"
+                              >
+                                <MessageCircle className="h-3 w-3" /> {t("advisorWechat")}: {a.wechatId}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {hasLinks && (
+                          <div className="flex flex-wrap gap-2">
+                            {link && (
+                              <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
+                                {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                                {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
+                              </a>
+                            )}
+                            {(cvFiles ?? []).map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                onClick={() => downloadWithAuth(`/api/files/${f.id}/download`, f.filename)}
+                                title={t("download")}
+                                data-testid={`chip-cv-file-${f.id}`}
+                              >
+                                <FileDown className="h-3 w-3 text-[hsl(193,52%,38%)]" /> {t("cvOnFile")}: {f.filename}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hasMeta && (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+                            {(a.originStaff ?? []).length > 0 && (
+                              <span data-testid="text-advisor-origin-staff">{t("originStaffLabel")}: {(a.originStaff ?? []).join(", ")}</span>
+                            )}
+                            {(a.gobiPics ?? []).length > 0 && (
+                              <span data-testid="text-advisor-pics">{t("currentPicLabel")}: {(a.gobiPics ?? []).join(", ")}</span>
+                            )}
+                            {formatBirthday(a) && (
+                              <span className="inline-flex items-center gap-1" data-testid="text-advisor-birthday">
+                                <Cake className="h-3 w-3 text-[hsl(var(--gold))]" /> {formatBirthday(a)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {a.engagement && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground mb-1">{t("advisorEngagement")}</p>
                       <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-advisor-engagement">{a.engagement}</p>
                     </div>
                   )}
-                  {formatBirthday(a) && (
-                    <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="text-advisor-birthday">
-                      <Cake className="h-3.5 w-3.5 text-[hsl(var(--gold))]" /> {formatBirthday(a)}
-                    </p>
-                  )}
                   <ActivityTimeline advisorId={a.id} />
+                  {/* v6.04 — advisor change log */}
+                  <AuditSection entityId={a.id} entityType="advisor" open={id !== null} />
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
+                <>
+                  <p className="text-xs text-muted-foreground italic">{t("advisorContactHidden")}</p>
+                  {(() => {
+                    const link = a.profileUrl || a.linkedinUrl;
+                    if (!link) return null;
+                    const isLinkedin = /linkedin\.com/i.test(link);
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
+                          {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                          {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
+                        </a>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
-
-              {isStaff && (a.originStaff ?? []).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("originStaffLabel")}</p>
-                  <p className="text-sm" data-testid="text-advisor-origin-staff">{(a.originStaff ?? []).join(", ")}</p>
-                </div>
-              )}
-
-              {(a.gobiPics ?? []).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t("currentPicLabel")}</p>
-                  <p className="text-sm">{(a.gobiPics ?? []).join(", ")}</p>
-                </div>
-              )}
-
-              {/* External link — single profile link (profileUrl, falling back to legacy linkedinUrl) */}
-              {(() => {
-                const link = a.profileUrl || a.linkedinUrl;
-                if (!link) return null;
-                const isLinkedin = /linkedin\.com/i.test(link);
-                return (
-                  <div className="flex flex-wrap gap-2">
-                    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-secondary" data-testid="link-advisor-profile">
-                      {isLinkedin ? <Linkedin className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
-                      {isLinkedin ? "LinkedIn" : t("advisorProfileUrl")}
-                    </a>
-                  </div>
-                );
-              })()}
 
             </div>
           </>

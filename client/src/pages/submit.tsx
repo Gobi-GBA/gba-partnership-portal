@@ -11,12 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye, Link as LinkIcon, Type, FileText } from "lucide-react";
+import { Sparkles, Loader2, LogIn, Paperclip, X, FilePen, PlusCircle, Eye, Link as LinkIcon, Type, FileText, Check, ChevronDown, MapPin } from "lucide-react";
 import type { Partnership, Stage, AttachmentInput } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf, levelOfStage } from "@/lib/constants";
+import { normalizeUrl } from "@shared/urls";
+import { cn } from "@/lib/utils";
 
 const emptyForm = {
   nameEn: "",
@@ -40,6 +44,95 @@ const emptyForm = {
 };
 
 type FormState = typeof emptyForm;
+
+function PartnerTargetCombobox({
+  value,
+  partners,
+  onSelect,
+}: {
+  value: string;
+  partners: Partnership[];
+  onSelect: (id: string) => void;
+}) {
+  const { t, lang } = useLang();
+  const [open, setOpen] = useState(false);
+  const selected = partners.find((partner) => String(partner.id) === value);
+  const partnerName = (partner: Partnership) => lang === "cn" && partner.nameCn ? partner.nameCn : partner.nameEn;
+  const groups = useMemo(
+    () => REGIONS.map((region) => ({
+      region,
+      partners: partners
+        .filter((partner) => (partner.region ?? "global") === region)
+        .sort((a, b) => partnerName(a).localeCompare(partnerName(b), lang === "cn" ? "zh-Hans" : "en")),
+    })).filter((group) => group.partners.length > 0),
+    [partners, lang],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-auto min-h-9 w-full min-w-0 justify-between px-3 py-2 font-normal"
+          data-testid="select-change-target"
+        >
+          {selected ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{partnerName(selected)}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t(`region_${selected.region ?? "global"}` as any)}
+              </span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">{t("selectPartner")}</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+        align="start"
+        collisionPadding={16}
+      >
+        <Command>
+          <CommandInput placeholder={t("searchPartners")} data-testid="input-search-change-target" />
+          <CommandList className="max-h-72">
+            <CommandEmpty>{t("noPartnerMatches")}</CommandEmpty>
+            {groups.map((group) => (
+              <CommandGroup
+                key={group.region}
+                heading={t(`region_${group.region}` as any)}
+                data-testid={`partner-group-${group.region}`}
+              >
+                {group.partners.map((partner) => (
+                  <CommandItem
+                    key={partner.id}
+                    value={`${partner.nameEn} ${partner.nameCn ?? ""} ${t(`region_${group.region}` as any)}`}
+                    onSelect={() => {
+                      onSelect(String(partner.id));
+                      setOpen(false);
+                    }}
+                    data-testid={`partner-option-${partner.id}`}
+                  >
+                    <Check className={cn("h-4 w-4", value === String(partner.id) ? "opacity-100" : "opacity-0")} />
+                    <span className="min-w-0 flex-1 truncate">{partnerName(partner)}</span>
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      {t(`region_${group.region}` as any)}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -118,6 +211,10 @@ export default function Submit() {
   const [attachments, setAttachments] = useState<AttachmentInput[]>([]);
   const aiFileRef = useRef<HTMLInputElement>(null);
   const attachRef = useRef<HTMLInputElement>(null);
+  // v6.05 — step-0 source chooser + focus targets
+  const [chooserDone, setChooserDone] = useState(false);
+  const aiTextRef = useRef<HTMLTextAreaElement>(null);
+  const websiteRef = useRef<HTMLInputElement>(null);
 
   const set = (key: string, value: any) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -202,13 +299,18 @@ export default function Submit() {
       delete fields.relationshipEn;
       delete fields.relationshipCn;
       delete fields.sources;
+      // v6.05 — auto-extracted logo fills the field only when it is still empty
+      const extractedLogo = typeof fields.logoUrl === "string" ? fields.logoUrl : "";
+      delete fields.logoUrl;
       setForm((f) => ({
         ...f,
         ...Object.fromEntries(
           Object.entries(fields).filter(([, v]) => v !== "" && v != null && !Array.isArray(v)),
         ),
+        logoUrl: f.logoUrl.trim() ? f.logoUrl : extractedLogo,
         picNames: Array.isArray(fields.picNames) && fields.picNames.length > 0 ? fields.picNames : f.picNames,
       }));
+      setChooserDone(true);
       toast({ title: t("aiDone") });
     },
     onError: (e: any) => {
@@ -336,20 +438,31 @@ export default function Submit() {
               <CardDescription>{t("suggestChangesBody")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Select value={targetId} onValueChange={loadTarget}>
-                <SelectTrigger data-testid="select-change-target">
-                  <SelectValue placeholder={t("selectPartner")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(allPartners ?? []).map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PartnerTargetCombobox value={targetId} partners={allPartners ?? []} onSelect={loadTarget} />
             </CardContent>
           </Card>
+        )}
+
+        {/* v6.05 — step 0: source chooser for new submissions */}
+        {!isSuggest && !chooserDone && (
+          <div className="mt-6 rounded-lg border border-[hsl(var(--aqua))]/40 bg-[hsl(var(--aqua))]/5 p-3 space-y-2" data-testid="panel-source-chooser">
+            <p className="text-sm font-semibold">{t("chooserTitle")}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-paste"
+                onClick={() => { setChooserDone(true); setTimeout(() => aiTextRef.current?.focus(), 50); }}>
+                <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserPaste")}</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-link"
+                onClick={() => { setChooserDone(true); setTimeout(() => { websiteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); websiteRef.current?.focus(); }, 50); }}>
+                <LinkIcon className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserLinkOrg")}</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="justify-start min-w-0" data-testid="button-chooser-manual"
+                onClick={() => setChooserDone(true)}>
+                <FilePen className="h-3.5 w-3.5 mr-1.5 shrink-0" /> <span className="truncate">{t("chooserManual")}</span>
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t("chooserHint")}</p>
+          </div>
         )}
 
         {/* AI quick-fill */}
@@ -364,6 +477,7 @@ export default function Submit() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Textarea
+                ref={aiTextRef}
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
                 placeholder={t("aiBoxPlaceholder")}
@@ -457,8 +571,10 @@ export default function Submit() {
             className="mt-8 space-y-6"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!form.startDate) {
-                toast({ title: t("startDateRequired"), variant: "destructive" });
+              if (!form.nameEn.trim() || !form.startDate) {
+                toast({ title: !form.nameEn.trim() ? t("nameEnRequired") : t("startDateRequired"), variant: "destructive" });
+                // v6.05 — jump to the first highlighted mandatory field
+                setTimeout(() => document.querySelector('[data-missing="true"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
                 return;
               }
               if (isSuggest) changeMutation.mutate();
@@ -466,7 +582,7 @@ export default function Submit() {
             }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label={t("nameEn")} required>
+              <Field label={t("nameEn")} required missing={!form.nameEn.trim()} missingHint={t("requiredHint")}>
                 <Input required value={form.nameEn} onChange={(e) => set("nameEn", e.target.value)} data-testid="input-name-en" />
               </Field>
               <Field label={t("nameCn")}>
@@ -514,7 +630,9 @@ export default function Submit() {
                 <Input value={form.partnershipType} onChange={(e) => set("partnershipType", e.target.value)} placeholder="Joint fund / Deal flow MOU…" data-testid="input-type" />
               </Field>
               <Field label={t("website")}>
-                <Input type="url" value={form.website} onChange={(e) => set("website", e.target.value)} placeholder="https://…" data-testid="input-website" />
+                <Input type="url" value={form.website} onChange={(e) => set("website", e.target.value)}
+                  onBlur={() => set("website", normalizeUrl(form.website) || form.website)}
+                  placeholder="https://…" data-testid="input-website" ref={websiteRef} />
               </Field>
               <Field label={t("logoUrl")} hint={t("logoHint")}>
                 <Input value={form.logoUrl} onChange={(e) => set("logoUrl", e.target.value)} placeholder="https://…" data-testid="input-logo" />
@@ -525,7 +643,7 @@ export default function Submit() {
               <Field label={t("contactEmail")}>
                 <Input type="email" value={form.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} data-testid="input-contact-email" />
               </Field>
-              <Field label={t("startDate")} required>
+              <Field label={t("startDate")} required missing={!form.startDate} missingHint={t("requiredHint")}>
                 <Input type="date" required value={form.startDate} onChange={(e) => set("startDate", e.target.value)} data-testid="input-start-date" />
               </Field>
               <Field label={`${t("filterStage")} · ${t("collabLevel")}`}>
@@ -646,11 +764,12 @@ export default function Submit() {
   );
 }
 
-function Field({ label, children, required, hint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string }) {
+function Field({ label, children, required, hint, missing, missingHint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string; missing?: boolean; missingHint?: string }) {
   return (
-    <div className="space-y-1.5">
+    <div className={cn("space-y-1.5", missing && "rounded-md p-2 -m-1 ring-2 ring-amber-400/70 bg-amber-400/10")} data-missing={missing ? "true" : undefined}>
       <Label className="text-sm">
-        {label} {required && <span className="text-destructive">*</span>}
+        {label} {required && <span className={missing ? "text-amber-600 dark:text-amber-400" : "text-destructive"}>*</span>}
+        {missing && missingHint && <span className="ml-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">({missingHint})</span>}
       </Label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}

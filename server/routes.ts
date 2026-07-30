@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction, CookieOptions } from "express";
 import type { Server } from "node:http";
 import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
+import { normalizeUrl, linkedinSlug } from "../shared/urls.js";
 import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -273,10 +274,28 @@ function htmlToText(html: string): string {
   );
 }
 
-async function fetchPageText(url: string): Promise<string | null> {
+// v6.05 — fetch reliability ladder: (1) browser-grade headers, (2) legacy bot UA,
+// (3) public text reader (r.jina.ai) which succeeds from datacenter IPs where
+// LinkedIn et al. block direct fetches. Auth-wall 200s are treated as failures.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+const BOT_UA = "Mozilla/5.0 (compatible; GobiPortal/4.3)";
+
+function looksLikeAuthwall(html: string, url: string): boolean {
+  if (/\/authwall|checkpoint\/challenge/i.test(url)) return true;
+  if (!/linkedin\.com/i.test(url)) return false;
+  const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "";
+  return /log in or sign up|sign up \| linkedin|^\s*linkedin\s*$/i.test(title) || /trk=authwall/i.test(html);
+}
+
+async function fetchHtmlDirect(url: string, ua: string): Promise<{ html: string; finalUrl: string } | null> {
   try {
     const resp = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
+      headers: {
+        "User-Agent": ua,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en,zh-CN;q=0.8,zh;q=0.6",
+      },
       signal: AbortSignal.timeout(10_000),
       redirect: "follow",
     });
@@ -284,32 +303,122 @@ async function fetchPageText(url: string): Promise<string | null> {
     const type = resp.headers.get("content-type") ?? "";
     if (!type.includes("html") && !type.includes("text")) return null;
     const html = await resp.text();
-    return htmlToText(html).slice(0, 10_000);
+    const finalUrl = resp.url || url;
+    if (looksLikeAuthwall(html, finalUrl) || looksLikeAuthwall(html, url)) return null;
+    return { html, finalUrl };
   } catch {
     return null;
   }
 }
 
+async function fetchTextViaReader(url: string): Promise<{ text: string; photoCandidates: ImageCandidate[]; logoCandidates: ImageCandidate[] } | null> {
+  try {
+    const resp = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { Accept: "text/plain", "User-Agent": BOT_UA },
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!resp.ok) return null;
+    const raw = (await resp.text()).trim();
+    if (raw.length < 200) return null;
+    // the reader can itself land on the auth wall — reject those
+    if (/^Title:\s*(linkedin: log in or sign up|sign up \| linkedin)/im.test(raw)) return null;
+    if (/join linkedin today|sign in to view/i.test(raw.slice(0, 1500)) && !/experience|about/i.test(raw)) return null;
+    const title = raw.match(/^Title:\s*(.+)$/m)?.[1]?.trim() ?? "";
+    // v6.05 — harvest inline markdown images before stripping them: the reader is
+    // often the only rung that succeeds for LinkedIn, and it carries the portrait
+    // (profile-displayphoto) and org logos (company-logo) as markdown images.
+    const photoCandidates: ImageCandidate[] = [];
+    const logoCandidates: ImageCandidate[] = [];
+    const seenImg = new Set<string>();
+    for (const m of Array.from(raw.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g))) {
+      const alt = m[1] ?? "";
+      const src = m[2];
+      if (seenImg.has(src) || /static\.licdn\.com/i.test(src)) continue;
+      seenImg.add(src);
+      if (/profile-displayphoto|profile-photo/i.test(src)) photoCandidates.push({ url: src, alt: alt || "profile photo", near: title.slice(0, 120), score: 4 });
+      else if (/company-logo|org-logo|(^|[/_-])logo/i.test(`${src} ${alt}`)) logoCandidates.push({ url: src, alt: alt || "logo", near: title.slice(0, 120), score: 3 });
+    }
+    // compact the markdown so the char cap is spent on content, not URLs:
+    // strip images, unwrap links, drop exact-duplicate lines (nav boilerplate
+    // repeats dozens of times on LinkedIn public pages).
+    const seenLines = new Set<string>();
+    const text = raw
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => {
+        if (!l) return true;
+        const key = l.toLowerCase();
+        if (seenLines.has(key)) return false;
+        seenLines.add(key);
+        return true;
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n");
+    return { text: text.slice(0, 12_000), photoCandidates: photoCandidates.slice(0, 4), logoCandidates: logoCandidates.slice(0, 4) };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPageText(url: string): Promise<string | null> {
+  const meta = await fetchPageMeta(url);
+  return meta.text;
+}
+
 // Fetch a page and return the visible text, a best-guess portrait photo URL, and
 // the scored list of image candidates (for AI-assisted portrait selection).
-async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null; photoCandidates: ImageCandidate[] }> {
-  try {
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; GobiPortal/4.3)" },
-      signal: AbortSignal.timeout(10_000),
-      redirect: "follow",
-    });
-    if (!resp.ok) return { text: null, photoUrl: null, photoCandidates: [] };
-    const type = resp.headers.get("content-type") ?? "";
-    if (!type.includes("html") && !type.includes("text")) return { text: null, photoUrl: null, photoCandidates: [] };
-    const html = await resp.text();
+async function fetchPageMeta(url: string): Promise<{ text: string | null; photoUrl: string | null; photoCandidates: ImageCandidate[]; logoCandidates: ImageCandidate[] }> {
+  const direct = (await fetchHtmlDirect(url, BROWSER_UA)) ?? (await fetchHtmlDirect(url, BOT_UA));
+  if (direct) {
+    const { html, finalUrl } = direct;
     const text = htmlToText(html).slice(0, 10_000);
-    const photoUrl = extractPhotoUrl(html, resp.url || url);
-    const photoCandidates = collectImageCandidates(html, resp.url || url);
-    return { text, photoUrl, photoCandidates };
-  } catch {
-    return { text: null, photoUrl: null, photoCandidates: [] };
+    const photoUrl = extractPhotoUrl(html, finalUrl);
+    const photoCandidates = collectImageCandidates(html, finalUrl);
+    // LinkedIn public profiles carry the person's portrait as og:image — keep it
+    // as a candidate (identity-tie rules still gate it). Skip LinkedIn's default
+    // ghost images served from static.licdn.com.
+    if (photoUrl && !photoCandidates.some((c) => c.url === photoUrl) && !/static\.licdn\.com/i.test(photoUrl)) {
+      const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "";
+      photoCandidates.push({ url: photoUrl, alt: "og:image profile photo", near: decodeEntities(title).slice(0, 120), score: /licdn\.com|linkedin\.com/i.test(photoUrl + finalUrl) ? 3 : 1 });
+    }
+    const logoCandidates = collectLogoCandidates(html, finalUrl);
+    return { text, photoUrl, photoCandidates, logoCandidates };
   }
+  // last rung: text-only public reader (works from datacenter IPs for LinkedIn)
+  const reader = await fetchTextViaReader(url);
+  if (!reader) return { text: null, photoUrl: null, photoCandidates: [], logoCandidates: [] };
+  return { text: reader.text, photoUrl: reader.photoCandidates[0]?.url ?? null, photoCandidates: reader.photoCandidates, logoCandidates: reader.logoCandidates };
+}
+
+// v6.05 — logo harvesting for partnership auto-sync: inverse bias of the portrait
+// picker. Prefers explicit logo hints, then apple-touch-icon, then og:image.
+function collectLogoCandidates(html: string, base: string): ImageCandidate[] {
+  const out: ImageCandidate[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string | undefined, alt: string, score: number) => {
+    if (!raw) return;
+    let abs = "";
+    try { abs = new URL(decodeEntities(raw), base).toString(); } catch { return; }
+    if (!/^https?:\/\//i.test(abs) || seen.has(abs)) return;
+    if (/\.(?:mp4|webm|css|js)(\?|$)/i.test(abs)) return;
+    seen.add(abs);
+    out.push({ url: abs, alt, near: "", score });
+  };
+  // explicit logo-hinted <img>
+  for (const m of Array.from(html.matchAll(/<img\b[^>]*>/gi))) {
+    const tag = m[0];
+    const src = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1];
+    const alt = tag.match(/\balt=["']([^"']*)["']/i)?.[1] ?? "";
+    const cls = tag.match(/\bclass=["']([^"']*)["']/i)?.[1] ?? "";
+    if (/(logo|brandmark|wordmark)/i.test(`${src} ${alt} ${cls}`)) push(src, decodeEntities(alt) || "logo", 4);
+  }
+  // apple-touch-icon (usually a clean square mark), then og:image, then favicon
+  push(html.match(/<link[^>]+rel=["'][^"']*apple-touch-icon[^"']*["'][^>]+href=["']([^"']+)["']/i)?.[1] ?? html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*apple-touch-icon[^"']*["']/i)?.[1], "apple-touch-icon", 3);
+  push(html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1], "og:image", 2);
+  push(html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i)?.[1], "favicon", 1);
+  return out.sort((a, b) => b.score - a.score).slice(0, 6);
 }
 
 // ---------- Portrait photo selection preset ----------
@@ -442,14 +551,17 @@ async function resolveUser(req: AuthedRequest): Promise<User | undefined> {
 }
 
 // Fire-and-forget audit trail writer — never blocks the main response.
+// v6.04: entityType 'partnership' (default) or 'advisor'; the id is stored in partnership_id.
 async function audit(
   user: User,
   partnershipId: number,
   action: AuditAction,
   changes?: Record<string, unknown>,
+  entityType: "partnership" | "advisor" = "partnership",
 ) {
   try {
     await storage.createAuditLog({
+      entityType,
       partnershipId,
       userId: user.id,
       userName: user.name,
@@ -460,6 +572,13 @@ async function audit(
   } catch (err) {
     console.error("audit log failed:", err);
   }
+}
+
+// v6.04 — advisor change log stores FIELD NAMES only: several advisor fields
+// (mobile, WeChat, emails, birthday) are staff-sensitive, so values never
+// enter the shared audit trail.
+function fieldNamesOnly(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.keys(obj).map((k) => [k, true]));
 }
 
 // Which fields of a partial update actually differ from the stored record
@@ -780,6 +899,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updated = await storage.updateUser(req.user!.id, data);
     if (!updated) return res.status(404).json({ message: "Not found" });
     res.json({ user: safe(updated) });
+  });
+
+  // v6.05 — pending-item badges ("missed call" indicators): per-user summary of
+  // unseen update notes and, for admins, everything waiting in the approval queues.
+  app.get("/api/me/notifications", requireAuth(), async (req: AuthedRequest, res) => {
+    const me = req.user!;
+    const myFeedback = await storage.listFeedbackByUser(me.id);
+    const seenAt = me.lastSeenUpdatesAt ?? "";
+    const out: Record<string, unknown> = {
+      lastSeenVersion: me.lastSeenVersion ?? null,
+      // my system requests that were answered since I last opened the Updates page
+      myRequestsResolved: myFeedback.filter((f) => f.status !== "open" && ((f.updatedAt ?? f.createdAt ?? "") > seenAt)).length,
+    };
+    if (me.role === "admin") {
+      const [allUsers, parts, advs, crs, fb] = await Promise.all([
+        storage.listUsers(),
+        storage.listPartnerships(),
+        storage.listAdvisors(),
+        storage.listChangeRequests(),
+        storage.listFeedback(),
+      ]);
+      out.pendingUsers = allUsers.filter((u) => u.status === "pending").length;
+      out.pendingPartnerships = parts.filter((p) => p.status === "pending").length;
+      out.pendingAdvisors = advs.filter((a) => a.status === "pending").length;
+      out.pendingChangeRequests = crs.filter((c) => c.status === "pending").length;
+      out.openRequests = fb.filter((f) => f.status === "open").length;
+    }
+    res.json(out);
+  });
+
+  // Mark the current version's update notes (and my request answers) as seen.
+  app.post("/api/me/seen-version", requireAuth(), async (req: AuthedRequest, res) => {
+    const version = String(req.body?.version ?? "").trim().slice(0, 20);
+    if (!version) return res.status(400).json({ message: "version required" });
+    const updated = await storage.updateUser(req.user!.id, {
+      lastSeenVersion: version,
+      lastSeenUpdatesAt: new Date().toISOString(),
+    });
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json({ ok: true, lastSeenVersion: updated.lastSeenVersion });
   });
 
   // Viewer → admin: request edit (staff) rights; shows up in the admin team table
@@ -1301,7 +1460,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
     isStaffUser(user)
       ? a
-      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, wechatId: null, originStaff: null };
+      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, mobiles: null, wechatId: null, originStaff: null };
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
   async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
@@ -1434,6 +1593,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return bestLevel > 0 && matches.length === 1 ? matches[0] : null;
   }
 
+  function normalizeAdvisorMobiles(values: string[] | null | undefined): string[] {
+    return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean))).slice(0, 3);
+  }
+
   app.post("/api/advisors", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const parsed = advisorInputSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1441,6 +1604,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const isAdmin = req.user!.role === "admin";
     const { roles, tagIds, ...data } = parsed.data;
+    const mobiles = normalizeAdvisorMobiles(data.mobiles ?? (data.mobile ? [data.mobile] : []));
     const created = await storage.createAdvisor({
       name: data.name,
       nameCn: data.nameCn ?? null,
@@ -1461,7 +1625,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       birthDay: data.birthDay ?? null,
       birthMonth: data.birthMonth ?? null,
       birthYear: data.birthYear ?? null,
-      mobile: data.mobile ?? null,
+      mobile: mobiles[0] ?? null,
+      mobiles: mobiles.length > 0 ? mobiles : null,
       wechatId: data.wechatId ?? null,
       originStaff: data.originStaff ?? data.gobiPics ?? null, // default: origin = initial PIC
       lifecycleStatus: data.lifecycleStatus ?? "proposed",
@@ -1486,6 +1651,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         sortOrder: i,
       })),
     );
+    await audit(req.user!, created.id, "create", { name: created.name }, "advisor");
     res.status(201).json({ ...created, roles: savedRoles });
   });
 
@@ -1504,6 +1670,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const { roles, status, tagIds, lifecycleStatus, ...data } = parsed.data;
     const patch: Partial<Advisor> = { ...data } as Partial<Advisor>;
+    if (data.mobiles !== undefined) {
+      const mobiles = normalizeAdvisorMobiles(data.mobiles);
+      patch.mobiles = mobiles.length > 0 ? mobiles : null;
+      patch.mobile = mobiles[0] ?? null;
+    } else if (data.mobile !== undefined) {
+      const mobiles = normalizeAdvisorMobiles(data.mobile ? [data.mobile] : []);
+      patch.mobiles = mobiles.length > 0 ? mobiles : null;
+      patch.mobile = mobiles[0] ?? null;
+    }
     if (isAdmin && status) patch.status = status;
     // Lifecycle status is admin-only and normally changes via /workflow; allow admins to set it here too.
     if (isAdmin && lifecycleStatus) {
@@ -1512,6 +1687,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     // Roles-only PATCHes are valid — skip the advisor update when nothing else changed
     const updated = Object.keys(patch).length > 0 ? await storage.updateAdvisor(id, patch) : existing;
+    // v6.04 — advisor change log (field names only; values may be staff-sensitive)
+    {
+      const changed = diffFields(existing, patch);
+      delete (changed as any).status;
+      const logged: Record<string, unknown> = fieldNamesOnly(changed);
+      if (roles) logged.roles = true;
+      if (tagIds) logged.tags = true;
+      const action: AuditAction = status && status !== existing.status && (status === "approved" || status === "rejected")
+        ? (status === "approved" ? "approve" : "reject")
+        : "update";
+      if (Object.keys(logged).length || action !== "update") await audit(req.user!, id, action, logged, "advisor");
+    }
     if (tagIds) await storage.setAdvisorTags(id, tagIds);
     let savedRoles: AdvisorRole[] | undefined;
     if (roles) {
@@ -1533,7 +1720,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.delete("/api/advisors/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const target = await storage.getAdvisor(Number(req.params.id));
     await storage.deleteAdvisor(Number(req.params.id));
+    if (target) await audit(req.user!, target.id, "delete", { name: target.name }, "advisor");
     res.json({ ok: true });
   });
 
@@ -1642,8 +1831,104 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: now,
       });
     } catch {}
+    await audit(req.user!, id, "update", { workflow: logNote }, "advisor");
     const roles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === id);
     res.json({ ...updated, roles });
+  });
+
+  // v6.04 — advisor change log (staff only; contact values never appear here)
+  app.get("/api/advisors/:id/audit", requireAuth("submit"), async (req, res) => {
+    const logs = await storage.listAuditLogs(Number(req.params.id), "advisor");
+    logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(logs);
+  });
+
+  // ---------- v6.04: advisor document filing (CVs + signed letters) ----------
+  const advisorFileSchema = z.object({
+    type: z.enum(["cv", "letter"]),
+    filename: z.string().min(1).max(200),
+    mime: z.string().min(3).max(120),
+    data: z.string().min(16), // base64
+  });
+  const FILE_MIME_OK = /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/msword|text\/plain|image\/jpeg|image\/png)$/;
+
+  app.get("/api/advisors/:id/files", requireAuth("submit"), async (req, res) => {
+    const id = Number(req.params.id);
+    const type = req.query.type === "letter" ? "advisor_letter" : "advisor_cv";
+    const files = await storage.listFileAssetMeta(type, id);
+    files.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json(files);
+  });
+
+  app.post("/api/advisors/:id/files", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const advisor = await storage.getAdvisor(id);
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const parsed = advisorFileSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid file upload" });
+    const { type, filename, mime, data } = parsed.data;
+    if (!FILE_MIME_OK.test(mime)) return res.status(415).json({ message: "Only PDF, Word, TXT, JPG or PNG files are accepted" });
+    if (attachmentTooLarge(data)) return res.status(413).json({ message: "File too large (max 10MB)" });
+
+    const now = new Date().toISOString();
+    const meta = await storage.createFileAsset({
+      ownerType: type === "cv" ? "advisor_cv" : "advisor_letter",
+      ownerId: id,
+      filename,
+      mime,
+      size: Math.floor(data.length * 0.75),
+      data,
+      uploadedBy: req.user!.id,
+      uploadedByName: req.user!.name,
+      createdAt: now,
+    });
+
+    let updated = advisor;
+    if (type === "letter") {
+      // Filing the signed letter completes the sign-back step when still pending.
+      if (!advisor.signedBackAt) {
+        const patch: Partial<Advisor> = { signedBackAt: now };
+        if (advisor.lifecycleStatus !== "terminated") {
+          patch.lifecycleStatus = "onboarded";
+          patch.onboardedAt = advisor.onboardedAt ?? now.slice(0, 10);
+        }
+        updated = (await storage.updateAdvisor(id, patch)) ?? advisor;
+      }
+      try {
+        await storage.createAdvisorActivity({
+          advisorId: id, date: now.slice(0, 10), type: "note",
+          note: `[Workflow] Signed letter filed: ${filename}`,
+          createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+        });
+      } catch {}
+      await audit(req.user!, id, "update", { signed_letter_filed: true }, "advisor");
+    } else {
+      try {
+        await storage.createAdvisorActivity({
+          advisorId: id, date: now.slice(0, 10), type: "note",
+          note: `[CV] CV filed: ${filename}`,
+          createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+        });
+      } catch {}
+      await audit(req.user!, id, "update", { cv_filed: true }, "advisor");
+    }
+    res.status(201).json({ file: meta, advisor: updated });
+  });
+
+  app.get("/api/files/:id/download", requireAuth("submit"), async (req, res) => {
+    const f = await storage.getFileAsset(Number(req.params.id));
+    if (!f) return res.status(404).json({ message: "Not found" });
+    res.setHeader("Content-Type", f.mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(f.filename)}"`);
+    res.send(Buffer.from(f.data, "base64"));
+  });
+
+  app.delete("/api/files/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const f = await storage.getFileAsset(Number(req.params.id));
+    if (!f) return res.status(404).json({ message: "Not found" });
+    await storage.deleteFileAsset(f.id);
+    await audit(req.user!, f.ownerId, "update", { [`${f.ownerType === "advisor_letter" ? "signed_letter" : "cv"}_removed`]: true }, "advisor");
+    res.json({ ok: true });
   });
 
   // v5.11 — admin-editable letter template overrides (empty meta -> firm default)
@@ -1706,7 +1991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       lines.push(csvRow([
         a.name, a.nameCn ?? "", a.lifecycleStatus, a.advisorType, a.track, a.pillar,
         primary?.title ?? "", primary?.organization ?? "",
-        (a.emails ?? []).join("; "), a.mobile ?? "", a.wechatId ?? "", a.domains ?? "",
+        (a.emails ?? []).join("; "), (a.mobiles?.length ? a.mobiles : a.mobile ? [a.mobile] : []).join("; "), a.wechatId ?? "", a.domains ?? "",
         (a.originStaff ?? []).join("; "), (a.gobiPics ?? []).join("; "),
         a.cohort ?? "", a.onboardedAt ?? "", a.profileUrl ?? a.linkedinUrl ?? "",
       ]));
@@ -2203,9 +2488,15 @@ www.gobi.vc`,
   });
 
   // ---------- AI: sync advisor profile from a URL (e.g. LinkedIn) or pasted text (DeepSeek) ----------
-  app.post("/api/ai/advisor-extract", requireAuth("submit"), async (req, res) => {
-    const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+  app.post("/api/ai/advisor-extract", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    // v6.05 — normalize what was typed (missing https://, scheme typos, wrappers)
+    const url = normalizeUrl(typeof req.body?.url === "string" ? req.body.url : "");
     const pasted = typeof req.body?.text === "string" ? req.body.text : "";
+    // v6.04 — uploaded CV file (PDF/DOCX/TXT); text-extracted here and filed
+    // against the advisor record when advisorId is present.
+    const advisorIdRaw = Number(req.body?.advisorId);
+    const advisorId = Number.isInteger(advisorIdRaw) && advisorIdRaw > 0 ? advisorIdRaw : null;
+    const cvParse = z.object({ name: z.string().min(1).max(200), mime: z.string().min(3).max(120), data: z.string().min(16) }).safeParse(req.body?.file);
 
     // ---- Rule-based identity preset ----
     // When the form already identifies the advisor (name, Chinese name, LinkedIn
@@ -2215,7 +2506,10 @@ www.gobi.vc`,
     // record with whoever is most prominent.
     const expectedName = typeof req.body?.expectedName === "string" ? req.body.expectedName.trim() : "";
     const expectedNameCn = (typeof req.body?.expectedNameCn === "string" ? req.body.expectedNameCn : "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
-    const linkedinUrl = typeof req.body?.linkedinUrl === "string" ? req.body.linkedinUrl.trim() : "";
+    // v6.05 — a LinkedIn profile pasted into the Profile URL field still counts
+    // as the LinkedIn identity source (field mix-ups shouldn't break the sync).
+    const linkedinUrlTyped = normalizeUrl(typeof req.body?.linkedinUrl === "string" ? req.body.linkedinUrl : "");
+    const linkedinUrl = linkedinUrlTyped || (linkedinSlug(url) ? url : "");
     const emails = typeof req.body?.emails === "string" ? req.body.emails.trim() : "";
     const STOP_TOKENS = new Set(["dr", "prof", "professor", "ir", "mr", "ms", "mrs", "the", "and", "www", "com", "hk", "mail", "info", "contact", "linkedin"]);
     const nameTokens = new Set<string>();
@@ -2311,7 +2605,41 @@ www.gobi.vc`,
     // Trim to a prompt-sized shortlist only AFTER identity boosting — tied
     // candidates have floated to the top, so the target person survives the cut.
     photoCandidates.splice(12);
-    if (pageSections.length === 0 && pasted.trim().length < 40) {
+
+    // v6.04 — read the uploaded CV and file it for record
+    let cvText = "";
+    let cvFileName = "";
+    if (cvParse.success) {
+      const f = cvParse.data;
+      if (attachmentTooLarge(f.data)) return res.status(413).json({ message: "File too large (max 10MB)" });
+      cvFileName = f.name;
+      try {
+        if (f.mime === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+          const { extractText, getDocumentProxy } = await import("unpdf");
+          const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(f.data, "base64")));
+          const { text: pdfText } = await extractText(pdf, { mergePages: true });
+          cvText = pdfText;
+        } else if (
+          f.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+          f.name.toLowerCase().endsWith(".docx")
+        ) {
+          const result = await mammoth.extractRawText({ buffer: Buffer.from(f.data, "base64") });
+          cvText = result.value;
+        } else if (f.mime === "text/plain" || /\.(txt|md)$/i.test(f.name)) {
+          cvText = Buffer.from(f.data, "base64").toString("utf8");
+        } else {
+          return res.status(415).json({ message: "Only PDF, DOCX or TXT files are supported for CV extraction" });
+        }
+      } catch (err) {
+        console.error("CV text extraction failed:", err);
+      }
+      cvText = cvText.trim();
+      if (!cvText) {
+        return res.status(422).json({ message: "Could not read text from that file — scanned/image PDFs are not supported. Paste the CV text instead." });
+      }
+    }
+
+    if (pageSections.length === 0 && pasted.trim().length < 40 && !cvText) {
       return res.status(422).json({
         message: fetchFailed
           ? "Could not read that page — LinkedIn and some sites block automated access. Open the profile, copy the text, and paste it instead."
@@ -2328,7 +2656,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
   "personFound": true if the TARGET PERSON appears in the material, else false,` : ""}
   "name": "person's name in English",
   "nameCn": "person's name in Chinese if present",
-  "background": "2-4 sentence English professional bio",
+  "background": "career chronology in the standard line format — see STANDARDISATION RULES",
   "domains": "comma-separated expertise areas",
   "roles": [{ "title": "job title", "organization": "organisation name", "isPrimary": 1 for the current main role else 0 }],
   "cohort": "graduation year if evident, else empty",
@@ -2338,7 +2666,7 @@ Return ONLY a JSON object with these keys (use empty string "" when unknown; nev
 STANDARDISATION RULES — follow exactly:
 - name: "[Honorific ]Given-name SURNAME" with the family name in CAPITALS, keeping Prof./Dr./Ir. honorifics when evident, e.g. "Percy CHENG", "Prof. Nancy Kwan MAN". No nicknames in quotes.
 - nameCn: Chinese characters only, no spaces or punctuation, e.g. "王宇新". Empty if not stated — never transliterate.
-- background: 2-4 factual third-person sentences — current position first, then prior experience, education, notable achievements. No marketing language ("visionary", "world-class"), no bullet points, no first person.
+- background: the person's experience as a chronology — ONE line per position, most recent first, each line EXACTLY "YYYY–YYYY — Organization — Role & scope" (use "YYYY–present" for ongoing roles, "n.a." when a year is not stated; scope = concise phrase of what they did or led, max ~12 words). After the position lines, education in the same shape: "YYYY–YYYY — Institution — Degree, field". Separate lines with \n. No paragraphs, no bullet symbols, no marketing language ("visionary", "world-class"), no first person.
 - domains: 2-5 items, comma-separated, each 1-3 words in Title Case with acronyms in capitals, e.g. "Biotech, University Tech Transfer, AI". Use sector names, not job titles.
 - roles.title: Title Case, e.g. "Co-Founder & Executive Director". roles.organization: official English name without legal suffixes (Limited, Ltd., Inc., Co.). Exactly ONE role has isPrimary 1 (the current main position).
 - cohort: a 4-digit year only, else "".
@@ -2360,6 +2688,7 @@ STANDARDISATION RULES — follow exactly:
         identityBlock,
         candidateBlock,
         ...pageSections.map((s) => `\nFETCHED PAGE CONTENT (${s.url}):\n"""\n${s.text.slice(0, perSectionCap)}\n"""`),
+        cvText ? `\nUPLOADED CV (${cvFileName}):\n"""\n${cvText.slice(0, 12000)}\n"""` : "",
         pasted.trim() ? `\nPASTED PROFILE TEXT:\n"""\n${pasted.slice(0, 12000)}\n"""` : "",
       ].join("\n");
 
@@ -2373,14 +2702,17 @@ STANDARDISATION RULES — follow exactly:
           model: "deepseek-v4-flash",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
-          max_tokens: 1200,
+          max_tokens: 5000, // v6.05 — reasoning model: budget covers thinking + JSON
         }),
       });
       if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
       const completion: any = await resp.json();
       const raw: string = completion.choices?.[0]?.message?.content ?? "";
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON in model output");
+      const jsonMatch = raw.match(/\{[\s\S]*\}/) ?? String(completion.choices?.[0]?.message?.reasoning_content ?? "").match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error("deepseek no-JSON:", JSON.stringify({ finish: completion.choices?.[0]?.finish_reason, len: raw.length, head: raw.slice(0, 200), hasReasoning: !!completion.choices?.[0]?.message?.reasoning_content }));
+        throw new Error("No JSON in model output");
+      }
       const data = JSON.parse(jsonMatch[0]);
 
       // Identity verification — rule layer on top of the prompt. When the form
@@ -2398,6 +2730,28 @@ STANDARDISATION RULES — follow exactly:
             expected: expectedName || expectedNameCn || liSlug || emailLocal,
             found: foundName || foundCn || "",
           });
+        }
+      }
+
+      // v6.04 — file the uploaded CV for record, but ONLY now that the identity
+      // check has passed: a mismatched person's CV must never be attached to
+      // this advisor's record.
+      if (advisorId && cvParse.success && cvText) {
+        try {
+          const f = cvParse.data;
+          const now = new Date().toISOString();
+          await storage.createFileAsset({
+            ownerType: "advisor_cv", ownerId: advisorId, filename: f.name, mime: f.mime,
+            size: Math.floor(f.data.length * 0.75), data: f.data,
+            uploadedBy: req.user!.id, uploadedByName: req.user!.name, createdAt: now,
+          });
+          await storage.createAdvisorActivity({
+            advisorId, date: now.slice(0, 10), type: "note", note: `[CV] CV filed: ${f.name}`,
+            createdBy: req.user!.id, createdByName: req.user!.name, createdAt: now,
+          });
+          await audit(req.user!, advisorId, "update", { cv_filed: true }, "advisor");
+        } catch (err) {
+          console.error("CV filing failed:", err);
         }
       }
 
@@ -2428,6 +2782,8 @@ STANDARDISATION RULES — follow exactly:
 
       // Autofill standardisation (server-side, belt and braces over the prompt)
       const clean = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+      // background keeps its line structure (v6.04 — one "YYYY–YYYY — Org — Scope" line per position)
+      const cleanMl = (s: unknown) => String(s ?? "").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       const nameCn = clean(data.nameCn).replace(/[^\u4e00-\u9fff\u00b7]/g, "");
       const domains = Array.from(new Set(
         clean(data.domains).split(/[,\uff0c\u3001;\uff1b/]+/).map((d) => d.trim()).filter(Boolean),
@@ -2451,7 +2807,7 @@ STANDARDISATION RULES — follow exactly:
       res.json({
         name: clean(data.name),
         nameCn,
-        background: clean(data.background),
+        background: cleanMl(data.background),
         domains,
         cohort,
         roles,
@@ -2487,8 +2843,8 @@ STANDARDISATION RULES — follow exactly:
     const orgRaw = req.body?.expectedOrg ?? {};
     const expOrgEn = typeof orgRaw?.nameEn === "string" ? orgRaw.nameEn.trim() : "";
     const expOrgCn = (typeof orgRaw?.nameCn === "string" ? orgRaw.nameCn : "").replace(/[^\u4e00-\u9fff\u00b7]/g, "");
-    let orgWebsite = typeof orgRaw?.website === "string" ? orgRaw.website.trim() : "";
-    if (orgWebsite && !/^https?:\/\//i.test(orgWebsite)) orgWebsite = `https://${orgWebsite}`;
+    // v6.05 — full URL normalization (scheme typos, wrappers, missing https://)
+    const orgWebsite = normalizeUrl(typeof orgRaw?.website === "string" ? orgRaw.website : "");
     const ORG_STOP = new Set(["the", "and", "of", "for", "co", "ltd", "limited", "inc", "corp", "corporation", "company", "group", "holdings", "international", "global"]);
     const orgTokens = new Set<string>();
     for (const tok of expOrgEn.toLowerCase().split(/[^a-z0-9]+/)) {
@@ -2521,13 +2877,20 @@ STANDARDISATION RULES — follow exactly:
       // Detect links in the pasted text and fetch their content server-side.
       // The form's website (org identity preset) is fetched first, so a
       // website-only auto-sync works without any pasted material.
-      const urls = Array.from(new Set([...(orgWebsite ? [orgWebsite] : []), ...(text.match(URL_RE) ?? [])])).slice(0, 4);
+      const urls = Array.from(new Set([...(orgWebsite ? [orgWebsite] : []), ...(text.match(URL_RE) ?? []).map((u) => normalizeUrl(u)).filter(Boolean)])).slice(0, 4);
       let webText = "";
-      const pages = await Promise.all(urls.map(async (url) => ({ url, pageText: await fetchPageText(url) })));
-      for (const { url, pageText } of pages) {
-        sources.push({ kind: "link", label: url, fetched: pageText !== null });
-        if (pageText) webText += `\n\n--- WEB PAGE: ${url} ---\n${pageText}`;
+      const pages = await Promise.all(urls.map(async (url) => ({ url, meta: await fetchPageMeta(url) })));
+      for (const { url, meta } of pages) {
+        sources.push({ kind: "link", label: url, fetched: meta.text !== null });
+        if (meta.text) webText += `\n\n--- WEB PAGE: ${url} ---\n${meta.text}`;
       }
+      // v6.05 — logo auto-pull: best candidate from the org's own website first,
+      // otherwise from any fetched page. Applied by the form only when its logo
+      // field is still empty.
+      const logoUrl =
+        pages.find((p) => p.url === orgWebsite)?.meta.logoCandidates[0]?.url ??
+        pages.find((p) => p.meta.logoCandidates.length > 0)?.meta.logoCandidates[0]?.url ??
+        "";
       const plainText = text.replace(URL_RE, " ").trim();
       if (plainText.length >= 20) sources.push({ kind: "text", label: "pasted text" });
 
@@ -2619,14 +2982,17 @@ ${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`
           model: "deepseek-v4-flash",
           messages: [{ role: "user", content: textBlock }],
           response_format: { type: "json_object" },
-          max_tokens: 2200,
+          max_tokens: 5600, // v6.05 — reasoning model: budget covers thinking + JSON
         }),
       });
       if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
       const completion: any = await resp.json();
       const raw: string = completion.choices?.[0]?.message?.content ?? "";
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON in model output");
+      const jsonMatch = raw.match(/\{[\s\S]*\}/) ?? String(completion.choices?.[0]?.message?.reasoning_content ?? "").match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error("deepseek no-JSON:", JSON.stringify({ finish: completion.choices?.[0]?.finish_reason, len: raw.length, head: raw.slice(0, 200), hasReasoning: !!completion.choices?.[0]?.message?.reasoning_content }));
+        throw new Error("No JSON in model output");
+      }
       const data = JSON.parse(jsonMatch[0]);
 
       // Org identity verification — rule layer on top of the prompt.
@@ -2678,6 +3044,7 @@ ${GOBI_STAFF.map((s) => `${s.name} — ${s.title} — ${s.office}`).join("\n")}`
         stage,
         collabLevel: STAGE_LEVEL[stage] ?? 2,
         notes: String(data.notes ?? ""),
+        logoUrl,
       };
       res.json(cleaned);
     } catch (err: any) {

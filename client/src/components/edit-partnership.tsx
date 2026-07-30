@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { normalizeUrl } from "@shared/urls";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLang } from "@/lib/i18n";
@@ -103,6 +104,8 @@ export function EditPartnershipDialog({
         category: d.category || f.category,
         region: d.region || f.region,
         website: d.website?.trim() || f.website,
+        // v6.05 — auto-extracted logo fills the field only when it is still empty
+        logoUrl: String(f.logoUrl ?? "").trim() ? f.logoUrl : (d.logoUrl?.trim() || f.logoUrl),
         descriptionEn: d.descriptionEn?.trim() || f.descriptionEn,
         descriptionCn: d.descriptionCn?.trim() || f.descriptionCn,
         contactName: d.contactName?.trim() || f.contactName,
@@ -246,7 +249,9 @@ export function EditPartnershipDialog({
             <EField label={t("partnershipType")}><Input value={form.partnershipType ?? ""} onChange={(e) => set("partnershipType", e.target.value)} data-testid="edit-type" /></EField>
             <EField label={t("website")}>
               <div className="flex gap-2">
-                <Input value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} data-testid="edit-website" />
+                <Input value={form.website ?? ""} onChange={(e) => set("website", e.target.value)}
+                  onBlur={() => set("website", normalizeUrl(String(form.website ?? "")) || form.website)}
+                  data-testid="edit-website" />
                 <Button
                   type="button"
                   size="sm"

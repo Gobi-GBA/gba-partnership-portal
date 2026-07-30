@@ -22,6 +22,8 @@ export const usersPg = pgTable("users", {
   resetExpires: text("reset_expires"),
   editRequestedAt: text("edit_requested_at"),
   mustChangePassword: integer("must_change_password").notNull().default(0),
+  lastSeenVersion: text("last_seen_version"), // v6.05
+  lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05
 });
 
 export const sessionsPg = pgTable("sessions", {
@@ -99,11 +101,26 @@ export const photoAssetsPg = pgTable("photo_assets", {
 
 export const auditLogsPg = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull().default("partnership"), // v6.04
   partnershipId: integer("partnership_id").notNull(),
   userId: integer("user_id"),
   userName: text("user_name").notNull(),
   action: text("action").notNull(),
   changes: text("changes"),
+  createdAt: text("created_at").notNull(),
+});
+
+// v6.04 — document file assets (advisor CVs and signed letters)
+export const fileAssetsPg = pgTable("file_assets", {
+  id: serial("id").primaryKey(),
+  ownerType: text("owner_type").notNull(),
+  ownerId: integer("owner_id").notNull(),
+  filename: text("filename").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  data: text("data").notNull(),
+  uploadedBy: integer("uploaded_by"),
+  uploadedByName: text("uploaded_by_name"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -139,6 +156,7 @@ export const advisorsPg = pgTable("advisors", {
   birthMonth: integer("birth_month"),
   birthYear: integer("birth_year"),
   mobile: text("mobile"),
+  mobiles: jsonb("mobiles").$type<string[]>(),
   wechatId: text("wechat_id"),
   originStaff: jsonb("origin_staff").$type<string[]>(),
   status: text("status").notNull().default("pending"),
