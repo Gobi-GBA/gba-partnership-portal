@@ -69,6 +69,28 @@ function makeGrains(n = GRAIN_COUNT): Grain[] {
   }));
 }
 
+// ---------------- v6.10: presence — teammates online right now ----------------
+// The Layout heartbeat feeds this module-level list (same handoff pattern as
+// requestWarp below); the scene renders one floating avatar per online user
+// above the oasis — the team camped together by the water.
+export interface PresenceUser {
+  id: number;
+  name: string;
+  avatarUrl: string | null;
+}
+let presenceUsers: PresenceUser[] = [];
+const presenceImgCache = new Map<number, HTMLImageElement>();
+export function setPresenceUsers(users: PresenceUser[]) {
+  presenceUsers = users;
+  for (const u of users) {
+    if (u.avatarUrl && !presenceImgCache.has(u.id)) {
+      const img = new Image();
+      img.src = u.avatarUrl;
+      presenceImgCache.set(u.id, img);
+    }
+  }
+}
+
 export function GalaxyBackground() {
   const ref = useRef<HTMLCanvasElement | null>(null);
 
@@ -221,7 +243,49 @@ export function GalaxyBackground() {
     }
 
     // A walking human silhouette (part of the caravan team). x,y = ground point.
-    function drawHuman(x: number, y: number, s: number, t: number, color: string, shadow: string) {
+    // v6.10 — torch: the caravan lead carries a raised torch with a flickering flame.
+    function drawTorch(x: number, y: number, s: number, t: number, arm: number, color: string) {
+      const hipY = y - s * 0.42;
+      const shoulderY = y - s * 0.78;
+      const handX = x + s * 0.24 + arm;
+      const handY = hipY + s * 0.05;
+      const topX = x + s * 0.36 + arm * 0.4;
+      const topY = shoulderY - s * 0.42;
+      // pole
+      ctx!.strokeStyle = color;
+      ctx!.lineWidth = Math.max(0.9, s * 0.055);
+      ctx!.beginPath();
+      ctx!.moveTo(handX, handY);
+      ctx!.lineTo(topX, topY);
+      ctx!.stroke();
+      // warm glow — reads at night, stays subtle in daylight
+      const flick = 0.85 + Math.sin(t * 16) * 0.1 + Math.sin(t * 7.3) * 0.05;
+      const glow = ctx!.createRadialGradient(topX, topY, 0, topX, topY, s * 0.85 * flick);
+      glow.addColorStop(0, `hsla(35, 95%, 62%, ${0.34 * flick})`);
+      glow.addColorStop(1, "transparent");
+      ctx!.fillStyle = glow;
+      ctx!.beginPath();
+      ctx!.arc(topX, topY, s * 0.85 * flick, 0, Math.PI * 2);
+      ctx!.fill();
+      // flame — two layered teardrops bending with the walk
+      const bend = Math.sin(t * 11) * s * 0.05;
+      ctx!.beginPath();
+      ctx!.moveTo(topX - s * 0.07, topY);
+      ctx!.quadraticCurveTo(topX - s * 0.09 + bend, topY - s * 0.24, topX + bend * 1.6, topY - s * 0.34 * flick);
+      ctx!.quadraticCurveTo(topX + s * 0.09 + bend, topY - s * 0.24, topX + s * 0.07, topY);
+      ctx!.closePath();
+      ctx!.fillStyle = "hsl(24, 92%, 52%)";
+      ctx!.fill();
+      ctx!.beginPath();
+      ctx!.moveTo(topX - s * 0.04, topY);
+      ctx!.quadraticCurveTo(topX - s * 0.05 + bend, topY - s * 0.14, topX + bend, topY - s * 0.2 * flick);
+      ctx!.quadraticCurveTo(topX + s * 0.05 + bend, topY - s * 0.14, topX + s * 0.04, topY);
+      ctx!.closePath();
+      ctx!.fillStyle = "hsl(46, 100%, 68%)";
+      ctx!.fill();
+    }
+
+    function drawHuman(x: number, y: number, s: number, t: number, color: string, shadow: string, torch = false) {
       ctx!.beginPath();
       ctx!.ellipse(x - s * 0.3, y + s * 0.04, s * 0.6, s * 0.07, 0, 0, Math.PI * 2);
       ctx!.fillStyle = shadow;
@@ -246,7 +310,7 @@ export function GalaxyBackground() {
       ctx!.moveTo(x, hipY);
       ctx!.lineTo(x + s * 0.06, shoulderY);
       ctx!.stroke();
-      // arms — one holds a walking stick
+      // arms — one holds a walking stick (or the caravan torch)
       ctx!.lineWidth = Math.max(1, s * 0.08);
       const arm = Math.sin(t * 2.2 + Math.PI) * s * 0.12;
       ctx!.beginPath();
@@ -255,12 +319,16 @@ export function GalaxyBackground() {
       ctx!.moveTo(x + s * 0.05, shoulderY + s * 0.06);
       ctx!.lineTo(x - s * 0.16 - arm * 0.5, hipY);
       ctx!.stroke();
-      // walking stick
-      ctx!.lineWidth = Math.max(0.8, s * 0.05);
-      ctx!.beginPath();
-      ctx!.moveTo(x + s * 0.24 + arm, hipY + s * 0.05);
-      ctx!.lineTo(x + s * 0.3 + arm, y);
-      ctx!.stroke();
+      if (torch) {
+        drawTorch(x, y, s, t, arm, color);
+      } else {
+        // walking stick
+        ctx!.lineWidth = Math.max(0.8, s * 0.05);
+        ctx!.beginPath();
+        ctx!.moveTo(x + s * 0.24 + arm, hipY + s * 0.05);
+        ctx!.lineTo(x + s * 0.3 + arm, y);
+        ctx!.stroke();
+      }
       // head + headscarf hint
       ctx!.beginPath();
       ctx!.arc(x + s * 0.07, shoulderY - s * 0.12, s * 0.11, 0, Math.PI * 2);
@@ -301,7 +369,7 @@ export function GalaxyBackground() {
     // Clicking an empty part of the page hit-tests the scene; the nearest
     // actor (caravan member, palm or star) reacts once for ~1.2s through the
     // existing rAF loop — purely cosmetic, no extra render cost when idle.
-    type Reaction = { kind: "member" | "camelSprint" | "palm" | "star" | "twinkle" | "celestial"; index: number; start: number; x: number; y: number };
+    type Reaction = { kind: "member" | "camelSprint" | "palm" | "star" | "twinkle" | "celestial" | "fish"; index: number; start: number; x: number; y: number };
     let reaction: Reaction | null = null;
     let camelClickStreak: { index: number; times: number[] } = { index: -1, times: [] };
 
@@ -336,14 +404,19 @@ export function GalaxyBackground() {
       ctx!.fill();
     }
 
-    // Caravan order along the trail: human guide, camel, camel, human, camel
-    const MEMBERS: { dx: number; kind: "camel" | "human"; s: number }[] = [
-      { dx: 0, kind: "human", s: 30 },
+    // Caravan order along the trail — v6.10: the guide now carries a torch and
+    // three more members joined (a walker mid-line, a camel and a rear guard).
+    const MEMBERS: { dx: number; kind: "camel" | "human"; s: number; torch?: boolean }[] = [
+      { dx: 0, kind: "human", s: 30, torch: true },
       { dx: 64, kind: "camel", s: 34 },
+      { dx: 120, kind: "human", s: 26 },
       { dx: 158, kind: "camel", s: 31 },
       { dx: 232, kind: "human", s: 28 },
       { dx: 296, kind: "camel", s: 29 },
+      { dx: 368, kind: "camel", s: 32 },
+      { dx: 436, kind: "human", s: 27 },
     ];
+    const CARAVAN_SPAN_PAD = 780; // keeps the longer caravan fully off-screen before it wraps
 
     function palmSpots(drift: number) {
       const ox = w * 0.16;
@@ -496,7 +569,7 @@ export function GalaxyBackground() {
       // ----- Caravan: camels + people, one team moving forward (right to left) -----
       const silhouette = dark ? "hsla(218, 40%, 3%, 0.85)" : "hsla(26, 45%, 22%, 0.5)";
       const silShadow = dark ? "hsla(218, 60%, 2%, 0.35)" : "hsla(26, 50%, 25%, 0.14)";
-      const span = w + 640;
+      const span = w + CARAVAN_SPAN_PAD;
       const caravanX = reduced ? w * 0.58 : w + 300 - ((t * 14) % span);
       for (let i = 0; i < MEMBERS.length; i++) {
         const m = MEMBERS[i];
@@ -516,7 +589,7 @@ export function GalaxyBackground() {
           const gaitTime = reduced ? 0 : (sprinting ? t * 3 : t) + i * 1.3;
           drawCamel(drawX, gy + 2 + dy, m.s, gaitTime, silhouette, silShadow);
         } else {
-          drawHuman(drawX, gy + 2 + dy, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow);
+          drawHuman(drawX, gy + 2 + dy, m.s, reduced ? 0.4 : t + i * 1.1, silhouette, silShadow, m.torch);
         }
         if (dy < -1) {
           // a tiny greeting sparkle above the head while hopping
@@ -577,6 +650,128 @@ export function GalaxyBackground() {
             ? Math.sin(rProg * Math.PI * 4) * 1.6 * (1 - rProg)
             : 0;
         drawPalm(p.x, p.y, p.s, palmT + p.phase + rustle, p.lean, trunkC, frondC);
+      }
+
+      // v6.10 — click-the-lake fish jump: a small fish arcs out of the water,
+      // trailing droplets, and dives back leaving ripples at both ends.
+      if (reaction && reaction.kind === "fish") {
+        const fx0 = reaction.x;
+        const arcW = poolW * 0.36;
+        const arcH = poolH * 3.1;
+        const p = rProg;
+        const fx = fx0 + (p - 0.5) * arcW;
+        const fy = oy - Math.sin(Math.PI * p) * arcH;
+        const bodyA = Math.min(1, Math.sin(Math.PI * p) * 3);
+        if (bodyA > 0.03) {
+          const ang = Math.atan2(-Math.cos(Math.PI * p) * arcH * 0.9, arcW * 0.5);
+          const fs = Math.max(6.5, poolW * 0.08);
+          ctx!.save();
+          ctx!.translate(fx, fy);
+          ctx!.rotate(ang);
+          ctx!.globalAlpha = bodyA;
+          // body
+          ctx!.beginPath();
+          ctx!.ellipse(0, 0, fs, fs * 0.42, 0, 0, Math.PI * 2);
+          ctx!.fillStyle = dark ? "hsla(202, 45%, 72%, 0.95)" : "hsla(202, 62%, 40%, 0.9)";
+          ctx!.fill();
+          // tail fin
+          ctx!.beginPath();
+          ctx!.moveTo(-fs * 0.85, 0);
+          ctx!.lineTo(-fs * 1.45, -fs * 0.5);
+          ctx!.lineTo(-fs * 1.45, fs * 0.5);
+          ctx!.closePath();
+          ctx!.fill();
+          // eye
+          ctx!.beginPath();
+          ctx!.arc(fs * 0.55, -fs * 0.08, fs * 0.1, 0, Math.PI * 2);
+          ctx!.fillStyle = dark ? "hsl(220, 60%, 10%)" : "hsl(0, 0%, 98%)";
+          ctx!.fill();
+          ctx!.restore();
+          ctx!.globalAlpha = 1;
+          // droplets trailing the arc
+          for (let di = 1; di <= 3; di++) {
+            const dp = p - 0.09 * di;
+            if (dp <= 0.04 || dp >= 0.96) continue;
+            const dxp = fx0 + (dp - 0.5) * arcW;
+            const dyp = oy - Math.sin(Math.PI * dp) * arcH;
+            ctx!.beginPath();
+            ctx!.arc(dxp, dyp, 1.2, 0, Math.PI * 2);
+            ctx!.fillStyle = `hsla(197, 75%, ${dark ? 78 : 55}%, ${0.55 * bodyA})`;
+            ctx!.fill();
+          }
+        }
+        // expanding ripples where the fish left and re-entered the water
+        const drawRipple = (rx: number, prog: number) => {
+          if (prog <= 0 || prog >= 1) return;
+          const a = 0.55 * (1 - prog);
+          ctx!.beginPath();
+          ctx!.ellipse(rx, oy + poolH * 0.04, poolW * 0.05 + prog * poolW * 0.22, poolH * 0.05 + prog * poolH * 0.22, 0, 0, Math.PI * 2);
+          ctx!.strokeStyle = dark ? `hsla(202, 60%, 76%, ${a})` : `hsla(197, 85%, 92%, ${a})`;
+          ctx!.lineWidth = 1.2;
+          ctx!.stroke();
+        };
+        drawRipple(fx0 - arcW * 0.5, p * 2.4);
+        drawRipple(fx0 + arcW * 0.5, (p - 0.55) * 2.4);
+      }
+
+      // v6.10 — presence: one floating avatar per teammate online right now,
+      // hovering gently above the oasis like the team camped by the water.
+      if (presenceUsers.length) {
+        const shown = presenceUsers.slice(0, 8);
+        const r = 11;
+        const gap = Math.min(poolW * 2.2, shown.length * (r * 2 + 10));
+        for (let i = 0; i < shown.length; i++) {
+          const u = shown[i];
+          const px = ox - gap / 2 + (i + 0.5) * (gap / shown.length);
+          const bob = reduced ? 0 : Math.sin(t * 1.3 + i * 1.9) * 3;
+          // fixed height (not oy-relative): the dunes drift vertically over time
+          // and oy-anchored chips would wander up behind the page content above.
+          const py = h * 0.745 + bob;
+          // soft halo so chips read on both themes
+          ctx!.beginPath();
+          ctx!.arc(px, py, r + 3, 0, Math.PI * 2);
+          ctx!.fillStyle = dark ? "hsla(220, 45%, 8%, 0.55)" : "hsla(40, 60%, 96%, 0.65)";
+          ctx!.fill();
+          const img = u.avatarUrl ? presenceImgCache.get(u.id) : undefined;
+          if (img && img.complete && img.naturalWidth > 0) {
+            ctx!.save();
+            ctx!.beginPath();
+            ctx!.arc(px, py, r, 0, Math.PI * 2);
+            ctx!.clip();
+            ctx!.drawImage(img, px - r, py - r, r * 2, r * 2);
+            ctx!.restore();
+          } else {
+            const hue = (u.id * 47) % 360;
+            ctx!.beginPath();
+            ctx!.arc(px, py, r, 0, Math.PI * 2);
+            ctx!.fillStyle = dark ? `hsla(${hue}, 45%, 38%, 0.95)` : `hsla(${hue}, 55%, 52%, 0.95)`;
+            ctx!.fill();
+            ctx!.fillStyle = "hsl(0, 0%, 98%)";
+            ctx!.font = `600 ${r}px system-ui, sans-serif`;
+            ctx!.textAlign = "center";
+            ctx!.textBaseline = "middle";
+            ctx!.fillText((u.name || "?").trim().charAt(0).toUpperCase(), px, py + 0.5);
+          }
+          // ring + online dot
+          ctx!.beginPath();
+          ctx!.arc(px, py, r, 0, Math.PI * 2);
+          ctx!.strokeStyle = dark ? "hsla(48, 70%, 72%, 0.7)" : "hsla(26, 50%, 34%, 0.55)";
+          ctx!.lineWidth = 1.2;
+          ctx!.stroke();
+          ctx!.beginPath();
+          ctx!.arc(px + r * 0.72, py + r * 0.72, 2.6, 0, Math.PI * 2);
+          ctx!.fillStyle = "hsl(145, 65%, 45%)";
+          ctx!.fill();
+          // first name under the chip
+          const first = (u.name || "").trim().split(/\s+/)[0] ?? "";
+          if (first) {
+            ctx!.font = "500 9px system-ui, sans-serif";
+            ctx!.textAlign = "center";
+            ctx!.textBaseline = "alphabetic";
+            ctx!.fillStyle = dark ? "hsla(45, 40%, 85%, 0.75)" : "hsla(26, 45%, 25%, 0.7)";
+            ctx!.fillText(first, px, py + r + 11);
+          }
+        }
       }
 
       // ----- Life: sand + butterflies by day, fireflies by night -----
@@ -664,7 +859,7 @@ export function GalaxyBackground() {
         }
       }
       // caravan members
-      const span = w + 640;
+      const span = w + CARAVAN_SPAN_PAD;
       const caravanX = reduced ? w * 0.58 : w + 300 - ((t * 14) % span);
       for (let i = 0; i < MEMBERS.length; i++) {
         const m = MEMBERS[i];
@@ -685,6 +880,16 @@ export function GalaxyBackground() {
         if (d < bestD) {
           bestD = d;
           best = { kind: "palm", index: i, start: now, x: p.x, y: p.y };
+        }
+      }
+      // v6.10 — the lake: a click on the water wins outright and makes a fish jump
+      {
+        const nx = (px - geom.ox) / (geom.poolW * 1.05);
+        const ny = (py - geom.oy) / (geom.poolH * 1.5);
+        if (nx * nx + ny * ny <= 1) {
+          const fx = Math.max(geom.ox - geom.poolW * 0.5, Math.min(geom.ox + geom.poolW * 0.5, px));
+          bestD = 0;
+          best = { kind: "fish", index: 0, start: now, x: fx, y: geom.oy };
         }
       }
       // stars (night sky only)

@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.09";
+export const CURRENT_VERSION = "6.10";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.10",
+    date: "2026-07-31",
+    by: "Fred",
+    titleEn: "v6.10 — Live team presence on the desert, torch-lit caravan, click-the-lake fish",
+    titleCn: "v6.10 — 沙漠场景实时在线头像、火把驼队、点湖跃鱼",
+    itemsEn: [
+      "Teammates online right now appear as small floating avatars above the oasis — the team camped together by the water (updates about once a minute)",
+      "The caravan guide now carries a torch with a flickering flame that glows at night, and three more members joined the caravan (now eight)",
+      "Click the oasis lake and a fish leaps out of the water in an arc, trailing droplets and leaving ripples where it dives back in",
+    ],
+    itemsCn: [
+      "当前在线的团队成员会以小头像的形式漂浮在绿洲上方——像团队一起在水边扎营（约每分钟更新一次）",
+      "驼队向导现在举着一支火把，火焰摇曳、夜间发光，驼队还新加入了三名成员（现共八名）",
+      "点击绿洲湖面，一条鱼会跃出水面划出弧线，甩出水珠，入水处泛起涟漪",
+    ],
+  },
   {
     version: "6.09",
     date: "2026-07-31",

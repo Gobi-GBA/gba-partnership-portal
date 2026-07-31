@@ -56,7 +56,7 @@ export interface IStorage {
         | "status" | "role" | "name" | "email" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
         | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
-        | "googleLinkedAt"
+        | "googleLinkedAt" | "lastActiveAt"
       >
     >
   ): Promise<User | undefined>;

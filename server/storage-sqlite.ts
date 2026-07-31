@@ -204,6 +204,7 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "approval_decided_by", "approval_decided_by TEXT");
   ensureColumn("advisors", "approval_decided_at", "approval_decided_at TEXT");
   ensureColumn("users", "google_linked_at", "google_linked_at TEXT");
+  ensureColumn("users", "last_active_at", "last_active_at TEXT");
   try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}
   sqlite.exec(`CREATE TABLE IF NOT EXISTS sector_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -323,7 +324,7 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
           | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
-          | "googleLinkedAt"
+          | "googleLinkedAt" | "lastActiveAt"
         >
       >
     ) {

@@ -31,6 +31,7 @@ export const users = sqliteTable("users", {
   lastSeenVersion: text("last_seen_version"), // v6.05 — last portal version whose update notes the user has seen (Updates badge)
   lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05 — ISO timestamp of the last Updates-page visit (my-requests badge)
   googleLinkedAt: text("google_linked_at"), // v6.09 — ISO timestamp the account was linked to Google sign-in
+  lastActiveAt: text("last_active_at"), // v6.10 — presence heartbeat: last time this user was active in the portal
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

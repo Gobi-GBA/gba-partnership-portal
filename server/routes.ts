@@ -950,6 +950,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safe(updated) });
   });
 
+  // v6.10 — presence heartbeat: marks the caller active now and returns everyone
+  // active in the last 150 seconds. The desert scene renders one avatar per
+  // online teammate near the oasis. Deliberately tiny payload, polled ~60s.
+  app.post("/api/presence/heartbeat", requireAuth(), async (req: AuthedRequest, res) => {
+    const nowIso = new Date().toISOString();
+    await storage.updateUser(req.user!.id, { lastActiveAt: nowIso });
+    const cutoff = new Date(Date.now() - 150_000).toISOString();
+    const all = await storage.listUsers();
+    const online = all
+      .filter((u) => u.status === "approved" && u.lastActiveAt && u.lastActiveAt >= cutoff)
+      .sort((a, b) => a.id - b.id)
+      .slice(0, 10)
+      .map((u) => ({ id: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null }));
+    res.json({ online });
+  });
+
   // v6.05 — pending-item badges ("missed call" indicators): per-user summary of
   // unseen update notes and, for admins, everything waiting in the approval queues.
   app.get("/api/me/notifications", requireAuth(), async (req: AuthedRequest, res) => {

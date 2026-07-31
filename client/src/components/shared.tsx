@@ -11,7 +11,7 @@ import {
 import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
 import { photoThumbSrc, photoHdDownloadHref, isAssetToken } from "@/lib/photos";
 import { Input } from "@/components/ui/input";
-import { GalaxyBackground, WarpOverlay, consumePendingWarp } from "@/components/galaxy-bg";
+import { GalaxyBackground, WarpOverlay, consumePendingWarp, setPresenceUsers, type PresenceUser } from "@/components/galaxy-bg";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { STAGES, STAGE_ORDER, STAGE_NUM, STAGE_STYLES, CATEGORY_COLORS, GOBI_STAFF, logoFor, initialsFor, picsOf, levelOfStage, isNew } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE } from "@/lib/queryClient";
+import { API_BASE, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
@@ -359,6 +359,20 @@ export function Layout({ children }: { children: ReactNode }) {
     enabled: !!user,
     refetchInterval: 60_000,
   });
+  // v6.10 — presence heartbeat: tell the server we're here (~60s) and hand the
+  // list of teammates online to the desert scene, which camps them by the oasis.
+  const { data: presence } = useQuery<{ online: PresenceUser[] }>({
+    queryKey: ["/api/presence/heartbeat"],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => (await apiRequest("POST", "/api/presence/heartbeat")).json(),
+  });
+  useEffect(() => {
+    setPresenceUsers(user ? presence?.online ?? [] : []);
+    return () => setPresenceUsers([]);
+  }, [presence, user]);
+
   const updatesBadge = notif ? (notif.lastSeenVersion === CURRENT_VERSION ? 0 : 1) + (notif.myRequestsResolved ?? 0) : 0;
   const adminBadge = notif
     ? (notif.pendingUsers ?? 0) + (notif.pendingPartnerships ?? 0) + (notif.pendingAdvisors ?? 0) + (notif.pendingChangeRequests ?? 0) + (notif.openRequests ?? 0)

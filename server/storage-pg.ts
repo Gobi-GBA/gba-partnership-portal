@@ -196,6 +196,7 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_by TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_linked_at TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TEXT`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
     id SERIAL PRIMARY KEY,
     name_en TEXT NOT NULL,
@@ -419,7 +420,7 @@ export function createPgStorage(): IStorage {
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
           | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
-          | "googleLinkedAt"
+          | "googleLinkedAt" | "lastActiveAt"
         >
       >
     ) {

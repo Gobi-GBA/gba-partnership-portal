@@ -25,6 +25,7 @@ export const usersPg = pgTable("users", {
   lastSeenVersion: text("last_seen_version"), // v6.05
   lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05
   googleLinkedAt: text("google_linked_at"), // v6.09
+  lastActiveAt: text("last_active_at"), // v6.10 — presence heartbeat
 });
 
 export const sessionsPg = pgTable("sessions", {
