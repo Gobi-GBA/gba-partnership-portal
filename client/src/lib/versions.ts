@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.10";
+export const CURRENT_VERSION = "6.11";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.11",
+    date: "2026-07-31",
+    by: "Fred",
+    titleEn: "v6.11 — One approval email with an AI-written case, live preview, and a portal that follows your clock",
+    titleCn: "v6.11 — 合并为一封审批邮件（AI 撰写推荐理由、实时预览），界面随本地时间自动切换日夜",
+    itemsEn: [
+      "The two separate buttons (\"Request approval\" and \"Send approval email\") are now one — \"Send approval email\" opens a single window that covers drafting, reviewing and sending",
+      "An opening paragraph explaining why this advisor and why now is written automatically from their profile; edit it freely or ask for a fresh draft",
+      "Recipient and CC are both editable, alongside the subject line, before anything goes out",
+      "A live preview shows the exact branded email the approver will receive, updating as you type",
+      "Finish either way: copy the formatted email into your own mail client, or send it directly from the portal with the one-time approval link attached",
+      "The portal now follows your local time — light during the day, dark from 19:00 to 07:00, wherever you are. One click overrides it for the session, another returns to automatic",
+    ],
+    itemsCn: [
+      "原先的两个按钮（\"申请审批\"与\"发送审批邮件\"）合并为一个——\"发送审批邮件\"在同一窗口内完成撰写、核对与发送",
+      "系统会根据顾问资料自动撰写\"推荐理由与时机\"开篇段落，可自由编辑或一键重新生成",
+      "发送前收件人、抄送与主题均可直接编辑",
+      "实时预览审批人将收到的品牌邮件原貌，随输入同步更新",
+      "两种收尾方式：将带格式的邮件复制到自己的邮箱客户端，或直接从门户发送（自动附带一次性审批链接）",
+      "界面随您的本地时间自动切换：日间浅色，19:00 至次日 07:00 深色，全球各地皆适用。点击一次可手动覆盖，再点击可恢复自动",
+    ],
+  },
   {
     version: "6.10",
     date: "2026-07-31",

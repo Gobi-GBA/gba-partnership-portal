@@ -195,7 +195,7 @@ export const RD_SEED: Omit<RdItem, "id">[] = [
     details: "Advisors directory as a module of the ecosystem project: profiles, expertise tags and engagement history.",
     kind: "module",
     status: "planned",
-    teammates: JSON.stringify(["Fred Li", "Elaine Zhang"]),
+    teammates: JSON.stringify(["Fred Li", "Elaine Zhang", "Ameen"]),
     startDate: "2026-07-20",
     endDate: "2026-08-31",
     createdBy: 1,

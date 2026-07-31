@@ -28,6 +28,7 @@ import {
 import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag, Partnership } from "../shared/schema.js";
 import mammoth from "mammoth";
 import { invitationLetterHtml, invitationLetterDocx, letterFilename, DEFAULT_LETTER_BODY, DEFAULT_LETTER_ACK } from "./letter.js";
+import { buildApprovalEmail, approvalSubject, fallbackIntro, type ApprovalEmailData, type ApprovalLang } from "../shared/approval-email.js";
 import { z } from "zod";
 
 // Single source of truth: collaboration level is always derived from the stage.
@@ -2381,97 +2382,164 @@ www.gobi.vc`,
   });
 
 
-  // ---------- v6.09 Advisor approval-by-link workflow ----------
-  // Editable email template sent to the approving executive (coo_email), with
-  // Fred and Elaine CC'd. The recipient must sign in (Google or password) to
-  // click Approve/Reject; the decision is auto-filed to the advisor audit log.
-  const DEFAULT_APPROVAL_TEMPLATE = {
-    subject: "Advisor onboarding approval — {{name}}",
-    body:
-`Dear colleague,
+  // ---------- v6.11 Advisor approval email (unified compose / preview / send) ----------
+  // One flow replaces the old split between the mailto draft and the server send.
+  // The email itself is rendered by shared/approval-email.ts, so the live preview
+  // in the dialog and the message the approver receives come from the same code
+  // path; only the approval link differs (placeholder in preview, real one-time
+  // token on send). The requester may edit To, Cc, subject and the AI-drafted
+  // relevance paragraph before sending, or copy the rendered email to send from
+  // their own mailbox.
+  const APPROVAL_EXPIRY_DAYS = 7;
+  const DEFAULT_APPROVAL_CC = ["fred@gobi.vc", "analyst01@gobi.vc"];
 
-Please review and approve the onboarding of the following Gobi Advisory Network candidate:
-
-Name: {{name}}
-Organization: {{organization}}
-
-Click the secure link below to review the full profile and approve or reject this advisor. You will need to sign in to the portal to confirm your decision.
-
-{{approval_link}}
-
-This link expires in 7 days.
-
-Warm regards,
-Gobi Partnership Portal`,
-  };
-
-  function approvalRecipientContext(advisor: Advisor, roles: AdvisorRole[]) {
+  function primaryRoleLine(advisor: Advisor, roles: AdvisorRole[]): string {
     const sorted = roles
       .filter((r) => r.advisorId === advisor.id)
       .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    const p = sorted[0];
+    if (!p) return "";
+    const title = (p.title ?? "").trim();
+    const org = (p.organization ?? "").trim();
+    // Some records repeat the organisation in the title field; showing
+    // "Bioworld Ventures — Bioworld Ventures" in an approval email looks careless.
+    if (!org || org.toLowerCase() === title.toLowerCase()) return title || org;
+    return `${title} — ${org}`;
+  }
+
+  // Assembles the immutable half of the email payload. Both the compose preview
+  // and the send path call this with the same advisor id, which is what keeps the
+  // two renderings identical.
+  async function approvalEmailBase(
+    advisor: Advisor,
+    lang: ApprovalLang,
+    requesterName: string,
+  ): Promise<Omit<ApprovalEmailData, "intro" | "approvalLink">> {
+    const roles = await storage.listAdvisorRoles();
+    const allTags = await storage.listSectorTags();
+    const tagIds = (await storage.listAdvisorTagIds())
+      .filter((r) => r.advisorId === advisor.id)
+      .map((r) => r.tagId);
+    const tags = allTags
+      .filter((tg) => tagIds.includes(tg.id))
+      .map((tg) => (lang === "cn" && tg.nameCn ? tg.nameCn : tg.nameEn));
     return {
-      name: advisor.name,
-      firstName: firstNameOf(advisor.name),
-      organization: sorted[0]?.organization ?? "",
+      lang,
+      fullName: advisor.nameCn ? `${advisor.name} (${advisor.nameCn})` : advisor.name,
+      advisorType: advisor.advisorType,
+      roleLine: primaryRoleLine(advisor, roles),
+      tags,
+      domains: advisor.domains ?? "",
+      background: advisor.background ?? "",
+      engagement: advisor.engagement ?? "",
+      publicClearance: advisor.publicClearance === 1,
+      requesterName,
+      expiryDays: APPROVAL_EXPIRY_DAYS,
     };
   }
 
-  function fillApprovalPlaceholders(text: string, ctx: { name: string; firstName: string; organization: string; approvalLink: string }): string {
-    return fillPlaceholders(text, ctx).replace(/\{\{\s*approval_link\s*\}\}/gi, ctx.approvalLink);
-  }
+  const approvalLangSchema = z.enum(["en", "cn"]).default("en");
 
-  // Staff compose view — prefilled, editable subject/body before sending.
+  // Compose — returns the recipients plus the structured data the client renders
+  // its live preview from. No token is minted here.
   app.post("/api/advisors/:id/approval/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const advisor = await storage.getAdvisor(Number(req.params.id));
     if (!advisor) return res.status(404).json({ message: "Not found" });
-    const cooEmail = (await storage.getMeta("coo_email")) ?? "";
-    const tpl = {
-      subject: (await storage.getMeta("tpl_approval_subject")) || DEFAULT_APPROVAL_TEMPLATE.subject,
-      body: (await storage.getMeta("tpl_approval_body")) || DEFAULT_APPROVAL_TEMPLATE.body,
-    };
-    const roles = await storage.listAdvisorRoles();
-    const ctx = approvalRecipientContext(advisor, roles);
-    // Placeholder-only preview — the real token/link is generated at send time.
-    const preview = {
-      subject: fillApprovalPlaceholders(tpl.subject, { ...ctx, approvalLink: "[link generated on send]" }),
-      body: fillApprovalPlaceholders(tpl.body, { ...ctx, approvalLink: "[link generated on send]" }),
-    };
+    const lang = approvalLangSchema.parse(req.body?.lang ?? "en");
+    const cooEmail = ((await storage.getMeta("coo_email")) ?? "").trim();
+    const base = await approvalEmailBase(advisor, lang, req.user!.name);
     res.json({
-      template: { subject: tpl.subject, body: tpl.body },
-      preview,
+      base,
       to: cooEmail,
-      cc: ["fred@gobi.vc", "analyst01@gobi.vc"],
+      cc: DEFAULT_APPROVAL_CC,
+      subject: approvalSubject(base),
+      fallbackIntro: fallbackIntro(base),
+      expiryDays: APPROVAL_EXPIRY_DAYS,
       mailEnabled,
       cooEmailConfigured: Boolean(cooEmail),
+      aiEnabled: Boolean(process.env.DEEPSEEK_API_KEY),
     });
   });
 
-  // Staff send — generates a fresh 7-day token, emails coo_email (cc Fred + Elaine).
+  // AI relevance paragraph — drafted automatically when the dialog opens, and
+  // regenerable on demand. Never blocks sending: any failure leaves the client on
+  // the deterministic fallback text.
+  app.post("/api/advisors/:id/approval/intro", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const lang = approvalLangSchema.parse(req.body?.lang ?? "en");
+    const base = await approvalEmailBase(advisor, lang, req.user!.name);
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.json({ intro: fallbackIntro(base), ai: false });
+    }
+    const prompt = [
+      lang === "cn"
+        ? "你是 Gobi Partners（戈壁创投）大湾区团队的投资经理。请为下列顾问人选撰写一段推荐理由，用于向 COO 办公室提交的内部审批邮件。"
+        : "You are an investment manager on the Gobi Partners Greater Bay Area team. Write the relevance paragraph for an internal approval email submitted to the COO office about the advisor candidate below.",
+      lang === "cn"
+        ? "要求：2 至 3 句，共 60-90 字；说明该人选的专长与 Gobi 投资布局的契合点，以及现在引入的理由；语气专业克制，不使用感叹号或表情符号；不要重复罗列下方字段，不要添加标题或客套开场。只输出该段落纯文本。"
+        : "Requirements: 2-3 sentences, 45-70 words. State what the candidate brings and why they fit Gobi's deal flow now. Professional and understated. No exclamation points, no emojis, no salutation, no heading, and do not simply restate the fields below. Output the paragraph as plain text only.",
+      "",
+      `Name: ${base.fullName}`,
+      `Advisor type: ${base.advisorType}`,
+      `Primary role: ${base.roleLine || "n.a."}`,
+      `Sector tags: ${base.tags.join(", ") || "n.a."}`,
+      `Expert domains: ${base.domains || "n.a."}`,
+      `Background: ${(base.background || "n.a.").slice(0, 4000)}`,
+      `Proposed engagement: ${(base.engagement || "n.a.").slice(0, 2000)}`,
+    ].join("\n");
+    try {
+      const resp = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+        body: JSON.stringify({
+          model: "deepseek-v4-flash",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 1200,
+        }),
+      });
+      if (!resp.ok) throw new Error(`DeepSeek API error ${resp.status}`);
+      const completion: any = await resp.json();
+      const raw = String(completion.choices?.[0]?.message?.content ?? "").trim();
+      const cleaned = raw.replace(/^```[a-z]*\n?|```$/g, "").replace(/^["“]|["”]$/g, "").trim();
+      if (!cleaned) throw new Error("empty completion");
+      return res.json({ intro: cleaned.slice(0, 1200), ai: true });
+    } catch (err) {
+      console.error("[approval-intro] AI draft failed:", err);
+      return res.json({ intro: fallbackIntro(base), ai: false });
+    }
+  });
+
+  // Send — mints a fresh 7-day token, renders the email from the shared template
+  // and delivers it to the (editable) recipients.
+  const approvalSendSchema = z.object({
+    lang: approvalLangSchema,
+    to: z.string().trim().email().max(200),
+    cc: z.array(z.string().trim().email().max(200)).max(10).default([]),
+    subject: z.string().trim().min(1).max(300),
+    intro: z.string().trim().max(4000).default(""),
+  });
+
   app.post("/api/advisors/:id/approval/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const advisor = await storage.getAdvisor(Number(req.params.id));
     if (!advisor) return res.status(404).json({ message: "Not found" });
-    const cooEmail = (await storage.getMeta("coo_email")) ?? "";
-    if (!cooEmail) return res.status(400).json({ message: "Set the COO approval email address in Settings first." });
     if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
-    const parsed = z.object({
-      subject: z.string().trim().min(1).max(300),
-      body: z.string().trim().min(1).max(20000),
-    }).safeParse(req.body);
+    const parsed = approvalSendSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid email" });
+    const { lang, to, cc, subject, intro } = parsed.data;
 
     const token = randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    const expires = new Date(Date.now() + APPROVAL_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const approvalLink = `${appBaseUrl(req)}/#/advisor-approval?token=${token}`;
-    const roles = await storage.listAdvisorRoles();
-    const ctx = { ...approvalRecipientContext(advisor, roles), approvalLink };
-    const subject = fillApprovalPlaceholders(parsed.data.subject, ctx);
-    const body = fillApprovalPlaceholders(parsed.data.body, ctx);
+    const base = await approvalEmailBase(advisor, lang, req.user!.name);
+    const { html, plain } = buildApprovalEmail({ ...base, intro, approvalLink });
 
-    const ok = await sendOutreach(cooEmail, subject, outreachHtml(body), {
+    const ok = await sendOutreach(to, subject, html, {
       fromName: `${req.user!.name} · Gobi Partners`,
       replyTo: req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc",
       isHtml: true,
-      cc: ["fred@gobi.vc", "analyst01@gobi.vc"],
+      cc,
+      text: plain,
     });
     if (!ok) return res.status(502).json({ message: "Send failed" });
 
@@ -2487,7 +2555,7 @@ Gobi Partnership Portal`,
         advisorId: advisor.id,
         date: new Date().toISOString().slice(0, 10),
         type: "email",
-        note: `[Approval] Sent approval request to ${cooEmail} (cc fred@gobi.vc, analyst01@gobi.vc)`,
+        note: `[Approval] Sent approval request to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}`,
         createdBy: req.user!.id,
         createdByName: req.user!.name,
         createdAt: new Date().toISOString(),

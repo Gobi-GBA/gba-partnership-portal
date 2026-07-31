@@ -97,7 +97,7 @@ export async function sendOutreach(
   to: string,
   subject: string,
   body: string,
-  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[] },
+  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[]; text?: string },
 ): Promise<boolean> {
   if (!transporter) return false;
   const fromName = opts?.fromName ?? "Gobi Partners";
@@ -108,7 +108,9 @@ export async function sendOutreach(
       to,
       ...(opts?.cc ? { cc: opts.cc } : {}),
       subject,
-      ...(opts?.isHtml ? { html: body } : { text: body }),
+      // v6.11 — HTML sends may carry an explicit plain-text alternative so mail
+      // clients without HTML rendering still get a readable message.
+      ...(opts?.isHtml ? { html: body, ...(opts.text ? { text: opts.text } : {}) } : { text: body }),
     });
     return true;
   } catch (err) {

@@ -65,6 +65,52 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Copy a formatted email to the clipboard (v6.11). Writes both text/html and
+ * text/plain so Outlook and Gmail paste the branded layout while plain-text
+ * editors still receive a readable message. Falls back to the plain text alone
+ * where the async clipboard API or ClipboardItem is unavailable (Safari in some
+ * embedded contexts, and sandboxed preview iframes).
+ */
+export async function copyRichText(html: string, plain: string): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    }
+  } catch {
+    // fall through to the plain-text path
+  }
+  try {
+    // execCommand("copy") over a contenteditable node preserves rich formatting
+    // in browsers that reject ClipboardItem.
+    const host = document.createElement("div");
+    host.contentEditable = "true";
+    host.innerHTML = html;
+    host.style.position = "fixed";
+    host.style.left = "-9999px";
+    host.style.opacity = "0";
+    document.body.appendChild(host);
+    const range = document.createRange();
+    range.selectNodeContents(host);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    const ok = document.execCommand("copy");
+    sel?.removeAllRanges();
+    host.remove();
+    if (ok) return true;
+  } catch {
+    // fall through
+  }
+  return copyText(plain);
+}
+
 /** Fetch an HTML document with auth and show it in a tab for printing to PDF. */
 export async function openHtmlWithAuth(url: string, target?: Window | null): Promise<boolean> {
   const res = await apiRequest("GET", url);

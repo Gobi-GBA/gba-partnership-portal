@@ -8,7 +8,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
+import { Moon, Sun, SunMoon, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
 import { photoThumbSrc, photoHdDownloadHref, isAssetToken } from "@/lib/photos";
 import { Input } from "@/components/ui/input";
 import { GalaxyBackground, WarpOverlay, consumePendingWarp, setPresenceUsers, type PresenceUser } from "@/components/galaxy-bg";
@@ -264,20 +264,98 @@ export function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }
 }
 
 // ---------------- Theme ----------------
-const ThemeContext = createContext<{ dark: boolean; toggle: () => void }>({
+// v6.11 — the portal follows the viewer's own day. "Auto" reads the browser
+// clock, which is already expressed in the visitor's timezone, so a partner
+// opening the site at 21:00 in Hong Kong sees the dark theme while a colleague
+// at 09:00 in Kuala Lumpur sees the light one. A manual override is still
+// available and holds for the rest of the session (no storage APIs are
+// permitted in the deployment sandbox, so preferences are not persisted).
+export type ThemeMode = "auto" | "light" | "dark";
+
+/** Local hour at which the interface turns dark, and returns to light. */
+export const NIGHT_START_HOUR = 19;
+export const DAY_START_HOUR = 7;
+
+/** True when the given local time falls inside the night window. */
+export function isNightAt(d: Date = new Date()): boolean {
+  const h = d.getHours();
+  return h >= NIGHT_START_HOUR || h < DAY_START_HOUR;
+}
+
+/** The viewer's IANA timezone, for display next to the auto setting. */
+export function localZoneName(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Tooltip for the theme control. Names the current mode and, in auto, explains
+ * what the clock is doing and how to override it.
+ */
+export function themeModeLabel(mode: ThemeMode, dark: boolean, lang: string): string {
+  const zone = localZoneName();
+  if (lang === "cn") {
+    if (mode === "auto") {
+      return `自动主题：${dark ? "夜间" : "日间"}（依据您的本地时间${zone ? ` · ${zone}` : ""}，${DAY_START_HOUR}:00 转为日间，${NIGHT_START_HOUR}:00 转为夜间）。点击可手动切换。`;
+    }
+    return `${mode === "dark" ? "夜间" : "日间"}主题（手动）。点击可${mode === "dark" ? "切换为日间" : "恢复自动"}。`;
+  }
+  if (mode === "auto") {
+    return `Auto theme: ${dark ? "night" : "day"} — follows your local time${zone ? ` (${zone})` : ""}, light from ${DAY_START_HOUR}:00 and dark from ${NIGHT_START_HOUR}:00. Click to override.`;
+  }
+  return `${mode === "dark" ? "Dark" : "Light"} theme (manual). Click to ${mode === "dark" ? "switch to light" : "return to auto"}.`;
+}
+
+const ThemeContext = createContext<{
+  dark: boolean;
+  mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
+  toggle: () => void;
+}>({
   dark: false,
+  mode: "auto",
+  setMode: () => {},
   toggle: () => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [dark, setDark] = useState(
-    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
-  );
+  const [mode, setMode] = useState<ThemeMode>("auto");
+  const [night, setNight] = useState(() => isNightAt());
+
+  // Re-check every half minute so the theme flips at the boundary while the
+  // tab is open, and immediately when a backgrounded tab is brought forward.
+  useEffect(() => {
+    const tick = () => setNight(isNightAt());
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+
+  const dark = mode === "auto" ? night : mode === "dark";
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
   return (
-    <ThemeContext.Provider value={{ dark, toggle: () => setDark((d) => !d) }}>
+    <ThemeContext.Provider
+      value={{
+        dark,
+        mode,
+        setMode,
+        // Cycles auto -> light -> dark -> auto, so the viewer can always get
+        // back to following their own clock.
+        toggle: () =>
+          setMode((m) => (m === "auto" ? (dark ? "light" : "dark") : m === "dark" ? "light" : "auto")),
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
@@ -319,7 +397,7 @@ export function RestrictedBadge({ tip }: { tip?: string }) {
 export function Layout({ children }: { children: ReactNode }) {
   const { lang, setLang, t } = useLang();
   const { user, logout } = useAuth();
-  const { dark, toggle } = useTheme();
+  const { dark, mode, toggle } = useTheme();
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [showTestBanner, setShowTestBanner] = useState(true);
@@ -453,8 +531,22 @@ export function Layout({ children }: { children: ReactNode }) {
               <Globe className="h-4 w-4" />
               {lang === "en" ? "中文" : "EN"}
             </Button>
-            <Button variant="ghost" size="icon" onClick={toggle} data-testid="button-theme-toggle">
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggle}
+              title={themeModeLabel(mode, dark, lang)}
+              aria-label={themeModeLabel(mode, dark, lang)}
+              data-testid="button-theme-toggle"
+              data-theme-mode={mode}
+            >
+              {mode === "auto" ? (
+                <SunMoon className="h-4 w-4 text-[hsl(var(--gold))]" />
+              ) : dark ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
             </Button>
             {user ? (
               <div className="hidden xl:flex items-center gap-2">

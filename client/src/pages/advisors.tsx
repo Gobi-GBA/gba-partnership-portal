@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MomentumDot, momentumOf, TagBadges, TagPicker, useSectorTags, ActivityTimeline,
-  ApprovalEmailDialog, LinkedinSyncControl, formatBirthday, formatDMY, fileToBase64, type ExtractedAdvisor,
+  LinkedinSyncControl, formatBirthday, formatDMY, fileToBase64, type ExtractedAdvisor,
 } from "@/components/advisor-crm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OutreachDialog } from "@/components/advisor-outreach";
@@ -1152,7 +1152,6 @@ function AdvisorDetailDialog({
     queryFn: async () => (await apiRequest("GET", `/api/advisors/${id}/files?type=cv`)).json(),
     enabled: id !== null && isStaff,
   });
-  const [approvalOpen, setApprovalOpen] = useState(false);
   const [approvalSendOpen, setApprovalSendOpen] = useState(false);
 
   const setStatus = useMutation({
@@ -1257,10 +1256,8 @@ function AdvisorDetailDialog({
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t("editAdvisor")}
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" onClick={() => setApprovalOpen(true)} data-testid="button-request-approval">
-                    <Send className="h-3.5 w-3.5 mr-1.5" /> {t("requestApproval")}
-                  </Button>
-                  <ApprovalEmailDialog advisor={a} open={approvalOpen} onOpenChange={setApprovalOpen} />
+                  {/* v6.11 — one button for the whole approval-email path: draft,
+                      preview, then copy or send from the portal. */}
                   <Button size="sm" variant="outline" onClick={() => setApprovalSendOpen(true)} data-testid="button-send-approval-email">
                     <Mail className="h-3.5 w-3.5 mr-1.5" /> {t("wfSendApprovalEmail")}
                   </Button>

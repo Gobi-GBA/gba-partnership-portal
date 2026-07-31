@@ -1,6 +1,17 @@
-import { useState } from "react";
+// v6.11 — Unified advisor approval email.
+//
+// Replaces the old pair of buttons ("Request approval" opened a mailto draft,
+// "Send approval email" opened a separate server-send composer). One dialog now
+// covers the whole path: an AI-drafted relevance paragraph, editable recipients
+// and subject, a live preview of the exact message that will go out, and a
+// choice of copying the formatted email or sending it straight from the portal.
+//
+// The preview and the sent message are rendered by the same shared template
+// (shared/approval-email.ts), so they cannot drift apart.
+import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
+import { copyRichText } from "@/lib/download";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -11,22 +22,33 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { AdvisorWithRoles } from "@shared/schema";
-import { Mail, Send, Loader2, Braces, CheckCircle2 } from "lucide-react";
+import { buildApprovalEmail, type ApprovalEmailData } from "@shared/approval-email";
+import { Mail, Send, Loader2, CheckCircle2, Copy, Sparkles } from "lucide-react";
 
-const PLACEHOLDERS = ["{{name}}", "{{first_name}}", "{{organization}}", "{{approval_link}}"] as const;
+type ApprovalBase = Omit<ApprovalEmailData, "intro" | "approvalLink">;
 
 interface ComposeResponse {
-  template: { subject: string; body: string };
-  preview: { subject: string; body: string };
+  base: ApprovalBase;
   to: string;
   cc: string[];
+  subject: string;
+  fallbackIntro: string;
+  expiryDays: number;
   mailEnabled: boolean;
   cooEmailConfigured: boolean;
+  aiEnabled: boolean;
 }
+
+/** Split a comma / semicolon / whitespace separated recipient list. */
+function parseList(value: string): string[] {
+  return value
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ApprovalSendDialog({
   open, onOpenChange, advisor,
@@ -35,43 +57,82 @@ export function ApprovalSendDialog({
   onOpenChange: (o: boolean) => void;
   advisor: AdvisorWithRoles;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { toast } = useToast();
+  const [base, setBase] = useState<ApprovalBase | null>(null);
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
   const [to, setTo] = useState("");
-  const [cc, setCc] = useState<string[]>([]);
+  const [ccText, setCcText] = useState("");
+  const [intro, setIntro] = useState("");
   const [mailEnabled, setMailEnabled] = useState(true);
   const [cooEmailConfigured, setCooEmailConfigured] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(false);
   const [sent, setSent] = useState(false);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
 
+  const emailLang = lang === "cn" ? "cn" : "en";
+
+  const draftIntro = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/intro`, { lang: emailLang });
+      return res.json() as Promise<{ intro: string; ai: boolean }>;
+    },
+    onSuccess: (d) => setIntro(d.intro),
+    onError: () => {
+      // The compose fallback is already in the field; surface nothing noisy.
+    },
+  });
+
   const compose = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/compose`, {});
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/compose`, { lang: emailLang });
       return res.json() as Promise<ComposeResponse>;
     },
     onSuccess: (data) => {
-      setSubject(data.template.subject);
-      setBody(data.template.body);
+      setBase(data.base);
+      setSubject(data.subject);
       setTo(data.to);
-      setCc(data.cc);
+      setCcText(data.cc.join(", "));
+      setIntro(data.fallbackIntro);
       setMailEnabled(data.mailEnabled);
       setCooEmailConfigured(data.cooEmailConfigured);
+      setAiEnabled(data.aiEnabled);
+      if (data.aiEnabled) draftIntro.mutate();
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
-  if (open && loadedFor !== advisor.id) {
-    setLoadedFor(advisor.id);
-    setSent(false);
-    compose.mutate();
-  }
-  if (!open && loadedFor !== null) setLoadedFor(null);
+  // Load once per advisor each time the dialog is opened.
+  useEffect(() => {
+    if (open && loadedFor !== advisor.id) {
+      setLoadedFor(advisor.id);
+      setSent(false);
+      setBase(null);
+      compose.mutate();
+    }
+    if (!open && loadedFor !== null) setLoadedFor(null);
+  }, [open, advisor.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cc = useMemo(() => parseList(ccText), [ccText]);
+  const toValid = EMAIL_RE.test(to.trim());
+  const ccValid = cc.every((e) => EMAIL_RE.test(e));
+
+  // Live preview — identical to what the server renders, apart from the link,
+  // which only exists once a one-time token is minted at send time.
+  const rendered = useMemo(() => {
+    if (!base) return null;
+    return buildApprovalEmail({
+      ...base,
+      intro,
+      approvalLink: "https://gba-partnership-portal.vercel.app/#/advisor-approval?token=…",
+    });
+  }, [base, intro]);
 
   const send = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/send`, { subject, body });
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/send`, {
+        lang: emailLang, to: to.trim(), cc, subject, intro,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -84,7 +145,16 @@ export function ApprovalSendDialog({
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
-  const insertPlaceholder = (ph: string) => setBody((b) => (b ? `${b}${b.endsWith(" ") ? "" : " "}${ph}` : ph));
+  const copy = async () => {
+    if (!rendered) return;
+    const header = `To: ${to}\nCc: ${cc.join(", ")}\nSubject: ${subject}\n\n`;
+    const ok = await copyRichText(rendered.html, header + rendered.plain);
+    toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
+  };
+
+  const canSend = Boolean(
+    mailEnabled && toValid && ccValid && subject.trim() && intro.trim() && !send.isPending,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,14 +166,15 @@ export function ApprovalSendDialog({
           <DialogDescription>{t("approvalDialogHint")}</DialogDescription>
         </DialogHeader>
 
-        {compose.isPending ? (
+        {compose.isPending || !base ? (
           <div className="space-y-2 py-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
           </div>
         ) : sent ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="text-approval-sent-confirmation">
             <CheckCircle2 className="h-8 w-8 text-emerald-600" />
             <p className="text-sm font-medium">{t("approvalSent")}</p>
+            <p className="text-xs text-muted-foreground">{to}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -112,53 +183,97 @@ export function ApprovalSendDialog({
                 {t("approvalNoCooEmail")}
               </p>
             )}
-            {cooEmailConfigured && !mailEnabled && (
+            {!mailEnabled && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400" data-testid="text-approval-mail-disabled">
                 {t("approvalMailDisabled")}
               </p>
             )}
-            <div className="space-y-1">
-              <Label>{t("approvalTo")}</Label>
-              <Input value={to} disabled data-testid="input-approval-to" />
-            </div>
-            <div className="space-y-1">
-              <Label>{t("approvalCc")}</Label>
-              <Input value={cc.join(", ")} disabled data-testid="input-approval-cc" />
-            </div>
-            <div className="space-y-1">
-              <Label>{t("approvalSubject")}</Label>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="input-approval-subject" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label>{t("approvalBody")}</Label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" size="sm" variant="outline" className="h-7" data-testid="button-approval-placeholder">
-                      <Braces className="mr-1.5 h-3.5 w-3.5" /> {t("approvalInsertPlaceholder")}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {PLACEHOLDERS.map((ph) => (
-                      <DropdownMenuItem key={ph} onClick={() => insertPlaceholder(ph)} data-testid={`item-approval-placeholder-${ph.replace(/[{}]/g, "")}`}>
-                        {ph}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="approval-to">{t("approvalTo")}</Label>
+                <Input
+                  id="approval-to"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  aria-invalid={!toValid}
+                  className={!toValid && to.trim() ? "border-destructive" : undefined}
+                  data-testid="input-approval-to"
+                />
               </div>
-              <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} data-testid="textarea-approval-body" />
-              <p className="text-[11px] text-muted-foreground">{PLACEHOLDERS.join("  ")}</p>
+              <div className="space-y-1">
+                <Label htmlFor="approval-cc">{t("approvalCc")}</Label>
+                <Input
+                  id="approval-cc"
+                  value={ccText}
+                  onChange={(e) => setCcText(e.target.value)}
+                  placeholder={t("approvalCcPlaceholder")}
+                  aria-invalid={!ccValid}
+                  className={!ccValid ? "border-destructive" : undefined}
+                  data-testid="input-approval-cc"
+                />
+              </div>
+            </div>
+            {(!toValid && to.trim()) || !ccValid ? (
+              <p className="text-[11px] text-destructive" data-testid="text-approval-email-invalid">{t("approvalInvalidEmail")}</p>
+            ) : null}
+
+            <div className="space-y-1">
+              <Label htmlFor="approval-subject">{t("approvalSubject")}</Label>
+              <Input id="approval-subject" value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="input-approval-subject" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="approval-intro">{t("approvalRelevance")}</Label>
+                {aiEnabled && (
+                  <Button
+                    type="button" size="sm" variant="outline" className="h-7"
+                    disabled={draftIntro.isPending}
+                    onClick={() => draftIntro.mutate()}
+                    data-testid="button-approval-redraft"
+                  >
+                    {draftIntro.isPending
+                      ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                    {t("approvalRedraft")}
+                  </Button>
+                )}
+              </div>
+              {draftIntro.isPending ? (
+                <Skeleton className="h-[92px] w-full rounded-md" data-testid="skeleton-approval-intro" />
+              ) : (
+                <Textarea
+                  id="approval-intro" rows={4} value={intro}
+                  onChange={(e) => setIntro(e.target.value)}
+                  data-testid="textarea-approval-intro"
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">{t("approvalRelevanceHint")}</p>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t("approvalPreview")}</Label>
+              <iframe
+                title="approval-email-preview"
+                srcDoc={rendered?.html ?? ""}
+                className="h-80 w-full rounded-md border border-border bg-white"
+                sandbox=""
+                data-testid="iframe-approval-preview"
+              />
               <p className="text-[11px] text-muted-foreground">{t("approvalLinkNote")}</p>
             </div>
           </div>
         )}
 
-        {!compose.isPending && !sent && (
-          <DialogFooter>
+        {!compose.isPending && base && !sent && (
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={copy} data-testid="button-approval-copy">
+              <Copy className="mr-1.5 h-3.5 w-3.5" /> {t("copyEmail")}
+            </Button>
             <Button
               type="button"
-              disabled={!mailEnabled || !cooEmailConfigured || !subject.trim() || !body.trim() || send.isPending}
+              disabled={!canSend}
               onClick={() => send.mutate()}
               className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
               data-testid="button-approval-send"
