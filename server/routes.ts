@@ -141,6 +141,21 @@ function googleStateCookieOptions(): CookieOptions {
   };
 }
 
+// v6.09 — a second short-lived cookie carries the linking user's id when an
+// already signed-in user chooses "Connect Google" from their profile, so the
+// callback can attach the Google identity to their existing account instead
+// of creating (or signing into) a separate one.
+const GOOGLE_LINK_COOKIE = "gobi_google_link_uid";
+function googleLinkCookieOptions(): CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/auth/google",
+    maxAge: 10 * 60 * 1000,
+  };
+}
+
 function loginRedirectUrl(req: Request, google?: string): string {
   const url = new URL("/login", appBaseUrl(req));
   if (google) url.searchParams.set("google", google);
@@ -659,7 +674,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json({ user: safe(user), autoApproved, emailSent, loggedIn: false });
   });
 
-  app.get("/api/auth/google/start", async (req, res) => {
+  app.get("/api/auth/google/start", async (req: AuthedRequest, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
@@ -668,6 +683,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const state = randomBytes(16).toString("hex");
     res.cookie(GOOGLE_STATE_COOKIE, state, googleStateCookieOptions());
+
+    // v6.09 — "Connect Google" from an existing signed-in account: remember
+    // who to link the Google identity to once the callback completes.
+    if (req.query.link === "1") {
+      const current = await resolveUser(req);
+      if (current) {
+        res.cookie(GOOGLE_LINK_COOKIE, String(current.id), googleLinkCookieOptions());
+      }
+    } else {
+      res.clearCookie(GOOGLE_LINK_COOKIE, googleLinkCookieOptions());
+    }
 
     const authUrl = new URL(GOOGLE_AUTH_URL);
     authUrl.searchParams.set("client_id", clientId);
@@ -691,7 +717,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const state = typeof req.query.state === "string" ? req.query.state : "";
     const cookies = parseCookies(req.headers.cookie);
     const expectedState = cookies[GOOGLE_STATE_COOKIE];
+    const linkUserId = cookies[GOOGLE_LINK_COOKIE] ? Number(cookies[GOOGLE_LINK_COOKIE]) : null;
     res.clearCookie(GOOGLE_STATE_COOKIE, googleStateCookieOptions());
+    res.clearCookie(GOOGLE_LINK_COOKIE, googleLinkCookieOptions());
 
     if (!code || !state || !expectedState || state !== expectedState) {
       return res.redirect(302, loginRedirectUrl(req, "error"));
@@ -704,6 +732,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const email = String(profile.email ?? "").trim().toLowerCase();
       if (!email || profile.email_verified !== true) {
         throw new Error("Google account email is not verified");
+      }
+
+      // v6.09 — "Connect Google" from an existing signed-in account (profile
+      // settings). Attach this Google email to that specific account only;
+      // never create a new account or sign into a different one here.
+      if (linkUserId) {
+        const linkTarget = await storage.getUser(linkUserId);
+        if (!linkTarget) {
+          return res.redirect(302, new URL("/?googleLink=error", appBaseUrl(req)).toString());
+        }
+        const clash = await storage.getUserByEmail(email);
+        if (clash && clash.id !== linkTarget.id) {
+          // That Google email already belongs to a different portal account.
+          return res.redirect(302, new URL("/?googleLink=conflict", appBaseUrl(req)).toString());
+        }
+        const updates: Partial<Pick<User, "avatarUrl" | "googleLinkedAt">> = {
+          googleLinkedAt: new Date().toISOString(),
+        };
+        if (!linkTarget.avatarUrl && profile.picture) updates.avatarUrl = profile.picture;
+        await storage.updateUser(linkTarget.id, updates);
+        return res.redirect(302, new URL("/?googleLink=ok", appBaseUrl(req)).toString());
       }
 
       const autoApproved = isGobiEmail(email);
@@ -1635,6 +1684,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       approvedAt: null,
       letterIssuedAt: null,
       signedBackAt: null,
+      approvalTokenHash: null,
+      approvalTokenExpires: null,
+      approvalDecidedBy: null,
+      approvalDecidedAt: null,
       status: isAdmin ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
@@ -2309,6 +2362,190 @@ www.gobi.vc`,
       });
     } catch {}
     res.json({ ok: true });
+  });
+
+
+  // ---------- v6.09 Advisor approval-by-link workflow ----------
+  // Editable email template sent to the approving executive (coo_email), with
+  // Fred and Elaine CC'd. The recipient must sign in (Google or password) to
+  // click Approve/Reject; the decision is auto-filed to the advisor audit log.
+  const DEFAULT_APPROVAL_TEMPLATE = {
+    subject: "Advisor onboarding approval — {{name}}",
+    body:
+`Dear colleague,
+
+Please review and approve the onboarding of the following Gobi Advisory Network candidate:
+
+Name: {{name}}
+Organization: {{organization}}
+
+Click the secure link below to review the full profile and approve or reject this advisor. You will need to sign in to the portal to confirm your decision.
+
+{{approval_link}}
+
+This link expires in 7 days.
+
+Warm regards,
+Gobi Partnership Portal`,
+  };
+
+  function approvalRecipientContext(advisor: Advisor, roles: AdvisorRole[]) {
+    const sorted = roles
+      .filter((r) => r.advisorId === advisor.id)
+      .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder);
+    return {
+      name: advisor.name,
+      firstName: firstNameOf(advisor.name),
+      organization: sorted[0]?.organization ?? "",
+    };
+  }
+
+  function fillApprovalPlaceholders(text: string, ctx: { name: string; firstName: string; organization: string; approvalLink: string }): string {
+    return fillPlaceholders(text, ctx).replace(/\{\{\s*approval_link\s*\}\}/gi, ctx.approvalLink);
+  }
+
+  // Staff compose view — prefilled, editable subject/body before sending.
+  app.post("/api/advisors/:id/approval/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const cooEmail = (await storage.getMeta("coo_email")) ?? "";
+    const tpl = {
+      subject: (await storage.getMeta("tpl_approval_subject")) || DEFAULT_APPROVAL_TEMPLATE.subject,
+      body: (await storage.getMeta("tpl_approval_body")) || DEFAULT_APPROVAL_TEMPLATE.body,
+    };
+    const roles = await storage.listAdvisorRoles();
+    const ctx = approvalRecipientContext(advisor, roles);
+    // Placeholder-only preview — the real token/link is generated at send time.
+    const preview = {
+      subject: fillApprovalPlaceholders(tpl.subject, { ...ctx, approvalLink: "[link generated on send]" }),
+      body: fillApprovalPlaceholders(tpl.body, { ...ctx, approvalLink: "[link generated on send]" }),
+    };
+    res.json({
+      template: { subject: tpl.subject, body: tpl.body },
+      preview,
+      to: cooEmail,
+      cc: ["fred@gobi.vc", "analyst01@gobi.vc"],
+      mailEnabled,
+      cooEmailConfigured: Boolean(cooEmail),
+    });
+  });
+
+  // Staff send — generates a fresh 7-day token, emails coo_email (cc Fred + Elaine).
+  app.post("/api/advisors/:id/approval/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    const cooEmail = (await storage.getMeta("coo_email")) ?? "";
+    if (!cooEmail) return res.status(400).json({ message: "Set the COO approval email address in Settings first." });
+    if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
+    const parsed = z.object({
+      subject: z.string().trim().min(1).max(300),
+      body: z.string().trim().min(1).max(20000),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid email" });
+
+    const token = randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    const approvalLink = `${appBaseUrl(req)}/#/advisor-approval?token=${token}`;
+    const roles = await storage.listAdvisorRoles();
+    const ctx = { ...approvalRecipientContext(advisor, roles), approvalLink };
+    const subject = fillApprovalPlaceholders(parsed.data.subject, ctx);
+    const body = fillApprovalPlaceholders(parsed.data.body, ctx);
+
+    const ok = await sendOutreach(cooEmail, subject, outreachHtml(body), {
+      fromName: `${req.user!.name} · Gobi Partners`,
+      replyTo: req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc",
+      isHtml: true,
+      cc: ["fred@gobi.vc", "analyst01@gobi.vc"],
+    });
+    if (!ok) return res.status(502).json({ message: "Send failed" });
+
+    await storage.updateAdvisor(advisor.id, {
+      approvalTokenHash: sha256(token),
+      approvalTokenExpires: expires,
+      approvalEmailedAt: new Date().toISOString(),
+      approvalDecidedBy: null,
+      approvalDecidedAt: null,
+    });
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: advisor.id,
+        date: new Date().toISOString().slice(0, 10),
+        type: "email",
+        note: `[Approval] Sent approval request to ${cooEmail} (cc fred@gobi.vc, analyst01@gobi.vc)`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: new Date().toISOString(),
+      });
+    } catch {}
+    await audit(req.user!, advisor.id, "update", { approvalEmailSent: true }, "advisor");
+    res.json({ ok: true });
+  });
+
+  // Public lookup — the approver follows the emailed link before signing in;
+  // the client uses this to show who/what is pending without leaking data on
+  // a bad token. Requires an active session to view or decide.
+  app.get("/api/advisors/approval/:token", requireAuth(), async (req: AuthedRequest, res) => {
+    const token = String(req.params.token || "");
+    if (!token) return res.status(400).json({ message: "Missing token" });
+    const advisor = await storage.getAdvisorByApprovalToken(sha256(token));
+    if (!advisor) return res.status(404).json({ message: "invalid_token" });
+    if (!advisor.approvalTokenExpires || new Date(advisor.approvalTokenExpires).getTime() < Date.now()) {
+      return res.status(410).json({ message: "expired_token" });
+    }
+    if (advisor.approvalDecidedAt) {
+      return res.status(409).json({ message: "already_decided", decision: advisor.status });
+    }
+    const roles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === advisor.id);
+    res.json({
+      advisor: {
+        id: advisor.id,
+        name: advisor.name,
+        nameCn: advisor.nameCn,
+        advisorType: advisor.advisorType,
+        track: advisor.track,
+        pillar: advisor.pillar,
+        background: advisor.background,
+        photoUrl: advisor.photoUrl,
+        linkedinUrl: advisor.linkedinUrl,
+      },
+      roles: roles.map((r) => ({ title: r.title, organization: r.organization, isPrimary: r.isPrimary })),
+    });
+  });
+
+  // Decision — must be signed in (Google or password). Auto-files the audit log.
+  app.post("/api/advisors/approval/:token/decide", requireAuth(), async (req: AuthedRequest, res) => {
+    const token = String(req.params.token || "");
+    const parsed = z.object({ decision: z.enum(["approve", "reject"]) }).safeParse(req.body);
+    if (!token || !parsed.success) return res.status(400).json({ message: "Invalid request" });
+    const advisor = await storage.getAdvisorByApprovalToken(sha256(token));
+    if (!advisor) return res.status(404).json({ message: "invalid_token" });
+    if (!advisor.approvalTokenExpires || new Date(advisor.approvalTokenExpires).getTime() < Date.now()) {
+      return res.status(410).json({ message: "expired_token" });
+    }
+    if (advisor.approvalDecidedAt) {
+      return res.status(409).json({ message: "already_decided" });
+    }
+    const now = new Date().toISOString();
+    const nextStatus = parsed.data.decision === "approve" ? "approved" : "rejected";
+    await storage.updateAdvisor(advisor.id, {
+      status: nextStatus,
+      approvalDecidedBy: req.user!.name,
+      approvalDecidedAt: now,
+      approvedAt: parsed.data.decision === "approve" ? now : advisor.approvedAt,
+    });
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: advisor.id,
+        date: now.slice(0, 10),
+        type: "note",
+        note: `[Approval] ${parsed.data.decision === "approve" ? "Approved" : "Rejected"} via emailed approval link by ${req.user!.name}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: now,
+      });
+    } catch {}
+    await audit(req.user!, advisor.id, parsed.data.decision === "approve" ? "approve" : "reject", { via: "approval_link" }, "advisor");
+    res.json({ ok: true, decision: nextStatus });
   });
 
   // ---------- Sector tags (v5.5 — shared by advisors and partner organisations) ----------

@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.08";
+export const CURRENT_VERSION = "6.09";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "6.09",
+    date: "2026-07-31",
+    by: "Fred",
+    titleEn: "v6.09 — Connect Google to existing accounts, automated advisor approval-by-link",
+    titleCn: "v6.09 — 现有账号可绑定 Google，顾问审批链接自动化",
+    itemsEn: [
+      "Existing accounts can now connect a Google account from Profile settings, so future sign-ins can use either password or Google",
+      "New advisor approval workflow: staff can send an editable approval email to the COO mailbox (cc Fred and Elaine) with a secure link",
+      "The approving executive signs in on the portal and approves or rejects directly from the emailed link — the decision is auto-filed to the advisor's audit log",
+    ],
+    itemsCn: [
+      "现有账号现可在个人资料设置中绑定 Google 账号，之后登录可选择密码或 Google",
+      "新增顾问审批工作流：工作人员可向 COO 邮箱发送可编辑的审批邮件（抄送 Fred 和 Elaine），邮件内含安全审批链接",
+      "审批人登录portal后可直接通过邮件中的链接批准或拒绝，审批结果将自动记录到该顾问的审计日志中",
+    ],
+  },
   {
     version: "6.08",
     date: "2026-07-30",

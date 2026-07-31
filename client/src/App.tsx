@@ -22,6 +22,7 @@ const Submit = lazy(() => import("@/pages/submit"));
 const Admin = lazy(() => import("@/pages/admin"));
 const Updates = lazy(() => import("@/pages/updates"));
 const Advisors = lazy(() => import("@/pages/advisors"));
+const AdvisorApproval = lazy(() => import("@/pages/advisor-approval"));
 const RdPlanner = lazy(() => import("@/pages/rd-planner"));
 const Scoreboard = lazy(() => import("@/pages/scoreboard"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -62,6 +63,7 @@ function AppRouter() {
       <Route path="/updates" component={Updates} />
       <Route path="/advisors" component={Advisors} />
       <Route path="/advisors/:id" component={Advisors} />
+      <Route path="/advisor-approval" component={AdvisorApproval} />
       <Route path="/scoreboard" component={Scoreboard} />
       <Route path="/rd" component={RdPlanner} />
       <Route path="/admin" component={Admin} />

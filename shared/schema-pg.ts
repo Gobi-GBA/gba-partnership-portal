@@ -24,6 +24,7 @@ export const usersPg = pgTable("users", {
   mustChangePassword: integer("must_change_password").notNull().default(0),
   lastSeenVersion: text("last_seen_version"), // v6.05
   lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05
+  googleLinkedAt: text("google_linked_at"), // v6.09
 });
 
 export const sessionsPg = pgTable("sessions", {
@@ -168,6 +169,10 @@ export const advisorsPg = pgTable("advisors", {
   signedBackAt: text("signed_back_at"),
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
+  approvalTokenHash: text("approval_token_hash"),
+  approvalTokenExpires: text("approval_token_expires"),
+  approvalDecidedBy: text("approval_decided_by"),
+  approvalDecidedAt: text("approval_decided_at"),
 });
 
 export const advisorRolesPg = pgTable("advisor_roles", {

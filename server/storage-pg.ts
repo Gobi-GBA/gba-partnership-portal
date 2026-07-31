@@ -190,6 +190,12 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS wechat_id TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS origin_staff JSONB`,
   `UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`,
+  // ---- v6.09 approval-by-link workflow ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_token_hash TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_token_expires TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_by TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_at TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_linked_at TEXT`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
     id SERIAL PRIMARY KEY,
     name_en TEXT NOT NULL,
@@ -413,6 +419,7 @@ export function createPgStorage(): IStorage {
           | "status" | "role" | "name" | "title" | "avatarUrl" | "passwordHash"
           | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
           | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
+          | "googleLinkedAt"
         >
       >
     ) {
@@ -639,6 +646,11 @@ export function createPgStorage(): IStorage {
     async getAdvisor(id: number) {
       await init();
       const rows = await db.select().from(advisors).where(eq(advisors.id, id));
+      return rows[0] as Advisor | undefined;
+    }
+    async getAdvisorByApprovalToken(tokenHash: string) {
+      await init();
+      const rows = await db.select().from(advisors).where(eq(advisors.approvalTokenHash, tokenHash));
       return rows[0] as Advisor | undefined;
     }
     async createAdvisor(data: Omit<Advisor, "id">) {

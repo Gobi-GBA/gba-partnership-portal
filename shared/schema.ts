@@ -30,6 +30,7 @@ export const users = sqliteTable("users", {
   mustChangePassword: integer("must_change_password").notNull().default(0), // 0 | 1 — set by admin force-reset; cleared on next password change
   lastSeenVersion: text("last_seen_version"), // v6.05 — last portal version whose update notes the user has seen (Updates badge)
   lastSeenUpdatesAt: text("last_seen_updates_at"), // v6.05 — ISO timestamp of the last Updates-page visit (my-requests badge)
+  googleLinkedAt: text("google_linked_at"), // v6.09 — ISO timestamp the account was linked to Google sign-in
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -292,6 +293,11 @@ export const advisors = sqliteTable("advisors", {
   signedBackAt: text("signed_back_at"),           // advisor signed & returned -> done
   submittedBy: integer("submitted_by"),
   createdAt: text("created_at").notNull(),
+  // ---- v6.09 approval-by-link workflow ----
+  approvalTokenHash: text("approval_token_hash"), // sha256 of the emailed one-time approval token
+  approvalTokenExpires: text("approval_token_expires"), // ISO timestamp
+  approvalDecidedBy: text("approval_decided_by"), // name of the approver who actioned the link
+  approvalDecidedAt: text("approval_decided_at"), // ISO timestamp of the decision
 });
 
 export const ADVISOR_LIFECYCLE = ["proposed", "onboarded", "terminated"] as const;

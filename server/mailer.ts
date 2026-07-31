@@ -97,7 +97,7 @@ export async function sendOutreach(
   to: string,
   subject: string,
   body: string,
-  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean },
+  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[] },
 ): Promise<boolean> {
   if (!transporter) return false;
   const fromName = opts?.fromName ?? "Gobi Partners";
@@ -106,6 +106,7 @@ export async function sendOutreach(
       from: MAIL_USERNAME ? `"${fromName}" <${MAIL_USERNAME}>` : MAIL_DEFAULT_SENDER,
       replyTo: opts?.replyTo ?? MAIL_DEFAULT_SENDER,
       to,
+      ...(opts?.cc ? { cc: opts.cc } : {}),
       subject,
       ...(opts?.isHtml ? { html: body } : { text: body }),
     });

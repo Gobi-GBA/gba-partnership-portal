@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,10 +8,22 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
-import { Loader2, Upload, X, RefreshCw, ShieldQuestion, KeyRound, Mail, ChevronDown } from "lucide-react";
+import { Loader2, Upload, X, RefreshCw, ShieldQuestion, KeyRound, Mail, ChevronDown, Link2, CheckCircle2 } from "lucide-react";
 import type { SafeUser } from "@shared/schema";
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
+
+// v6.09 — plain multi-color Google "G" mark (no external icon dependency)
+function GoogleMark({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.9-2.26 5.36-4.78 7.02l7.73 6c4.51-4.18 7.09-10.36 7.09-17.49z"/>
+      <path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A24 24 0 0 0 0 24c0 3.87.92 7.53 2.56 10.78z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.9l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+  );
+}
 
 // ---------------- Version log dialog ----------------
 
@@ -94,6 +106,25 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
     onClose();
   };
   const { requestClose, guard } = useUnsavedGuard({ dirty, onDiscard: discardAndClose, onSave: () => { void save(); } });
+
+  // v6.09 — surface the result of a "Connect Google" round trip once, then
+  // clean the URL so a page refresh doesn't repeat the toast.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("googleLink");
+    if (!result) return;
+    if (result === "ok") toast({ title: t("googleLinkOk") });
+    else if (result === "conflict") toast({ title: t("googleLinkConflict"), variant: "destructive" });
+    else toast({ title: t("googleLinkError"), variant: "destructive" });
+    params.delete("googleLink");
+    const rest = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connectGoogle = () => {
+    window.location.assign("/api/auth/google/start?link=1");
+  };
 
   if (!user) return null;
 
@@ -297,6 +328,21 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
                   {mailOff && <p className="text-xs text-muted-foreground" data-testid="text-mail-coming-soon">{t("pwMailComingSoon")}</p>}
                 </div>
               </div>
+            )}
+          </div>
+          <div className="rounded-lg border border-border p-3 space-y-2">
+            <p className="flex items-center gap-1.5 text-sm font-medium"><Link2 className="h-4 w-4" /> {t("googleConnectTitle")}</p>
+            {user.googleLinkedAt ? (
+              <p className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400" data-testid="text-google-linked">
+                <CheckCircle2 className="h-4 w-4" /> {t("googleConnected")}
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">{t("googleConnectHint")}</p>
+                <Button type="button" variant="outline" size="sm" className="w-full" onClick={connectGoogle} data-testid="button-connect-google">
+                  <GoogleMark className="mr-2 h-4 w-4" /> {t("googleConnectButton")}
+                </Button>
+              </>
             )}
           </div>
           {user.role === "viewer" && (

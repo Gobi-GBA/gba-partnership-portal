@@ -44,6 +44,7 @@ import {
 } from "@/components/advisor-crm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OutreachDialog } from "@/components/advisor-outreach";
+import { ApprovalSendDialog } from "@/components/advisor-approval-dialog";
 import { downloadWithAuth, openHtmlWithAuth, preopenTab } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
@@ -1152,6 +1153,7 @@ function AdvisorDetailDialog({
     enabled: id !== null && isStaff,
   });
   const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalSendOpen, setApprovalSendOpen] = useState(false);
 
   const setStatus = useMutation({
     mutationFn: async (status: "approved" | "rejected") => {
@@ -1259,6 +1261,10 @@ function AdvisorDetailDialog({
                     <Send className="h-3.5 w-3.5 mr-1.5" /> {t("requestApproval")}
                   </Button>
                   <ApprovalEmailDialog advisor={a} open={approvalOpen} onOpenChange={setApprovalOpen} />
+                  <Button size="sm" variant="outline" onClick={() => setApprovalSendOpen(true)} data-testid="button-send-approval-email">
+                    <Mail className="h-3.5 w-3.5 mr-1.5" /> {t("wfSendApprovalEmail")}
+                  </Button>
+                  <ApprovalSendDialog advisor={a} open={approvalSendOpen} onOpenChange={setApprovalSendOpen} />
                   {isAdmin && a.status === "pending" && (
                     <>
                       <Button size="sm" onClick={() => setStatus.mutate("approved")} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="button-approve-advisor">

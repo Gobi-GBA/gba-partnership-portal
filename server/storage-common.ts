@@ -56,6 +56,7 @@ export interface IStorage {
         | "status" | "role" | "name" | "email" | "title" | "avatarUrl" | "passwordHash" | "isIr"
         | "secretQ1" | "secretA1Hash" | "secretQ2" | "secretA2Hash"
         | "resetTokenHash" | "resetExpires" | "mustChangePassword" | "lastSeenVersion" | "lastSeenUpdatesAt"
+        | "googleLinkedAt"
       >
     >
   ): Promise<User | undefined>;
@@ -112,6 +113,8 @@ export interface IStorage {
   // Advisors (v5.0)
   listAdvisors(): Promise<Advisor[]>;
   getAdvisor(id: number): Promise<Advisor | undefined>;
+  // v6.09 — approval-by-link workflow: look up the advisor a token hash was issued for.
+  getAdvisorByApprovalToken(tokenHash: string): Promise<Advisor | undefined>;
   createAdvisor(data: Omit<Advisor, "id">): Promise<Advisor>;
   updateAdvisor(id: number, data: Partial<Advisor>): Promise<Advisor | undefined>;
   deleteAdvisor(id: number): Promise<void>;
