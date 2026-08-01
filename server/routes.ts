@@ -649,16 +649,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // static file serving and 404s. Rewrite those paths to this function and
   // redirect back to the hash equivalent, preserving the token query param.
   app.get("/advisor-approval", (req, res) => {
-    const url = new URL(`${appBaseUrl(req)}/#/advisor-approval`);
     const token = req.query.token;
-    if (typeof token === "string" && token) url.searchParams.set("token", token);
-    res.redirect(302, url.toString());
+    const hash = typeof token === "string" && token
+      ? `#/advisor-approval?token=${encodeURIComponent(token)}`
+      : "#/advisor-approval";
+    res.redirect(302, `${appBaseUrl(req)}/${hash}`);
   });
   app.get("/reset", (req, res) => {
-    const url = new URL(`${appBaseUrl(req)}/#/reset`);
     const token = req.query.token;
-    if (typeof token === "string" && token) url.searchParams.set("token", token);
-    res.redirect(302, url.toString());
+    const hash = typeof token === "string" && token
+      ? `#/reset?token=${encodeURIComponent(token)}`
+      : "#/reset";
+    res.redirect(302, `${appBaseUrl(req)}/${hash}`);
   });
 
   // ---------- Auth ----------

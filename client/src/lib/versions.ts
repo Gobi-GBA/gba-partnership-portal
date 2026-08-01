@@ -9,9 +9,24 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.06";
+export const CURRENT_VERSION = "7.06p1";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.06p1",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.06p1 — keep the token inside the hash fragment on redirect",
+    titleCn: "v7.06p1 — 重定向时保持 token 在哈希片段内",
+    itemsEn: [
+      "Fixed the v7.06 redirect so the token query parameter is placed inside the hash fragment (/#/advisor-approval?token=...) instead of before it",
+      "The React hash router now correctly reads the token from the hash query string; the previous redirect accidentally put the token in the regular query string where the app could not see it",
+    ],
+    itemsCn: [
+      "修复 v7.06 重定向：将 token 查询参数放在哈希片段内部（/#/advisor-approval?token=...），而不是放在哈希之前",
+      "React 哈希路由现在能从哈希查询字符串正确读取 token；之前的重定向误把 token 放在普通查询字符串中，应用无法读取",
+    ],
+  },
   {
     version: "7.06",
     date: "2026-08-01",
