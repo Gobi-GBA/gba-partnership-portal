@@ -144,7 +144,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
   return (
     <Layout>
       {/* Hero */}
-      <section className="border-b border-border bg-[hsl(214,68%,15%)]/85 dark:bg-[hsl(218,71%,5%)]/55 backdrop-blur-sm text-white">
+      <section className="border-b border-border bg-card/[0.88] dark:bg-[hsl(214,68%,15%)]/85 backdrop-blur-sm text-foreground">
         <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
           <div className="flex flex-col lg:flex-row lg:items-start lg:gap-12">
             <div className="flex-1 min-w-0">
@@ -154,7 +154,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
               <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight max-w-2xl">
                 {t("heroTitle")}
               </h1>
-              <p className="mt-4 max-w-2xl text-sm md:text-base text-[hsl(210,40%,80%)] leading-relaxed">
+              <p className="mt-4 max-w-2xl text-sm md:text-base text-muted-foreground leading-relaxed">
                 {t("heroBody")}
               </p>
 
@@ -178,9 +178,9 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             {/* Recent partnership log — extract on the cover */}
             {recentLog.length > 0 && (
               <aside className="mt-10 lg:mt-0 lg:w-[380px] shrink-0" data-testid="hero-recent-log">
-                <div className="rounded-xl border border-white/15 bg-white/[0.06] backdrop-blur-sm p-4">
+                <div className="rounded-xl border border-border/60 dark:border-white/15 bg-background/60 dark:bg-white/[0.06] backdrop-blur-sm p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-bold tracking-wide text-white/90">{t("heroLogTitle")}</h2>
+                    <h2 className="text-sm font-bold tracking-wide text-foreground/90">{t("heroLogTitle")}</h2>
                     <button
                       type="button"
                       onClick={() => navigate("/updates")}
@@ -198,15 +198,15 @@ export default function Home({ initialView = "network", initialHof = false }: { 
                         tabIndex={0}
                         onClick={() => navigate(`/partner/${p.id}`)}
                         onKeyDown={(e) => e.key === "Enter" && navigate(`/partner/${p.id}`)}
-                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 transition-all hover:border-[hsl(var(--gold))]/60 hover:bg-white/[0.1]"
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/50 dark:border-white/10 bg-white/40 dark:bg-white/[0.05] px-3 py-2 transition-all hover:border-primary/50 dark:hover:border-[hsl(var(--gold))]/60 hover:bg-white/70 dark:hover:bg-white/[0.1]"
                         data-testid={`hero-log-entry-${p.id}`}
                       >
                         <PartnerLogo p={p} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-white truncate">
+                          <p className="text-sm font-semibold text-foreground truncate">
                             {lang === "cn" && p.nameCn ? p.nameCn : p.nameEn}
                           </p>
-                          <p className="text-[11px] text-white/55 tabular-nums">
+                          <p className="text-[11px] text-muted-foreground tabular-nums">
                             {fmtLogDay(p)} · {p.startDate ? t("partnerLogStarted") : t("partnerLogAdded")}
                           </p>
                         </div>
@@ -578,17 +578,17 @@ function Stat({ value, label, loading, gold, onClick }: { value: number; label: 
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left cursor-pointer transition-all duration-200 hover:bg-white/10 hover:border-[hsl(var(--aqua))]/60 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[hsl(var(--aqua))]/10"
+      className="rounded-lg border border-border/60 dark:border-white/10 bg-white/40 dark:bg-white/5 px-4 py-3 text-left cursor-pointer transition-all duration-200 hover:bg-white/70 dark:hover:bg-white/10 hover:border-primary/40 dark:hover:border-[hsl(var(--aqua))]/60 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[hsl(var(--aqua))]/10"
       data-testid={`stat-${label}`}
     >
       {loading ? (
-        <Skeleton className="h-8 w-12 bg-white/10" />
+        <Skeleton className="h-8 w-12 bg-muted/40 dark:bg-white/10" />
       ) : (
         <p className={`text-2xl font-extrabold ${gold ? "text-[hsl(var(--gold))]" : "text-[hsl(var(--aqua))]"}`}>
           {value}
         </p>
       )}
-      <p className="text-xs text-[hsl(210,40%,75%)] mt-0.5">{label}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
     </button>
   );
 }

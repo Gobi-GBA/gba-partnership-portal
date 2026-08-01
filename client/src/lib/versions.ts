@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.04";
+export const CURRENT_VERSION = "7.05";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.05",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.05 — home hero now follows the light theme",
+    titleCn: "v7.05 — 首页 Hero 适配日间模式",
+    itemsEn: [
+      "The home page hero section no longer renders as a dark blue block in light mode; it now uses the theme's card/background and foreground tokens",
+      "Stat cards, the recent partnership log card and hero body text all switch to light-friendly surfaces and muted text in light mode while keeping the original dark aesthetic in dark mode",
+      "Hover states and value colours (aqua / gold) are preserved in both modes",
+    ],
+    itemsCn: [
+      "首页 Hero 区域在日间模式下不再呈现深蓝色块，改为使用主题卡片 / 背景与前景色变量",
+      "统计卡片、最新合作记录卡片与 Hero 正文在日间模式下切换为浅色调表面与弱化文字，夜间模式保留原有深色风格",
+      "悬停状态与数值颜色（青色 / 金色）在两种模式下均保留",
+    ],
+  },
   {
     version: "7.04",
     date: "2026-08-01",
