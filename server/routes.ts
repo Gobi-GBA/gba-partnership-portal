@@ -1086,7 +1086,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ---------- Partnerships ----------
-  // Signed-in users only: approved partnerships
+  // Signed-in users only: approved partnerships (used by directory, network graph, etc.)
   app.get("/api/partnerships", requireAuth(), async (req: AuthedRequest, res) => {
     const [all, users] = await cachedLoad("partnershipsBundle", () =>
       Promise.all([storage.listPartnerships(), storage.listUsers()]),
@@ -1097,6 +1097,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res,
       all
         .filter((p) => p.status === "approved")
+        .map((p) => ({
+          ...redactLp(p, req.user),
+          submittedByName: p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null,
+        })),
+    );
+  });
+
+  // Partnership records log: team members see every record (pending/approved/rejected),
+  // viewers see only approved. This ensures staff submissions are never hidden from the log.
+  app.get("/api/partnerships/log", requireAuth(), async (req: AuthedRequest, res) => {
+    const isTeam = req.user!.role === "admin" || req.user!.role === "staff";
+    const [all, users] = await cachedLoad("partnershipsBundle:log", () =>
+      Promise.all([storage.listPartnerships(), storage.listUsers()]),
+    );
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    jsonWithEtag(
+      req,
+      res,
+      all
+        .filter((p) => isTeam || p.status === "approved")
         .map((p) => ({
           ...redactLp(p, req.user),
           submittedByName: p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null,

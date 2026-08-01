@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.07";
+export const CURRENT_VERSION = "7.08";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.08",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.08 — partnership records log now shows every team submission",
+    titleCn: "v7.08 — 合作记录日志现显示所有团队提交",
+    itemsEn: [
+      "Fixed the Partnership records log so it includes pending and rejected partnership records for admin and staff users, not only approved ones",
+      "Staff submissions (e.g. Berlin's new ecosystem partners) were previously hidden because they enter the system as pending and the log only showed approved records",
+      "Added a dedicated /api/partnerships/log endpoint for the log; the public directory endpoints continue to show only approved records",
+      "Non-approved records now display a status badge (Pending / Rejected) so the team can see which entries still need approval",
+    ],
+    itemsCn: [
+      "修复合作记录日志：管理员和员工现在可以看到待审批和已拒绝的合作记录，而不只是已批准的记录",
+      "员工提交的内容（例如 Berlin 录入的新生态伙伴）此前被隐藏，因为它们以“待审批”状态进入系统，而日志仅显示已批准记录",
+      "为日志新增专用接口 /api/partnerships/log；公开目录类接口仍只返回已批准记录",
+      "未批准记录现在会显示状态标签（待审批 / 已拒绝），方便团队识别哪些条目仍需审批",
+    ],
+  },
   {
     version: "7.07",
     date: "2026-08-01",

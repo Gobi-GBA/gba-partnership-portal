@@ -65,7 +65,10 @@ export default function Updates() {
   });
 
   const { data: partnerships, isLoading: loadingPartners } = useQuery<PartnershipWithAuthor[]>({
-    queryKey: ["/api/partnerships"],
+    // v7.08 — partnership records log now reads from a dedicated endpoint that
+    // includes pending/rejected records for team members, so staff submissions
+    // (e.g. Berlin's ecosystem partners) are never hidden from the log.
+    queryKey: ["/api/partnerships", "log"],
     enabled: !!user,
   });
 
@@ -323,9 +326,16 @@ export default function Updates() {
                             </span>
                           </>
                         )}
-                        {p.status === "pending" && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
-                            {t("partnerLogPending")}
+                        {p.status !== "approved" && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px]",
+                              p.status === "pending" && "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+                              p.status === "rejected" && "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
+                            )}
+                          >
+                            {t(`status_${p.status}` as any)}
                           </Badge>
                         )}
                       </div>
