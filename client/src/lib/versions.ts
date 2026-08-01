@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.01";
+export const CURRENT_VERSION = "7.02";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.02",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.02 — removed the redundant bottom bar, collapsing header on scroll",
+    titleCn: "v7.02 — 移除冗余底部栏，页眉随滚动收起",
+    itemsEn: [
+      "Removed the Perplexity-style bottom contextual action bar — it only duplicated the top navigation and added no value",
+      "The sticky header now collapses on scroll-down (64px to 48px, logo shrinks, brand title hides) and expands again on scroll-up or when you return to the top",
+      "The internal-test banner follows the header's collapsed height so there is no gap as the bar shrinks",
+      "The top gradient scroll-progress bar and the section-label pill on route change are kept",
+    ],
+    itemsCn: [
+      "移除 Perplexity 式底部浮动操作栏 — 它只是重复了顶部导航，并无实际价值",
+      "置顶标题栏现在随向下滚动收起（64px 缩至 48px，标志缩小、品牌标题隐藏），向上滚动或回到顶部时恢复展开",
+      "内部测试横幅会跟随标题栏的收起高度，收起时不留空隙",
+      "顶部渐变滚动进度条与切换路由时的栏目名称提示药丸保留",
+    ],
+  },
   {
     version: "7.01",
     date: "2026-08-01",

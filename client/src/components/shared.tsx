@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useLang } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import { API_BASE, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
-import { ScrollProgressBar, ContextualActionBar, type ActionBarAction } from "@/components/scroll-bars";
+import { ScrollProgressBar } from "@/components/scroll-bars";
 
 // Auto-open the version log once per browser session after login (memory only — no storage APIs).
 let versionLogShown = false;
@@ -402,6 +403,25 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [showTestBanner, setShowTestBanner] = useState(true);
+
+  // v7.02 — scroll-aware collapsing header: shrink on scroll-down, expand on
+  // scroll-up. A small direction threshold avoids jitter on tiny scroll moves.
+  const { scrollY } = useScroll();
+  const [collapsed, setCollapsed] = useState(false);
+  const lastScrollY = useRef(0);
+  useMotionValueEvent(scrollY, "change", (y) => {
+    const prev = lastScrollY.current;
+    if (y < 80) {
+      setCollapsed(false);
+    } else if (y > prev + 4) {
+      setCollapsed(true);
+    } else if (y < prev - 4) {
+      setCollapsed(false);
+    }
+    lastScrollY.current = y;
+  });
+  // The mobile menu must keep the bar at full height so its items aren't clipped.
+  const effectiveCollapsed = open ? false : collapsed;
   const [showVersions, setShowVersions] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
@@ -479,33 +499,26 @@ export function Layout({ children }: { children: ReactNode }) {
       </span>
     ) : null;
 
-  // v7.0 — contextual actions for the bottom bar, derived from the current route
-  const navActions: ActionBarAction[] = [
-    { id: "home", label: t("navDirectory"), onClick: () => navigate("/"), variant: location === "/" ? "accent" : "ghost" },
-    { id: "submit", label: t("navSubmit"), onClick: () => navigate("/submit"), variant: location === "/submit" ? "accent" : "ghost" },
-    { id: "advisors", label: t("navAdvisors"), onClick: () => navigate("/advisors"), variant: location.startsWith("/advisors") ? "accent" : "ghost" },
-    { id: "updates", label: t("navUpdates"), onClick: () => navigate("/updates"), variant: location === "/updates" ? "accent" : "ghost" },
-  ];
-  if (user?.role === "admin") {
-    navActions.push({ id: "admin", label: t("navAdmin"), onClick: () => navigate("/admin"), variant: location === "/admin" ? "accent" : "ghost" });
-  }
-
   return (
     <div className="relative min-h-screen flex flex-col text-foreground">
       <GalaxyBackground />
       <ScrollProgressBar />
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md">
-        <div className="mx-auto max-w-[1400px] px-4 h-16 flex items-center gap-3">
+        <div className="mx-auto max-w-[1400px] px-4 flex items-center gap-3 transition-[height] duration-300" style={{ height: effectiveCollapsed ? 48 : 64 }}>
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
               src={dark ? "gobi-logo-white.png" : "gobi-logo-navy.png"}
               alt="Gobi Partners"
-              className="h-8 sm:h-9 w-auto"
+              className={cn("w-auto transition-all duration-300", effectiveCollapsed ? "h-6 sm:h-7" : "h-8 sm:h-9")}
               data-testid="img-gobi-logo"
             />
-            <span className="leading-tight border-l border-border pl-3 hidden sm:block">
+            <motion.span
+              animate={{ opacity: effectiveCollapsed ? 0 : 1, width: effectiveCollapsed ? 0 : "auto" }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="leading-tight border-l border-border pl-3 hidden sm:flex overflow-hidden whitespace-nowrap"
+            >
               <span className="block text-sm font-bold tracking-tight">{t("brandTitle")}</span>
-            </span>
+            </motion.span>
           </Link>
 
           <nav className="hidden xl:flex items-center gap-1 ml-3">
@@ -513,7 +526,8 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link key={l.href} href={l.href} data-testid={`link-nav-${l.href.replace(/\//g, "") || "home"}`}>
                 <span
                   className={cn(
-                    "whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
+                    "whitespace-nowrap px-3 rounded-md text-sm font-medium cursor-pointer transition-colors",
+                    effectiveCollapsed ? "py-1" : "py-1.5",
                     location === l.href
                       ? "bg-secondary text-secondary-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -652,7 +666,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <div
           role="status"
           data-testid="banner-internal-test"
-          className="sticky top-16 z-30 border-b border-amber-500/30 bg-background text-foreground"
+          style={{ top: effectiveCollapsed ? 48 : 64 }}
+          className="sticky z-30 border-b border-amber-500/30 bg-background text-foreground transition-[top] duration-300"
         >
           <div className="absolute inset-0 bg-amber-500/10 pointer-events-none" aria-hidden="true" />
           <div className="relative mx-auto max-w-6xl px-4 py-2 flex items-start md:items-center gap-2.5 text-xs md:text-[13px]">
@@ -735,11 +750,8 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </footer>
 
-      {/* v7.0 — Perplexity-style bottom contextual action bar */}
-      <ContextualActionBar actions={navActions} />
-
-      {/* Bottom padding so content isn't hidden behind the floating bar */}
-      <div className="h-16 shrink-0" aria-hidden="true" />
+      {/* v7.02 — the redundant bottom action bar was removed; the header now
+          collapses on scroll instead, which is the more useful behaviour. */}
     </div>
   );
 }

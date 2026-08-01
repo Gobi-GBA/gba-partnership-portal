@@ -1,17 +1,18 @@
 /**
- * v7.0 — Perplexity-style scroll bars
+ * v7.0 / v7.02 — scroll awareness
  *
- * 1. ScrollProgressBar: thin top bar showing scroll position + section label
- * 2. ContextualActionBar: bottom floating glass bar with contextual actions
- *    that morph between sections. Collapses to a minimal pill when idle.
+ * ScrollProgressBar: thin gradient bar at the very top showing scroll progress,
+ * with a section-label pill that appears briefly on route change.
+ * (The contextual bottom action bar was removed in v7.02 — it only duplicated
+ * the top nav and added no value; the sticky header now collapses on scroll
+ * instead, which is the more useful behaviour.)
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from "framer-motion";
 import { useLocation } from "wouter";
-import { cn } from "@/lib/utils";
 
-/* ---------------- 1. Top scroll progress bar ---------------- */
+/* ---------------- Top scroll progress bar ---------------- */
 
 const SECTION_LABELS: Record<string, { en: string; cn: string }> = {
   "/": { en: "Directory", cn: "合作目录" },
@@ -87,132 +88,5 @@ export function ScrollProgressBar() {
         )}
       </AnimatePresence>
     </>
-  );
-}
-
-/* ---------------- 2. Bottom contextual action bar ---------------- */
-
-export interface ActionBarAction {
-  id: string;
-  label: string;
-  icon?: ReactNode;
-  onClick: () => void;
-  variant?: "default" | "accent" | "ghost";
-}
-
-interface ContextualActionBarProps {
-  actions: ActionBarAction[];
-  /** Optional summary text shown on the left (e.g., "12 partnerships") */
-  summary?: string;
-}
-
-export function ContextualActionBar({ actions, summary }: ContextualActionBarProps) {
-  const [idle, setIdle] = useState(false);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Collapse to pill after 4 seconds of no interaction
-  const resetIdle = () => {
-    setIdle(false);
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setIdle(true), 4000);
-  };
-
-  useEffect(() => {
-    resetIdle();
-    return () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actions]);
-
-  // Don't render if there are no actions
-  if (!actions || actions.length === 0) return null;
-
-  return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center px-4 pointer-events-none">
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 24 }}
-        animate={{
-          opacity: 1,
-          y: 0,
-          width: idle ? "auto" : "auto",
-        }}
-        exit={{ opacity: 0, y: 24 }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="glass-bar pointer-events-auto rounded-full shadow-lg"
-        onMouseEnter={() => setIdle(false)}
-        onMouseLeave={resetIdle}
-        onClick={resetIdle}
-      >
-        <motion.div
-          layout
-          className="flex items-center gap-1.5 px-3 py-2"
-          animate={{
-            padding: idle ? "0.375rem 0.875rem" : "0.5rem 0.75rem",
-          }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        >
-          {/* Summary chip — only when expanded */}
-          <AnimatePresence>
-            {!idle && summary && (
-              <motion.span
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: "auto" }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 200 }}
-                className="text-xs font-medium text-muted-foreground whitespace-nowrap px-1.5 hidden sm:inline-block"
-              >
-                {summary}
-              </motion.span>
-            )}
-          </AnimatePresence>
-
-          {/* Action buttons */}
-          {actions.slice(0, idle ? 1 : 5).map((action) => (
-            <motion.button
-              key={action.id}
-              layout
-              whileTap={{ scale: 0.92 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                action.onClick();
-                resetIdle();
-              }}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                action.variant === "accent"
-                  ? "bg-primary/15 text-primary hover:bg-primary/25"
-                  : action.variant === "ghost"
-                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    : "text-foreground hover:bg-muted/50",
-              )}
-            >
-              {action.icon}
-              <span className={cn(idle && "hidden sm:inline")}>
-                {action.label}
-              </span>
-            </motion.button>
-          ))}
-
-          {/* Expand indicator when idle */}
-          {idle && actions.length > 1 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-0.5 px-1 text-muted-foreground/60"
-            >
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="h-1 w-1 rounded-full bg-current"
-                  style={{ opacity: 1 - i * 0.3 }}
-                />
-              ))}
-            </motion.div>
-          )}
-        </motion.div>
-      </motion.div>
-    </div>
   );
 }
