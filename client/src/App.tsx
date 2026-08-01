@@ -30,7 +30,13 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 function PageFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background" data-testid="screen-page-loading">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[hsl(193,52%,38%)] border-t-transparent" />
+      <div className="w-full max-w-md space-y-4 p-8">
+        <div className="shimmer h-8 w-3/4 rounded-md" />
+        <div className="shimmer h-4 w-full rounded-md" />
+        <div className="shimmer h-4 w-5/6 rounded-md" />
+        <div className="shimmer h-32 w-full rounded-lg" />
+        <div className="shimmer h-4 w-2/3 rounded-md" />
+      </div>
     </div>
   );
 }
