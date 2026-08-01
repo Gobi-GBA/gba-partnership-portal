@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "6.11";
+export const CURRENT_VERSION = "7.0";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.0",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.0 — Deep glass, tactile feedback, and Perplexity-style scroll bars",
+    titleCn: "v7.0 — 深玻璃质感、触觉反馈与 Perplexity 式滚动条",
+    itemsEn: [
+      "Deep glassmorphism across every floating surface — cards, dialogs, popovers, dropdowns, tooltips, sticky header and mobile nav — at 70% opacity with backdrop-blur 16px and 1.2x saturation, so the desert/galaxy background stays visible behind the UI",
+      "Tactile micro-interactions on every button and link — press scales to 0.97 with a 150ms spring-back, primary buttons lift on hover, and page transitions fade in with a 300ms upward drift",
+      "Shimmer skeletons replace loading spinners for a smoother first paint",
+      "Perplexity-style scroll awareness — a slim gradient progress bar tracks scroll position at the top, plus a floating glass bottom bar that morphs to show contextual actions for the current page and collapses to a pill when idle",
+    ],
+    itemsCn: [
+      "所有浮层表面均采用深玻璃质感 — 卡片、弹窗、下拉菜单、工具提示、置顶标题栏与移动导航 — 透明度 70%、backdrop-blur 16px、饱和度 1.2x，沙漠/星空背景始终隐约可见",
+      "按钮与链接新增触觉反馈 — 按下缩放至 0.97、150ms 弹性回弹，主按钮悬停时微微抬升，页面切换以 300ms 的上浮淡入过渡",
+      "加载动画由传统转圈改为微光骨架屏，首屏更顺滑",
+      "Perplexity 式滚动感知 — 顶部细渐变进度条跟踪滚动位置，底部浮动玻璃操作栏会根据当前页面动态变换上下文操作，闲置时收起为小药丸",
+    ],
+  },
   {
     version: "6.11",
     date: "2026-07-31",
