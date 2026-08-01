@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection } from "@/components/shared";
+import { useTheme, Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection } from "@/components/shared";
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
@@ -1484,6 +1484,7 @@ function AdvisorDetailDialog({
 // ---------- Page ----------
 export default function Advisors() {
   const { t, lang } = useLang();
+  const { dark } = useTheme();
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [, params] = useRoute("/advisors/:id");
@@ -1847,7 +1848,7 @@ export default function Advisors() {
         ) : view === "map" ? (
           <div className="mt-6">
             <p className="mb-3 text-xs text-muted-foreground" data-testid="text-advisor-map-hint">{t("advisorMapHint")}</p>
-            <AdvisorStarMap advisors={filtered} partnerships={partnerships ?? []} onSelect={(id) => navigate(`/advisors/${id}`)} height={620} />
+            <AdvisorStarMap advisors={filtered} partnerships={partnerships ?? []} onSelect={(id) => navigate(`/advisors/${id}`)} height={620} dark={dark} />
           </div>
         ) : groupBy === "none" ? (
           <div className="mt-6">{renderRoster(filtered)}</div>

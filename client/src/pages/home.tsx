@@ -3,7 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { useLang } from "@/lib/i18n";
-import { Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter, GroupedRegionFilter, DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
+import { useTheme, Layout, PartnershipCard, PartnershipDetailDialog, PartnerLogo, StageBadge, NewBadge, MultiSelectFilter, GroupedRegionFilter, DEFAULT_VIEW_OPTIONS, type ViewOptions } from "@/components/shared";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -22,6 +22,7 @@ type ViewMode = "cards" | "network" | "timeline";
 
 export default function Home({ initialView = "network", initialHof = false }: { initialView?: ViewMode; initialHof?: boolean }) {
   const { t, lang } = useLang();
+  const { dark } = useTheme();
   const queryClient = useQueryClient();
   const { data: partnerships, isLoading } = useQuery<Partnership[]>({
     queryKey: ["/api/partnerships"],
@@ -388,7 +389,7 @@ export default function Home({ initialView = "network", initialHof = false }: { 
             <div className="mb-4">
               <NetworkLegend />
             </div>
-            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} advisors={advisors ?? []} onSelectAdvisor={(id) => navigate(`/advisors/${id}`)} />
+            <NetworkGraph partnerships={filtered} onSelect={setSelected} height={560} options={viewOpts} selectedRegions={region} onToggleRegion={(r) => setRegion(region.includes(r) ? region.filter((x) => x !== r) : [...region, r])} advisors={advisors ?? []} onSelectAdvisor={(id) => navigate(`/advisors/${id}`)} dark={dark} />
           </div>
         ) : view === "timeline" ? (
           timeline.dated.length === 0 ? (

@@ -43,6 +43,40 @@ function mulberry32(seed: number) {
 }
 
 const PARTICLE_COLORS = ["#A8D8E8", "#9BE29B", "#C9B8F0", "#EAF3FA", "#F0C75E"];
+// v7.03 — muted particles for light mode (the pastel set above is invisible on light)
+const LIGHT_PARTICLE_COLORS = ["#3E6E90", "#4E8E5E", "#6E5BA0", "#2E5E7E", "#B8862A"];
+
+/**
+ * v7.03 — theme-aware palette so the star maps render in both dark and light mode.
+ * `bgAlpha` makes the cosmic backdrop semi-transparent (glass) so the portal's
+ * galaxy/oasis background shows through instead of being fully blocked.
+ */
+function themePalette(dark: boolean) {
+  return {
+    isLight: !dark,
+    bgStops: dark ? ["#16385E", "#0B2240", "#040D1C"] : ["#E8F2FC", "#CBE2F6", "#A9C8E6"],
+    bgAlpha: 0.65,
+    starColor: dark ? "#EAF3FA" : "rgba(28,58,92,0.6)",
+    particleColors: dark ? PARTICLE_COLORS : LIGHT_PARTICLE_COLORS,
+    link: {
+      trunk: dark ? "rgba(240,199,94,0.5)" : "rgba(190,140,20,0.55)",
+      branch: dark ? "rgba(168,216,232,0.4)" : "rgba(30,100,140,0.45)",
+      child: dark ? "rgba(240,199,94,0.55)" : "rgba(190,140,20,0.6)",
+      adv: dark ? "rgba(240,199,94,0.35)" : "rgba(190,140,20,0.5)",
+      web: dark ? "rgba(168,216,232,0.12)" : "rgba(30,100,140,0.2)",
+    },
+    catColor: (c: Category) => (dark ? CATEGORY_COLORS_DARK[c] : CATEGORY_COLORS[c]),
+    hubBodyFill: dark ? "#0B2240" : "#FFFFFF",
+    nodeStroke: dark ? "rgba(234,243,250,0.9)" : "rgba(15,35,60,0.5)",
+    label: dark ? "#EAF3FA" : "#16324F",
+    sub: dark ? "#A8C4DA" : "#3E5C7A",
+    centerText: "#0C2340",
+    hoverName: dark ? "#F0C75E" : "#0C2340",
+    haloNode: dark ? 0.28 : 0.22,
+    haloHubSelected: dark ? 0.5 : 0.4,
+    haloHubBase: dark ? 0.2 : 0.14,
+  };
+}
 
 /** v6.01 — instant HTML tooltip that follows the cursor (native SVG <title> has a ~1s browser delay) */
 function attachFastTooltip(
@@ -111,6 +145,7 @@ export function NetworkGraph({
   onToggleRegion,
   advisors,
   onSelectAdvisor,
+  dark,
 }: {
   partnerships: Partnership[];
   onSelect: (p: Partnership) => void;
@@ -120,6 +155,8 @@ export function NetworkGraph({
   onToggleRegion?: (region: string) => void;
   advisors?: AdvisorWithRoles[];
   onSelectAdvisor?: (advisorId: number) => void;
+  /** v7.03 — when false, render the day-sky light theme instead of the cosmic dark one */
+  dark?: boolean;
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -137,6 +174,7 @@ export function NetworkGraph({
     const cx = width / 2;
     const cy = height / 2;
     const rand = mulberry32(42);
+    const pal = themePalette(dark ?? true);
 
     const centerNode: GraphNode = {
       id: "gobi",
@@ -179,7 +217,7 @@ export function NetworkGraph({
       color:
         groupBy === "region"
           ? (REGION_COLORS[k as Region] ?? "#48A9C5")
-          : (CATEGORY_COLORS_DARK[k as Category] ?? CATEGORY_COLORS_DARK.other),
+          : pal.catColor(k as Category),
       isHub: true,
       hubKey: k,
       hubGroup: groupBy,
@@ -192,7 +230,7 @@ export function NetworkGraph({
       label: lang === "cn" && p.nameCn ? p.nameCn : p.nameEn,
       sub: isChild || dense ? undefined : p.partnershipType ?? undefined,
       r: isChild ? 10 + p.collabLevel * 2.5 : (dense ? 11 : 13) + p.collabLevel * (dense ? 3 : 4),
-      color: CATEGORY_COLORS_DARK[p.category as Category] ?? CATEGORY_COLORS_DARK.other,
+      color: pal.catColor(p.category as Category),
       partnership: p,
     });
 
@@ -259,7 +297,7 @@ export function NetworkGraph({
     const particles: GraphNode[] = Array.from({ length: particleCount }, (_, i) => ({
       id: `dot-${i}`,
       r: 1.6 + rand() * 2.6,
-      color: PARTICLE_COLORS[Math.floor(rand() * PARTICLE_COLORS.length)],
+      color: pal.particleColors[Math.floor(rand() * pal.particleColors.length)],
       opacity: 0.25 + rand() * 0.5,
       isParticle: true,
       x: rand() * width,
@@ -298,9 +336,9 @@ export function NetworkGraph({
     // ---- cosmic backdrop (fixed, not zoomed) ----
     const defs = svg.append("defs");
     const grad = defs.append("radialGradient").attr("id", "net-bg").attr("cx", "50%").attr("cy", "42%").attr("r", "75%");
-    grad.append("stop").attr("offset", "0%").attr("stop-color", "#16385E");
-    grad.append("stop").attr("offset", "55%").attr("stop-color", "#0B2240");
-    grad.append("stop").attr("offset", "100%").attr("stop-color", "#040D1C");
+    grad.append("stop").attr("offset", "0%").attr("stop-color", pal.bgStops[0]).attr("stop-opacity", pal.bgAlpha);
+    grad.append("stop").attr("offset", "55%").attr("stop-color", pal.bgStops[1]).attr("stop-opacity", pal.bgAlpha);
+    grad.append("stop").attr("offset", "100%").attr("stop-color", pal.bgStops[2]).attr("stop-opacity", pal.bgAlpha);
 
     const glow = defs.append("filter").attr("id", "net-glow").attr("x", "-80%").attr("y", "-80%").attr("width", "260%").attr("height", "260%");
     glow.append("feGaussianBlur").attr("stdDeviation", 5).attr("result", "b");
@@ -320,8 +358,8 @@ export function NetworkGraph({
         .attr("cx", rand() * width * 1.4 - width * 0.2)
         .attr("cy", rand() * height * 1.4 - height * 0.2)
         .attr("r", rand() * 1.1 + 0.3)
-        .attr("fill", "#EAF3FA")
-        .attr("opacity", 0.08 + rand() * 0.22);
+        .attr("fill", pal.starColor)
+        .attr("opacity", pal.isLight ? 0.2 + rand() * 0.3 : 0.08 + rand() * 0.22);
     }
 
     const zoomBehavior = zoom<SVGSVGElement, unknown>()
@@ -344,14 +382,14 @@ export function NetworkGraph({
       .join("line")
       .attr("stroke", (d) =>
         d.kind === "trunk"
-          ? "rgba(240,199,94,0.5)"
+          ? pal.link.trunk
           : d.kind === "branch"
-            ? "rgba(168,216,232,0.4)"
+            ? pal.link.branch
             : d.kind === "child"
-              ? "rgba(240,199,94,0.55)"
+              ? pal.link.child
               : d.kind === "adv"
-                ? "rgba(240,199,94,0.35)"
-                : "rgba(168,216,232,0.12)",
+                ? pal.link.adv
+                : pal.link.web,
       )
       .attr("stroke-width", (d) =>
         d.kind === "trunk" ? 1.6 : d.kind === "branch" ? 0.8 + (d.strength ?? 1) * 0.3 : d.kind === "child" ? 1.1 : d.kind === "adv" ? 0.7 : 0.6,
@@ -406,8 +444,8 @@ export function NetworkGraph({
       .attr("fill", (d) => d.color)
       .attr("opacity", (d) =>
         d.isHub
-          ? (d.hubGroup === "region" && d.hubKey && selectedRegions.includes(d.hubKey) ? 0.5 : 0.2)
-          : 0.28,
+          ? (d.hubGroup === "region" && d.hubKey && selectedRegions.includes(d.hubKey) ? pal.haloHubSelected : pal.haloHubBase)
+          : pal.haloNode,
       )
       .attr("filter", "url(#net-glow)");
 
@@ -415,7 +453,7 @@ export function NetworkGraph({
       .append("circle")
       .attr("class", "body")
       .attr("r", (d) => d.r)
-      .attr("fill", (d) => (d.isHub ? "#0B2240" : d.color))
+      .attr("fill", (d) => (d.isHub ? pal.hubBodyFill : d.color))
       .attr("opacity", (d) => d.opacity ?? 1)
       .attr("stroke", (d) =>
         d.isParticle
@@ -424,7 +462,7 @@ export function NetworkGraph({
             ? "#F0C75E"
             : d.isHub
               ? d.color
-              : "rgba(234,243,250,0.9)",
+              : pal.nodeStroke,
       )
       .attr("stroke-width", (d) =>
         d.isCenter
@@ -480,7 +518,7 @@ export function NetworkGraph({
       .attr("dy", (d) => d.r + 15)
       .attr("font-size", (d) => (d.partnership?.parentId ? 9.5 : dense ? 9.5 : 10.5))
       .attr("font-weight", 600)
-      .attr("fill", "#EAF3FA");
+      .attr("fill", pal.label);
 
     nodeSel
       .filter((d) => !d.isCenter && !d.isHub && !d.isParticle && !d.isAdvisor && !!d.sub)
@@ -489,7 +527,7 @@ export function NetworkGraph({
       .attr("text-anchor", "middle")
       .attr("dy", (d) => d.r + 28)
       .attr("font-size", 9)
-      .attr("fill", "#A8C4DA");
+      .attr("fill", pal.sub);
 
     // NEW tag above recently added partners
     if (options.newBadge) {
@@ -539,14 +577,14 @@ export function NetworkGraph({
           .transition().duration(150)
           .attr("font-size", 12)
           .attr("font-weight", 800)
-          .attr("fill", "#F0C75E");
+          .attr("fill", pal.hoverName);
       })
       .on("mouseleave", function (_event, d) {
         const g = select(this);
         g.select<SVGCircleElement>("circle.body")
           .transition().duration(200)
           .attr("r", d.r)
-          .attr("stroke", d.isHub ? d.color : "rgba(234,243,250,0.9)")
+          .attr("stroke", d.isHub ? d.color : pal.nodeStroke)
           .attr("stroke-width", d.isHub ? 1.8 : 1.2);
         g.select<SVGCircleElement>("circle.halo")
           .transition().duration(200)
@@ -556,7 +594,7 @@ export function NetworkGraph({
           .transition().duration(200)
           .attr("font-size", d.partnership?.parentId ? 9.5 : dense ? 9.5 : 10.5)
           .attr("font-weight", 600)
-          .attr("fill", "#EAF3FA");
+          .attr("fill", pal.label);
       });
 
     const sim = forceSimulation<GraphNode>(nodes)
@@ -621,7 +659,7 @@ export function NetworkGraph({
     return () => {
       sim.stop();
     };
-  }, [partnerships, lang, t, height, groupBy, options, selectedRegions, onToggleRegion, advisors, showAdvisors, onSelectAdvisor]);
+  }, [partnerships, lang, t, height, groupBy, options, selectedRegions, onToggleRegion, advisors, showAdvisors, onSelectAdvisor, dark]);
 
   const zoomBy = (factor: number) => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
@@ -633,19 +671,19 @@ export function NetworkGraph({
   };
 
   return (
-    <div className="rounded-xl border border-card-border overflow-hidden bg-[#0B2240]">
-      <div className="flex items-center justify-end gap-1 px-3 py-2 bg-[#0B2240] border-b border-white/10">
-        <span className="text-[11px] font-medium text-[#A8C4DA] mr-1">{t("layerBy")}</span>
+    <div className="rounded-xl border border-border overflow-hidden bg-background/40 backdrop-blur-md">
+      <div className="flex items-center justify-end gap-1 px-3 py-2 bg-background/50 border-b border-border">
+        <span className="text-[11px] font-medium text-muted-foreground mr-1">{t("layerBy")}</span>
         <button
           onClick={() => setGroupBy("region")}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${groupBy === "region" ? "bg-[#48A9C5]/20 text-[#A8D8E8] border border-[#48A9C5]/50" : "text-[#7E97AF] border border-transparent"}`}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${groupBy === "region" ? "bg-primary/15 text-primary border border-primary/50" : "text-muted-foreground border border-transparent"}`}
           data-testid="button-layer-region"
         >
           {t("layerRegion")}
         </button>
         <button
           onClick={() => setGroupBy("category")}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${groupBy === "category" ? "bg-[#48A9C5]/20 text-[#A8D8E8] border border-[#48A9C5]/50" : "text-[#7E97AF] border border-transparent"}`}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${groupBy === "category" ? "bg-primary/15 text-primary border border-primary/50" : "text-muted-foreground border border-transparent"}`}
           data-testid="button-layer-type"
         >
           {t("layerType")}
@@ -653,7 +691,7 @@ export function NetworkGraph({
         {advisors && advisors.length > 0 && (
           <button
             onClick={() => setShowAdvisors((v) => !v)}
-            className={`ml-2 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${showAdvisors ? "bg-[hsl(var(--gold))]/15 text-[#F0C75E] border border-[#F0C75E]/50" : "text-[#7E97AF] border border-transparent"}`}
+            className={`ml-2 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${showAdvisors ? "bg-[hsl(var(--gold))]/15 text-[hsl(var(--gold))] border border-[hsl(var(--gold))]/50" : "text-muted-foreground border border-transparent"}`}
             data-testid="button-toggle-advisors"
           >
             {t("navAdvisors")}
@@ -666,13 +704,13 @@ export function NetworkGraph({
           ref={tooltipRef}
           data-testid="graph-tooltip"
           style={{ display: "none" }}
-          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[#F0C75E]/40 bg-[#0B2240]/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#EAF3FA] shadow-xl backdrop-blur"
+          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[hsl(var(--gold))]/40 bg-background/90 px-2.5 py-1.5 text-[11px] leading-snug text-foreground shadow-xl backdrop-blur"
         />
         {/* Zoom controls */}
         <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
           <button
             onClick={() => zoomBy(1.4)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Zoom in"
             data-testid="button-zoom-in"
           >
@@ -680,7 +718,7 @@ export function NetworkGraph({
           </button>
           <button
             onClick={() => zoomBy(1 / 1.4)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Zoom out"
             data-testid="button-zoom-out"
           >
@@ -688,7 +726,7 @@ export function NetworkGraph({
           </button>
           <button
             onClick={zoomReset}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Reset zoom"
             data-testid="button-zoom-reset"
           >
@@ -709,11 +747,14 @@ export function AdvisorStarMap({
   partnerships,
   onSelect,
   height = 620,
+  /** v7.03 — when false, render the day-sky light theme instead of the cosmic dark one */
+  dark = true,
 }: {
   advisors: AdvisorWithRoles[];
   partnerships: Partnership[];
   onSelect: (advisorId: number) => void;
   height?: number;
+  dark?: boolean;
 }) {
   const { t, lang } = useLang();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -728,6 +769,7 @@ export function AdvisorStarMap({
     const cx = width / 2;
     const cy = height / 2;
     const rand = mulberry32(7);
+    const pal = themePalette(dark ?? true);
 
     const pById = new Map<number, Partnership>();
     partnerships.forEach((p) => pById.set(p.id, p));
@@ -820,7 +862,7 @@ export function AdvisorStarMap({
     const particles: GraphNode[] = Array.from({ length: 34 }, (_, i) => ({
       id: `dot-${i}`,
       r: 1.4 + rand() * 2.4,
-      color: PARTICLE_COLORS[Math.floor(rand() * PARTICLE_COLORS.length)],
+      color: pal.particleColors[Math.floor(rand() * pal.particleColors.length)],
       opacity: 0.22 + rand() * 0.45,
       isParticle: true,
       x: rand() * width,
@@ -837,9 +879,9 @@ export function AdvisorStarMap({
 
     const defs = svg.append("defs");
     const grad = defs.append("radialGradient").attr("id", "adv-bg").attr("cx", "50%").attr("cy", "42%").attr("r", "75%");
-    grad.append("stop").attr("offset", "0%").attr("stop-color", "#16385E");
-    grad.append("stop").attr("offset", "55%").attr("stop-color", "#0B2240");
-    grad.append("stop").attr("offset", "100%").attr("stop-color", "#040D1C");
+    grad.append("stop").attr("offset", "0%").attr("stop-color", pal.bgStops[0]).attr("stop-opacity", pal.bgAlpha);
+    grad.append("stop").attr("offset", "55%").attr("stop-color", pal.bgStops[1]).attr("stop-opacity", pal.bgAlpha);
+    grad.append("stop").attr("offset", "100%").attr("stop-color", pal.bgStops[2]).attr("stop-opacity", pal.bgAlpha);
     const glow = defs.append("filter").attr("id", "adv-glow").attr("x", "-80%").attr("y", "-80%").attr("width", "260%").attr("height", "260%");
     glow.append("feGaussianBlur").attr("stdDeviation", 5).attr("result", "b");
     const merge = glow.append("feMerge");
@@ -855,8 +897,8 @@ export function AdvisorStarMap({
         .attr("cx", rand() * width * 1.4 - width * 0.2)
         .attr("cy", rand() * height * 1.4 - height * 0.2)
         .attr("r", rand() * 1.1 + 0.3)
-        .attr("fill", "#EAF3FA")
-        .attr("opacity", 0.08 + rand() * 0.22);
+        .attr("fill", pal.starColor)
+        .attr("opacity", pal.isLight ? 0.2 + rand() * 0.3 : 0.08 + rand() * 0.22);
     }
 
     const zoomBehavior = zoom<SVGSVGElement, unknown>()
@@ -875,7 +917,7 @@ export function AdvisorStarMap({
       .selectAll("line")
       .data(links)
       .join("line")
-      .attr("stroke", (d) => (d.kind === "trunk" ? "rgba(240,199,94,0.45)" : d.kind === "adv" ? "rgba(240,199,94,0.35)" : "rgba(168,216,232,0.1)"))
+      .attr("stroke", (d) => (d.kind === "trunk" ? pal.link.trunk : d.kind === "adv" ? pal.link.adv : pal.link.web))
       .attr("stroke-width", (d) => (d.kind === "trunk" ? 1.4 : d.kind === "adv" ? 0.8 : 0.6))
       .attr("stroke-dasharray", (d) => (d.kind === "adv" ? "1.5 3" : d.kind === "web" ? "2 4" : null));
 
@@ -909,16 +951,16 @@ export function AdvisorStarMap({
       .attr("class", "halo")
       .attr("r", (d) => d.r * (d.isHub ? 1.35 : 1.6))
       .attr("fill", (d) => d.color)
-      .attr("opacity", (d) => (d.isHub ? 0.18 : 0.3))
+      .attr("opacity", (d) => (d.isHub ? pal.haloHubBase : pal.haloNode))
       .attr("filter", "url(#adv-glow)");
 
     nodeSel
       .append("circle")
       .attr("class", "body")
       .attr("r", (d) => d.r)
-      .attr("fill", (d) => (d.isHub ? "#0B2240" : d.color))
+      .attr("fill", (d) => (d.isHub ? pal.hubBodyFill : d.color))
       .attr("opacity", (d) => d.opacity ?? 1)
-      .attr("stroke", (d) => (d.isParticle ? "none" : d.isHub ? d.color : "rgba(234,243,250,0.9)"))
+      .attr("stroke", (d) => (d.isParticle ? "none" : d.isHub ? d.color : pal.nodeStroke))
       .attr("stroke-width", (d) => (d.isCenter ? 2 : d.isHub ? 1.8 : 1))
       .attr("filter", (d) => (d.isParticle ? "url(#adv-glow)" : null));
 
@@ -952,7 +994,7 @@ export function AdvisorStarMap({
       .attr("dy", (d) => d.r + 14)
       .attr("font-size", 9.5)
       .attr("font-weight", 700)
-      .attr("fill", "#A8D8E8");
+      .attr("fill", pal.label);
 
     nodeSel
       .filter((d) => !!d.isAdvisor)
@@ -963,7 +1005,7 @@ export function AdvisorStarMap({
       .attr("dy", (d) => d.r + 12)
       .attr("font-size", 8.5)
       .attr("font-weight", 600)
-      .attr("fill", "#EAF3FA")
+      .attr("fill", pal.label)
       .attr("opacity", 0.85);
 
     nodeSel
@@ -976,16 +1018,16 @@ export function AdvisorStarMap({
         g.select<SVGCircleElement>("circle.halo").transition().duration(150)
           .attr("opacity", 0.5).attr("r", d.r * 2);
         g.select<SVGTextElement>("text.name").transition().duration(150)
-          .attr("font-size", 11).attr("font-weight", 800).attr("fill", "#F0C75E").attr("opacity", 1);
+          .attr("font-size", 11).attr("font-weight", 800).attr("fill", pal.hoverName).attr("opacity", 1);
       })
       .on("mouseleave", function (_event, d) {
         const g = select(this);
         g.select<SVGCircleElement>("circle.body").transition().duration(200)
-          .attr("r", d.r).attr("stroke", d.isHub ? d.color : "rgba(234,243,250,0.9)").attr("stroke-width", d.isHub ? 1.8 : 1);
+          .attr("r", d.r).attr("stroke", d.isHub ? d.color : pal.nodeStroke).attr("stroke-width", d.isHub ? 1.8 : 1);
         g.select<SVGCircleElement>("circle.halo").transition().duration(200)
           .attr("opacity", d.isHub ? 0.18 : 0.3).attr("r", d.r * (d.isHub ? 1.35 : 1.6));
         g.select<SVGTextElement>("text.name").transition().duration(200)
-          .attr("font-size", 8.5).attr("font-weight", 600).attr("fill", "#EAF3FA").attr("opacity", 0.85);
+          .attr("font-size", 8.5).attr("font-weight", 600).attr("fill", pal.label).attr("opacity", 0.85);
       });
 
     const sim = forceSimulation<GraphNode>(nodes)
@@ -1037,7 +1079,7 @@ export function AdvisorStarMap({
     return () => {
       sim.stop();
     };
-  }, [advisors, partnerships, lang, t, height, onSelect]);
+  }, [advisors, partnerships, lang, t, height, onSelect, dark]);
 
   const zoomBy = (factor: number) => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
@@ -1049,19 +1091,19 @@ export function AdvisorStarMap({
   };
 
   return (
-    <div className="rounded-xl border border-card-border overflow-hidden bg-[#0B2240]">
+    <div className="rounded-xl border border-border overflow-hidden bg-background/40 backdrop-blur-md">
       <div className="relative">
         <svg ref={svgRef} className="w-full touch-none" style={{ height }} data-testid="svg-advisor-map" />
         <div
           ref={tooltipRef}
           data-testid="advmap-tooltip"
           style={{ display: "none" }}
-          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[#F0C75E]/40 bg-[#0B2240]/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#EAF3FA] shadow-xl backdrop-blur"
+          className="pointer-events-none absolute z-20 max-w-[280px] rounded-md border border-[hsl(var(--gold))]/40 bg-background/90 px-2.5 py-1.5 text-[11px] leading-snug text-foreground shadow-xl backdrop-blur"
         />
         <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
           <button
             onClick={() => zoomBy(1.4)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Zoom in"
             data-testid="button-advmap-zoom-in"
           >
@@ -1069,7 +1111,7 @@ export function AdvisorStarMap({
           </button>
           <button
             onClick={() => zoomBy(1 / 1.4)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Zoom out"
             data-testid="button-advmap-zoom-out"
           >
@@ -1077,7 +1119,7 @@ export function AdvisorStarMap({
           </button>
           <button
             onClick={zoomReset}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-[#0B2240]/80 text-[#A8D8E8] backdrop-blur transition-colors hover:bg-[#48A9C5]/30 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/70 text-foreground/80 backdrop-blur transition-colors hover:bg-primary/30 hover:text-foreground"
             aria-label="Reset zoom"
             data-testid="button-advmap-zoom-reset"
           >

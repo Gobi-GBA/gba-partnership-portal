@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.02";
+export const CURRENT_VERSION = "7.03";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.03",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.03 — star maps get light mode and a glass backdrop",
+    titleCn: "v7.03 — 星图新增日间模式与玻璃背景",
+    itemsEn: [
+      "Network star map (partners) and advisor star map now follow the app theme — a day-sky light palette (soft blue gradient, dark node labels and strokes) renders in light mode instead of always being dark",
+      "Both star-map backdrops are now semi-transparent (glass) instead of solid, so the portal's galaxy/oasis background shows through instead of being fully blocked",
+      "Star-map card chrome (toolbar, zoom buttons, tooltip) switched to theme tokens, so it reads correctly in both dark and light",
+    ],
+    itemsCn: [
+      "合作星图（伙伴）与顾问星图现在跟随应用主题 —— 日间模式下呈现「日间天空」浅色配色（柔和蓝色渐变、深色节点文字与描边），不再始终为深色",
+      "两张星图背景改为半透明玻璃质感，门户的星系 / 绿洲背景得以透出，不再完全遮挡",
+      "星图卡片控件（工具栏、缩放按钮、提示框）改用主题色变量，在深色与浅色下均清晰可读",
+    ],
+  },
   {
     version: "7.02",
     date: "2026-08-01",
