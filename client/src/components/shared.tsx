@@ -25,6 +25,7 @@ import { API_BASE, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { VersionLogDialog, ProfileDialog, UserAvatar, ForcedPasswordDialog } from "@/components/user-panels";
 import { CURRENT_VERSION } from "@/lib/versions";
+import { ScrollProgressBar, ContextualActionBar, type ActionBarAction } from "@/components/scroll-bars";
 
 // Auto-open the version log once per browser session after login (memory only — no storage APIs).
 let versionLogShown = false;
@@ -478,10 +479,22 @@ export function Layout({ children }: { children: ReactNode }) {
       </span>
     ) : null;
 
+  // v7.0 — contextual actions for the bottom bar, derived from the current route
+  const navActions: ActionBarAction[] = [
+    { id: "home", label: t("navDirectory"), onClick: () => navigate("/"), variant: location === "/" ? "accent" : "ghost" },
+    { id: "submit", label: t("navSubmit"), onClick: () => navigate("/submit"), variant: location === "/submit" ? "accent" : "ghost" },
+    { id: "advisors", label: t("navAdvisors"), onClick: () => navigate("/advisors"), variant: location.startsWith("/advisors") ? "accent" : "ghost" },
+    { id: "updates", label: t("navUpdates"), onClick: () => navigate("/updates"), variant: location === "/updates" ? "accent" : "ghost" },
+  ];
+  if (user?.role === "admin") {
+    navActions.push({ id: "admin", label: t("navAdmin"), onClick: () => navigate("/admin"), variant: location === "/admin" ? "accent" : "ghost" });
+  }
+
   return (
     <div className="relative min-h-screen flex flex-col text-foreground">
       <GalaxyBackground />
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+      <ScrollProgressBar />
+      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md">
         <div className="mx-auto max-w-[1400px] px-4 h-16 flex items-center gap-3">
           <Link href="/" data-testid="link-home" className="flex items-center gap-3 shrink-0">
             <img
@@ -584,7 +597,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {open && (
-          <div className="xl:hidden border-t border-border bg-background px-4 py-3 space-y-1">
+          <div className="xl:hidden border-t border-border bg-background/80 backdrop-blur-md px-4 py-3 space-y-1">
             {links.filter((l) => l.show).map((l) => (
               <Link key={l.href} href={l.href}>
                 <span
@@ -659,7 +672,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="flex-1">{children}</main>
+      <main key={location} className="flex-1 fade-in-up">{children}</main>
 
       {warping && (
         <WarpOverlay
@@ -721,6 +734,12 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </footer>
+
+      {/* v7.0 — Perplexity-style bottom contextual action bar */}
+      <ContextualActionBar actions={navActions} />
+
+      {/* Bottom padding so content isn't hidden behind the floating bar */}
+      <div className="h-16 shrink-0" aria-hidden="true" />
     </div>
   );
 }
