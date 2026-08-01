@@ -93,11 +93,14 @@ export async function sendMail(to: string, subject: string, bodyHtml: string): P
 
 // v5.8 — Raw outreach send (CRM). No automated/do-not-reply chrome: this is a
 // person-to-person email (e.g. Fred → advisor). Body may be plain text or HTML.
+// v7.01 — attachments supported (e.g. advisor CVs on approval emails).
+export type OutreachAttachment = { filename: string; content: Buffer; contentType?: string };
+
 export async function sendOutreach(
   to: string,
   subject: string,
   body: string,
-  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[]; text?: string },
+  opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[]; text?: string; attachments?: OutreachAttachment[] },
 ): Promise<boolean> {
   if (!transporter) return false;
   const fromName = opts?.fromName ?? "Gobi Partners";
@@ -111,6 +114,7 @@ export async function sendOutreach(
       // v6.11 — HTML sends may carry an explicit plain-text alternative so mail
       // clients without HTML rendering still get a readable message.
       ...(opts?.isHtml ? { html: body, ...(opts.text ? { text: opts.text } : {}) } : { text: body }),
+      ...(opts?.attachments ? { attachments: opts.attachments } : {}),
     });
     return true;
   } catch (err) {

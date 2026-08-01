@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.0";
+export const CURRENT_VERSION = "7.01";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.01",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.01 — Updates page tabs, approval email CCs, CV attachment and subject line",
+    titleCn: "v7.01 — Updates 页面标签化、审批邮件抄送、CV 附件与主题优化",
+    itemsEn: [
+      "System requests & feedback now lives in its own tab on the Updates page, alongside System update log and Partnership records log",
+      "Advisor approval emails always CC the sender and chibo@gobi.vc, added to the existing default CC list",
+      "The advisor's latest CV file is automatically attached to the approval email when one exists",
+      "Approval email subject now includes both the advisor name and the proposer name, e.g. 'Advisor approval request — Name (proposed by Proposer)'",
+    ],
+    itemsCn: [
+      'Updates 页面新增"系统需求"标签，与"系统更新日志"、"合作记录日志"并列',
+      "顾问审批邮件始终抄送发送人与 chibo@gobi.vc，并在现有默认抄送基础上追加",
+      "当顾问存在 CV 文件时，最新 CV 将自动作为附件随审批邮件发送",
+      '审批邮件主题同时包含顾问姓名与推荐人姓名，例如"顾问审批申请 — 姓名（推荐人：推荐人姓名）"',
+    ],
+  },
   {
     version: "7.0",
     date: "2026-08-01",

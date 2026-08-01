@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction, CookieOptions } from "ex
 import type { Server } from "node:http";
 import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
 import { normalizeUrl, linkedinSlug } from "../shared/urls.js";
-import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail } from "./mailer.js";
+import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail, type OutreachAttachment } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
@@ -2393,6 +2393,20 @@ www.gobi.vc`,
   const APPROVAL_EXPIRY_DAYS = 7;
   const DEFAULT_APPROVAL_CC = ["fred@gobi.vc", "analyst01@gobi.vc"];
 
+  // v7.01 — approval emails always CC the sender and chibo@gobi.vc, plus any defaults.
+  function mergeApprovalCc(base: string[], senderEmail: string): string[] {
+    const required = [senderEmail, "chibo@gobi.vc"];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const e of [...required, ...base]) {
+      const normalized = e.trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(e.trim());
+    }
+    return out;
+  }
+
   function primaryRoleLine(advisor: Advisor, roles: AdvisorRole[]): string {
     const sorted = roles
       .filter((r) => r.advisorId === advisor.id)
@@ -2448,10 +2462,11 @@ www.gobi.vc`,
     const lang = approvalLangSchema.parse(req.body?.lang ?? "en");
     const cooEmail = ((await storage.getMeta("coo_email")) ?? "").trim();
     const base = await approvalEmailBase(advisor, lang, req.user!.name);
+    const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
     res.json({
       base,
       to: cooEmail,
-      cc: DEFAULT_APPROVAL_CC,
+      cc: mergeApprovalCc(DEFAULT_APPROVAL_CC, senderEmail),
       subject: approvalSubject(base),
       fallbackIntro: fallbackIntro(base),
       expiryDays: APPROVAL_EXPIRY_DAYS,
@@ -2526,7 +2541,11 @@ www.gobi.vc`,
     if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
     const parsed = approvalSendSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid email" });
-    const { lang, to, cc, subject, intro } = parsed.data;
+    const { lang, to, subject, intro } = parsed.data;
+
+    // v7.01 — sender and chibo@gobi.vc are always CC'd; CV is auto-attached if present.
+    const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
+    const cc = mergeApprovalCc(parsed.data.cc, senderEmail);
 
     const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + APPROVAL_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -2534,12 +2553,23 @@ www.gobi.vc`,
     const base = await approvalEmailBase(advisor, lang, req.user!.name);
     const { html, plain } = buildApprovalEmail({ ...base, intro, approvalLink });
 
+    const cvMeta = (await storage.listFileAssetMeta("advisor_cv", advisor.id))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    let attachments: OutreachAttachment[] | undefined;
+    if (cvMeta) {
+      const cv = await storage.getFileAsset(cvMeta.id);
+      if (cv) {
+        attachments = [{ filename: cv.filename, content: Buffer.from(cv.data, "base64"), contentType: cv.mime }];
+      }
+    }
+
     const ok = await sendOutreach(to, subject, html, {
       fromName: `${req.user!.name} · Gobi Partners`,
-      replyTo: req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc",
+      replyTo: senderEmail,
       isHtml: true,
       cc,
       text: plain,
+      attachments,
     });
     if (!ok) return res.status(502).json({ message: "Send failed" });
 
@@ -2555,7 +2585,7 @@ www.gobi.vc`,
         advisorId: advisor.id,
         date: new Date().toISOString().slice(0, 10),
         type: "email",
-        note: `[Approval] Sent approval request to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}`,
+        note: `[Approval] Sent approval request to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}${attachments ? ` + CV (${attachments[0].filename})` : ""}`,
         createdBy: req.user!.id,
         createdByName: req.user!.name,
         createdAt: new Date().toISOString(),

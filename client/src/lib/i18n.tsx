@@ -147,6 +147,7 @@ const dict = {
   updatesSub: { en: "Every release of the portal, newest first.", cn: "门户的每次发布，最新在前。" },
   tabSystemLog: { en: "System update log", cn: "系统更新日志" },
   tabPartnershipLog: { en: "Partnership records log", cn: "合作记录日志" },
+  tabSystemRequests: { en: "System requests", cn: "系统需求" },
   partnerLogTitle: { en: "Partnership records log", cn: "合作记录日志" },
   partnerLogSub: { en: "Every partnership on record, by date, newest first.", cn: "按日期记录的每个合作伙伴，最新在前。" },
   partnerLogEmpty: { en: "No partnership records yet.", cn: "暂无合作记录。" },

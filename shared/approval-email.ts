@@ -61,7 +61,7 @@ const L = {
     signoff: "Best regards,",
     footer: "Gobi Partners · 4209-11, Hopewell Centre, 183 Queen's Road East, Wanchai, Hong Kong",
     generated: "Generated from the Gobi Partners Partnership Portal.",
-    subject: (n: string) => `Advisor approval request — ${n}`,
+    subject: (n: string, p: string) => `Advisor approval request — ${n} (proposed by ${p})`,
     none: "—",
   },
   cn: {
@@ -89,7 +89,7 @@ const L = {
     signoff: "此致",
     footer: "Gobi Partners · 香港湾仔皇后大道东 183 号合和中心 4209-11 室",
     generated: "由 Gobi Partners 合作伙伴门户生成。",
-    subject: (n: string) => `顾问审批申请 — ${n}`,
+    subject: (n: string, p: string) => `顾问审批申请 — ${n}（推荐人：${p}）`,
     none: "—",
   },
 } as const;
@@ -112,8 +112,8 @@ function para(s: string): string {
   return esc(s).replace(/\n/g, "<br/>");
 }
 
-export function approvalSubject(data: Pick<ApprovalEmailData, "lang" | "fullName">): string {
-  return L[data.lang].subject(data.fullName);
+export function approvalSubject(data: Pick<ApprovalEmailData, "lang" | "fullName" | "requesterName">): string {
+  return L[data.lang].subject(data.fullName, data.requesterName || "");
 }
 
 /** Deterministic fallback used when AI drafting is unavailable or returns nothing. */

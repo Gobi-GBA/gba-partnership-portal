@@ -98,128 +98,14 @@ export default function Updates() {
   return (
     <Layout>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-12">
-        {/* ---- System requests & feedback ---- */}
-        <section>
-          <div className="flex items-center gap-2 mb-1">
-            <MessageSquarePlus className="h-5 w-5 text-[hsl(193,52%,38%)]" />
-            <h1 className="font-display text-xl font-bold" data-testid="text-requests-title">{t("requestsTitle")}</h1>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">{t("requestsSub")}</p>
-
-          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={t("requestPlaceholder")}
-              rows={3}
-              maxLength={2000}
-              data-testid="input-feedback"
-            />
-            <div className="flex justify-end">
-              <Button
-                onClick={() => submit.mutate()}
-                disabled={message.trim().length < 3 || submit.isPending}
-                className="bg-[hsl(193,52%,38%)] hover:bg-[hsl(193,52%,30%)] text-white"
-                data-testid="button-submit-feedback"
-              >
-                <Send className="h-4 w-4 mr-2" />
-                {t("newRequest")}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-8 mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              {isTeam && scope === "all" ? t("adminFeedback") : t("myRequests")}
-            </h2>
-            {isTeam && (
-              <div className="flex rounded-md border border-border overflow-hidden text-xs">
-                <button
-                  type="button"
-                  onClick={() => setScope("mine")}
-                  className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "mine" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
-                  data-testid="toggle-feedback-mine"
-                >
-                  {t("myRequests")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScope("all")}
-                  className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "all" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
-                  data-testid="toggle-feedback-all"
-                >
-                  {t("allRequests")}
-                </button>
-              </div>
-            )}
-          </div>
-          {mine.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-2" data-testid="tracker-feedback">
-              {FEEDBACK_STATUSES.map((s) =>
-                countOf(s) > 0 ? (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      setStatusFilter((f) => (f === s ? null : s));
-                      if (isTeam) setScope("mine");
-                    }}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-[11px] font-semibold transition-all",
-                      STATUS_STYLES[s],
-                      statusFilter === s ? "ring-2 ring-[hsl(43,55%,55%)] ring-offset-1 ring-offset-background" : "opacity-80 hover:opacity-100",
-                    )}
-                    data-testid={`chip-status-${s}`}
-                  >
-                    {t(`fbStatus_${s}` as any)} · {countOf(s)}
-                  </button>
-                ) : null,
-              )}
-            </div>
-          )}
-          {isLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : visible.length === 0 ? (
-            <p className="text-sm text-muted-foreground" data-testid="text-no-requests">{t("noRequests")}</p>
-          ) : (
-            <div className="space-y-3">
-              {visible.map((r) => (
-                <div key={r.id} className="rounded-lg border border-border bg-card p-4" data-testid={`card-feedback-${r.id}`}>
-                  <div className="flex items-start justify-between gap-3 mb-1.5">
-                    <div className="text-xs text-muted-foreground">
-                      {isTeam && scope === "all" && <span className="font-semibold text-foreground">{r.userName} · </span>}
-                      {isTeam && r.userId === user?.id && (
-                        <Badge variant="outline" className="mr-1.5 border-[hsl(43,55%,55%)]/40 bg-[hsl(43,55%,55%)]/10 px-1.5 py-0 text-[10px] font-bold text-[hsl(43,55%,35%)] dark:text-[hsl(43,55%,65%)]" data-testid="tag-feedback-you">
-                          {t("youTag")}
-                        </Badge>
-                      )}
-                      {fmtDate(r.createdAt)}
-                      {r.updatedAt && (r.status !== "open" || r.adminNote) && (
-                        <span className="ml-1.5 text-[hsl(193,52%,38%)]">· {t("fbUpdated")} {fmtDate(r.updatedAt)}</span>
-                      )}
-                    </div>
-                    <FeedbackStatusBadge status={r.status as FeedbackStatus} />
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap" data-testid={`text-feedback-message-${r.id}`}>{r.message}</p>
-                  {r.adminNote && (
-                    <div className="mt-2 rounded-md bg-muted px-3 py-2 text-sm">
-                      <span className="text-xs font-semibold text-muted-foreground block mb-0.5">{t("adminResponse")}</span>
-                      <span className="whitespace-pre-wrap">{r.adminNote}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* ---- Logs: system updates + partnership records (tabbed) ---- */}
+        {/* ---- Logs: system requests + system updates + partnership records (tabbed) ---- */}
         <section>
           <Tabs defaultValue="system" className="w-full">
             <TabsList className="mb-6">
+              <TabsTrigger value="requests" data-testid="tab-system-requests">
+                <MessageSquarePlus className="h-4 w-4 mr-2" />
+                {t("tabSystemRequests")}
+              </TabsTrigger>
               <TabsTrigger value="system" data-testid="tab-system-log">
                 <History className="h-4 w-4 mr-2" />
                 {t("tabSystemLog")}
@@ -230,7 +116,125 @@ export default function Updates() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Tab 1: system update log */}
+            {/* Tab 1: system requests */}
+            <TabsContent value="requests" data-testid="panel-system-requests">
+              <div className="flex items-center gap-2 mb-1">
+                <MessageSquarePlus className="h-5 w-5 text-[hsl(193,52%,38%)]" />
+                <h2 className="font-display text-xl font-bold" data-testid="text-requests-title">{t("requestsTitle")}</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">{t("requestsSub")}</p>
+
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <Textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={t("requestPlaceholder")}
+                  rows={3}
+                  maxLength={2000}
+                  data-testid="input-feedback"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => submit.mutate()}
+                    disabled={message.trim().length < 3 || submit.isPending}
+                    className="bg-[hsl(193,52%,38%)] hover:bg-[hsl(193,52%,30%)] text-white"
+                    data-testid="button-submit-feedback"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {t("newRequest")}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-8 mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {isTeam && scope === "all" ? t("adminFeedback") : t("myRequests")}
+                </h3>
+                {isTeam && (
+                  <div className="flex rounded-md border border-border overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setScope("mine")}
+                      className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "mine" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
+                      data-testid="toggle-feedback-mine"
+                    >
+                      {t("myRequests")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScope("all")}
+                      className={cn("px-2.5 py-1 font-semibold transition-colors", scope === "all" ? "bg-[hsl(193,52%,38%)] text-white" : "bg-card text-muted-foreground hover:text-foreground")}
+                      data-testid="toggle-feedback-all"
+                    >
+                      {t("allRequests")}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {mine.length > 0 && (
+                <div className="mb-4 flex flex-wrap gap-2" data-testid="tracker-feedback">
+                  {FEEDBACK_STATUSES.map((s) =>
+                    countOf(s) > 0 ? (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter((f) => (f === s ? null : s));
+                          if (isTeam) setScope("mine");
+                        }}
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-[11px] font-semibold transition-all",
+                          STATUS_STYLES[s],
+                          statusFilter === s ? "ring-2 ring-[hsl(43,55%,55%)] ring-offset-1 ring-offset-background" : "opacity-80 hover:opacity-100",
+                        )}
+                        data-testid={`chip-status-${s}`}
+                      >
+                        {t(`fbStatus_${s}` as any)} · {countOf(s)}
+                      </button>
+                    ) : null,
+                  )}
+                </div>
+              )}
+              {isLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : visible.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-no-requests">{t("noRequests")}</p>
+              ) : (
+                <div className="space-y-3">
+                  {visible.map((r) => (
+                    <div key={r.id} className="rounded-lg border border-border bg-card p-4" data-testid={`card-feedback-${r.id}`}>
+                      <div className="flex items-start justify-between gap-3 mb-1.5">
+                        <div className="text-xs text-muted-foreground">
+                          {isTeam && scope === "all" && <span className="font-semibold text-foreground">{r.userName} · </span>}
+                          {isTeam && r.userId === user?.id && (
+                            <Badge variant="outline" className="mr-1.5 border-[hsl(43,55%,55%)]/40 bg-[hsl(43,55%,55%)]/10 px-1.5 py-0 text-[10px] font-bold text-[hsl(43,55%,35%)] dark:text-[hsl(43,55%,65%)]" data-testid="tag-feedback-you">
+                              {t("youTag")}
+                            </Badge>
+                          )}
+                          {fmtDate(r.createdAt)}
+                          {r.updatedAt && (r.status !== "open" || r.adminNote) && (
+                            <span className="ml-1.5 text-[hsl(193,52%,38%)]">· {t("fbUpdated")} {fmtDate(r.updatedAt)}</span>
+                          )}
+                        </div>
+                        <FeedbackStatusBadge status={r.status as FeedbackStatus} />
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap" data-testid={`text-feedback-message-${r.id}`}>{r.message}</p>
+                      {r.adminNote && (
+                        <div className="mt-2 rounded-md bg-muted px-3 py-2 text-sm">
+                          <span className="text-xs font-semibold text-muted-foreground block mb-0.5">{t("adminResponse")}</span>
+                          <span className="whitespace-pre-wrap">{r.adminNote}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab 2: system update log */}
             <TabsContent value="system" data-testid="panel-system-log">
               <div className="flex items-center gap-2 mb-1">
                 <History className="h-5 w-5 text-[hsl(193,52%,38%)]" />
@@ -268,7 +272,7 @@ export default function Updates() {
               </div>
             </TabsContent>
 
-            {/* Tab 2: partnership records log */}
+            {/* Tab 3: partnership records log */}
             <TabsContent value="partnerships" data-testid="panel-partnership-log">
               <div className="flex items-center gap-2 mb-1">
                 <Handshake className="h-5 w-5 text-[hsl(193,52%,38%)]" />
