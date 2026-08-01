@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.03";
+export const CURRENT_VERSION = "7.04";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.04",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.04 — advisor update log added to the Updates page",
+    titleCn: "v7.04 — Updates 页面新增顾问更新日志",
+    itemsEn: [
+      "Added a fourth tab, Advisor update log, to the Updates page — it aggregates every advisor create, edit, approval, rejection and deletion across the roster",
+      "Each log entry shows the advisor name (link to their detail page), action, who made the change, timestamp and changed fields",
+      "New backend endpoint /api/advisors/audit joins advisor audit logs with advisor names, consistent with the existing per-advisor audit trail",
+    ],
+    itemsCn: [
+      "在 Updates 页面新增第四个标签页「顾问更新日志」，汇总整个顾问名单的创建、编辑、批准、拒绝与删除记录",
+      "每条日志展示顾问姓名（可跳转至详情页）、操作类型、操作人、时间戳与变更字段",
+      "新增后端接口 /api/advisors/audit，将顾问审计日志与顾问姓名关联，与现有的单顾问审计轨迹保持一致",
+    ],
+  },
   {
     version: "7.03",
     date: "2026-08-01",

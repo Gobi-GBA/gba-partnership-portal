@@ -1913,6 +1913,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(logs);
   });
 
+  // v7.04 — aggregated advisor update log for the Updates page
+  app.get("/api/advisors/audit", requireAuth("submit"), async (_req, res) => {
+    const logs = await storage.listAdvisorAuditLogs();
+    res.json(logs);
+  });
+
   // ---------- v6.04: advisor document filing (CVs + signed letters) ----------
   const advisorFileSchema = z.object({
     type: z.enum(["cv", "letter"]),

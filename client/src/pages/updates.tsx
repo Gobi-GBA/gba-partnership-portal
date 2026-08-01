@@ -13,14 +13,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PartnerLogo, StageBadge, CategoryBadge } from "@/components/shared";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
-import type { Feedback, FeedbackStatus, Partnership, Stage, Category } from "@shared/schema";
+import type { Feedback, FeedbackStatus, Partnership, Stage, Category, AuditLog } from "@shared/schema";
 import { FEEDBACK_STATUSES } from "@shared/schema";
-import { History, MessageSquarePlus, Send, Handshake } from "lucide-react";
+import { History, MessageSquarePlus, Send, Handshake, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { thankYou } from "@/components/thank-you";
 
 // The partnerships API enriches each row with the submitter's display name.
 type PartnershipWithAuthor = Partnership & { submittedByName?: string | null };
+// v7.04 — advisor audit log rows are joined with the advisor's name
+type AdvisorAuditLog = AuditLog & { advisorId: number | null; advisorName: string | null };
 
 export const STATUS_STYLES: Record<FeedbackStatus, string> = {
   open: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
@@ -67,6 +69,12 @@ export default function Updates() {
     enabled: !!user,
   });
 
+  // v7.04 — aggregated advisor update log
+  const { data: advisorLogs, isLoading: loadingAdvisorLogs } = useQuery<AdvisorAuditLog[]>({
+    queryKey: ["/api/advisors/audit"],
+    enabled: !!user,
+  });
+
   // Partnership records log: newest first, keyed on start date (fallback to created date)
   const logDate = (p: Partnership) => p.startDate || p.createdAt;
   const partnerLog = (partnerships ?? [])
@@ -74,6 +82,10 @@ export default function Updates() {
     .sort((a, b) => (logDate(a) < logDate(b) ? 1 : logDate(a) > logDate(b) ? -1 : b.id - a.id));
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", day: "numeric" });
+  const fmtDateTime = (d: string) =>
+    new Date(d).toLocaleString(lang === "cn" ? "zh-CN" : "en-US", {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
 
   const isTeam = user?.role === "admin" || user?.isDev === 1;
   const mine = (requests ?? []).filter((r) => r.userId === user?.id);
@@ -113,6 +125,10 @@ export default function Updates() {
               <TabsTrigger value="partnerships" data-testid="tab-partnership-log">
                 <Handshake className="h-4 w-4 mr-2" />
                 {t("tabPartnershipLog")}
+              </TabsTrigger>
+              <TabsTrigger value="advisors" data-testid="tab-advisor-log">
+                <Users className="h-4 w-4 mr-2" />
+                {t("tabAdvisorLog")}
               </TabsTrigger>
             </TabsList>
 
@@ -335,6 +351,75 @@ export default function Updates() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab 4: advisor update log */}
+            <TabsContent value="advisors" data-testid="panel-advisor-log">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="h-5 w-5 text-[hsl(193,52%,38%)]" />
+                <h2 className="font-display text-xl font-bold" data-testid="text-advisor-log-title">{t("advisorLogTitle")}</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">{t("advisorLogSub")}</p>
+
+              {loadingAdvisorLogs ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : !advisorLogs || advisorLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-advisor-log-empty">{t("advisorLogEmpty")}</p>
+              ) : (
+                <div className="relative border-l-2 border-border ml-2 space-y-6">
+                  {advisorLogs.map((l) => {
+                    const changedFields = (() => {
+                      if (!l.changes) return null;
+                      try {
+                        const keys = Object.keys(JSON.parse(l.changes));
+                        return keys.length ? keys.join(", ") : null;
+                      } catch {
+                        return null;
+                      }
+                    })();
+                    return (
+                      <div key={l.id} className="relative pl-6" data-testid={`advisor-log-entry-${l.id}`}>
+                        <span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-[hsl(193,52%,38%)]" />
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          <span className="text-xs text-muted-foreground tabular-nums" data-testid={`advisor-log-date-${l.id}`}>{fmtDateTime(l.createdAt)}</span>
+                          <span className="text-[11px] text-muted-foreground/70">·</span>
+                          <span className="text-[11px] font-semibold text-foreground" data-testid={`advisor-log-action-${l.id}`}>{t(`audit_${l.action}` as any)}</span>
+                          <span className="text-[11px] text-muted-foreground/70">·</span>
+                          <span className="text-[11px] text-muted-foreground/80" data-testid={`advisor-log-by-${l.id}`}>
+                            {t("auditBy")} {l.userName}
+                          </span>
+                        </div>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/advisors/${l.partnershipId}`)}
+                          onKeyDown={(e) => e.key === "Enter" && navigate(`/advisors/${l.partnershipId}`)}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-all hover:border-[hsl(var(--gold))]/50 hover:shadow-sm"
+                          data-testid={`link-advisor-log-${l.id}`}
+                        >
+                          <div className="h-8 w-8 shrink-0 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-bold">
+                            {(l.advisorName ?? "?").slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-sm truncate" data-testid={`advisor-log-name-${l.id}`}>
+                              {l.advisorName ?? t("advisorLogUnknown")}
+                            </div>
+                            {changedFields && (
+                              <p className="text-xs text-muted-foreground mt-0.5" data-testid={`advisor-log-fields-${l.id}`}>
+                                {t("auditChangedFields")}: {changedFields}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>

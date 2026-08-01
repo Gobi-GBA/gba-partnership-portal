@@ -2,7 +2,7 @@
 // Serverless-safe: no local filesystem, schema bootstrap + seed run once per cold start.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq, and, asc, getTableColumns } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { usersPg as users, sessionsPg as sessions, partnershipsPg as partnerships, attachmentsPg as attachments, changeRequestsPg as changeRequests, auditLogsPg as auditLogs, feedbackPg as feedback, rdItemsPg as rdItems, advisorsPg as advisors, advisorRolesPg as advisorRoles, sectorTagsPg as sectorTags, advisorTagsPg as advisorTags, partnershipTagsPg as partnershipTags, advisorActivitiesPg as advisorActivities, photoAssetsPg as photoAssets, fileAssetsPg as fileAssets } from "../shared/schema-pg.js";
 import type { User, Partnership, Attachment, PhotoAsset, FileAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
@@ -591,6 +591,18 @@ export function createPgStorage(): IStorage {
     async listAuditLogs(entityId: number, entityType = "partnership") {
       await init();
       return (await db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType)))) as AuditLog[];
+    }
+    async listAdvisorAuditLogs() {
+      await init();
+      return (await db.select({
+        ...getTableColumns(auditLogs),
+        advisorId: advisors.id,
+        advisorName: advisors.name,
+      })
+      .from(auditLogs)
+      .leftJoin(advisors, eq(auditLogs.partnershipId, advisors.id))
+      .where(eq(auditLogs.entityType, "advisor"))
+      .orderBy(desc(auditLogs.createdAt))) as (AuditLog & { advisorId: number | null; advisorName: string | null })[];
     }
 
     async listChangeRequests() {

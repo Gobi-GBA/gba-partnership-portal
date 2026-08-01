@@ -2,7 +2,7 @@ import { users, sessions, partnerships, attachments, photoAssets, fileAssets, ch
 import type { User, Partnership, Attachment, PhotoAsset, FileAsset, ChangeRequest, AuditLog, Feedback, RdItem, Advisor, AdvisorRole, SectorTag, AdvisorActivity } from "../shared/schema.js";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { SEED_PARTNERS } from "./seed-data.js";
 import { hashPassword, getSeedPassword, PHOTO_SEED, RD_SEED, type IStorage } from "./storage-common.js";
@@ -473,6 +473,18 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     }
     async listAuditLogs(entityId: number, entityType = "partnership") {
       return db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType))).all();
+    }
+    async listAdvisorAuditLogs() {
+      return db.select({
+        ...getTableColumns(auditLogs),
+        advisorId: advisors.id,
+        advisorName: advisors.name,
+      })
+      .from(auditLogs)
+      .leftJoin(advisors, eq(auditLogs.partnershipId, advisors.id))
+      .where(eq(auditLogs.entityType, "advisor"))
+      .orderBy(desc(auditLogs.createdAt))
+      .all();
     }
 
     async listChangeRequests() {
