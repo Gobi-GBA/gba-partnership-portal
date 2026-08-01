@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.09";
+export const CURRENT_VERSION = "7.10";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.10",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.10 — deeper glass: 50% more transparency on star maps, banner and cards",
+    titleCn: "v7.10 — 更深玻璃感：星图、横幅与卡片透明度提升约 50%",
+    itemsEn: [
+      "Halved the opacity of dark-mode surfaces so the animated galaxy background shows through more clearly: star map backdrops (bgAlpha 0.65→0.32), star map wrapper and toolbar, hero banner, recent-log card and entries, stat cards and skeletons",
+      "Light-mode star map white-box wrapper also halved (bg-background/40→/20) so the desert scene reads through in day mode",
+      "Fixed the dark-mode hero banner tint, which had never actually applied: the opacity was written as /85, which is not a valid Tailwind step, so the rule was never generated and the banner fell back to the light card colour. Now written as /[0.42] and rendering correctly",
+      "Hover and loading states lightened proportionally to keep the same visual contrast in both light and dark mode; text and border colours untouched",
+    ],
+    itemsCn: [
+      "将深色模式各表面的不透明度减半，让动态星空背景更清晰地透出：星图背景（bgAlpha 0.65→0.32）、星图容器与工具栏、首页横幅、最新记录卡片与条目、统计卡片与骨架屏",
+      "日间模式星图白色容器同步减半（bg-background/40→/20），让沙漠场景在白天也能透出",
+      "修复深色模式首页横幅底色：此前写作 /85，不是 Tailwind 的有效透明度档位，样式从未生成，横幅一直回落到浅色卡片底色。现改为 /[0.42]，已正常生效",
+      "悬停与加载态等比减弱，保持对比度一致；文字与边框颜色未改动",
+    ],
+  },
   {
     version: "7.09",
     date: "2026-08-01",

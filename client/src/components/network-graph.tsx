@@ -55,7 +55,7 @@ function themePalette(dark: boolean) {
   return {
     isLight: !dark,
     bgStops: dark ? ["#16385E", "#0B2240", "#040D1C"] : ["#E8F2FC", "#CBE2F6", "#A9C8E6"],
-    bgAlpha: 0.65,
+    bgAlpha: 0.32,
     starColor: dark ? "#EAF3FA" : "rgba(28,58,92,0.6)",
     particleColors: dark ? PARTICLE_COLORS : LIGHT_PARTICLE_COLORS,
     link: {
@@ -671,8 +671,8 @@ export function NetworkGraph({
   };
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden bg-background/40 backdrop-blur-md">
-      <div className="flex items-center justify-end gap-1 px-3 py-2 bg-background/50 border-b border-border">
+    <div className="rounded-xl border border-border overflow-hidden bg-background/20 backdrop-blur-md">
+      <div className="flex items-center justify-end gap-1 px-3 py-2 bg-background/25 border-b border-border">
         <span className="text-[11px] font-medium text-muted-foreground mr-1">{t("layerBy")}</span>
         <button
           onClick={() => setGroupBy("region")}
@@ -1091,7 +1091,7 @@ export function AdvisorStarMap({
   };
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden bg-background/40 backdrop-blur-md">
+    <div className="rounded-xl border border-border overflow-hidden bg-background/20 backdrop-blur-md">
       <div className="relative">
         <svg ref={svgRef} className="w-full touch-none" style={{ height }} data-testid="svg-advisor-map" />
         <div
