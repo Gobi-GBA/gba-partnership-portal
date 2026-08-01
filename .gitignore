@@ -15,3 +15,6 @@ data.db-journal
 *.log
 .DS_Store
 .vercel
+
+# Local workspace memory / agent state — project data, may contain PII; never commit to public repo
+.workbuddy/

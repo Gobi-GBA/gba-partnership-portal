@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.06p1";
+export const CURRENT_VERSION = "7.07";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.07",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.07 — lighter glass on the home page cards (light mode)",
+    titleCn: "v7.07 — 首页卡片玻璃更通透（日间模式）",
+    itemsEn: [
+      "Reduced the opacity of the light-mode white surfaces on the home page by about 30% so the desert/galaxy backdrop reads through more clearly",
+      "Affected surfaces: the hero section, the recent partnership log card and its entries, the four stat cards (and their skeletons), plus the view-toggle and display-options bars",
+      "Hover and loading states were lightened proportionally to keep the same visual contrast in both light and dark mode",
+    ],
+    itemsCn: [
+      "将首页日间模式下白色表面的不透明度整体下调约 30%，让沙漠 / 星空背景更清晰地透出",
+      "涉及区域：Hero 区块、最新合作记录卡片及其条目、四个统计卡片（含骨架屏），以及视图切换与显示选项栏",
+      "悬停与加载态同步等比减弱，日间与夜间模式均保持原有对比度",
+    ],
+  },
   {
     version: "7.06p1",
     date: "2026-08-01",
