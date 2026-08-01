@@ -25,7 +25,11 @@ import {
   LP_STATUSES,
   GOBI_STAFF,
 } from "../shared/schema.js";
-import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag, Partnership } from "../shared/schema.js";
+import type { SafeUser, User, AuditAction, Advisor, AdvisorRole, SectorTag, Partnership, AuditLog } from "../shared/schema.js";
+
+// v7.09 — shown in the update logs when a record predates audit logging and no
+// submitter was recorded against it. Never guess a name.
+const ORIGINAL_SUBMITTER_UNKNOWN = "original submitter not recorded";
 import mammoth from "mammoth";
 import { invitationLetterHtml, invitationLetterDocx, letterFilename, DEFAULT_LETTER_BODY, DEFAULT_LETTER_ACK } from "./letter.js";
 import { buildApprovalEmail, approvalSubject, fallbackIntro, type ApprovalEmailData, type ApprovalLang } from "../shared/approval-email.js";
@@ -1108,19 +1112,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // viewers see only approved. This ensures staff submissions are never hidden from the log.
   app.get("/api/partnerships/log", requireAuth(), async (req: AuthedRequest, res) => {
     const isTeam = req.user!.role === "admin" || req.user!.role === "staff";
-    const [all, users] = await cachedLoad("partnershipsBundle:log", () =>
-      Promise.all([storage.listPartnerships(), storage.listUsers()]),
+    const [all, users, logs] = await cachedLoad("partnershipsBundle:log:v709", () =>
+      Promise.all([storage.listPartnerships(), storage.listUsers(), storage.listAllAuditLogs("partnership")]),
     );
     const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    // v7.09 — the log is ordered by when a record was entered or last edited,
+    // never by its effective/start date. Partnerships carry no updatedAt column,
+    // so the newest audit entry for the record is the modification date.
+    const newest = new Map<number, AuditLog>();
+    for (const l of logs) {
+      const cur = newest.get(l.partnershipId);
+      if (!cur || l.createdAt > cur.createdAt) newest.set(l.partnershipId, l);
+    }
+
     jsonWithEtag(
       req,
       res,
       all
         .filter((p) => isTeam || p.status === "approved")
-        .map((p) => ({
-          ...redactLp(p, req.user),
-          submittedByName: p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null,
-        })),
+        .map((p) => {
+          const last = newest.get(p.id);
+          const submittedByName = p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null;
+          // Records created before audit logging began (15 Jul 2026) have no
+          // entry at all. Rather than showing them as never touched, we report
+          // their own creation date and flag the value as reconstructed.
+          const reconstructed = !last;
+          return {
+            ...redactLp(p, req.user),
+            submittedByName,
+            lastActivityAt: last && last.createdAt > p.createdAt ? last.createdAt : p.createdAt,
+            lastAction: last ? last.action : "create",
+            lastActionBy: last ? last.userName : submittedByName ?? ORIGINAL_SUBMITTER_UNKNOWN,
+            lastActionReconstructed: reconstructed,
+          };
+        }),
     );
   });
 
@@ -1625,6 +1651,67 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Detail — full record including the HD photo
+  // v7.09 — MUST stay above /api/advisors/:id. Express matches in registration
+  // order, so while this sat below the :id route Express read "audit" as an id
+  // and the whole advisor update log returned an error instead of data.
+  app.get("/api/advisors/audit", requireAuth("submit"), async (_req, res) => {
+    const [logs, advisorList, users] = await Promise.all([
+      storage.listAdvisorAuditLogs(),
+      storage.listAdvisors(),
+      storage.listUsers(),
+    ]);
+    // v7.09 — advisor audit logging only began on 29 Jul 2026, so most of the
+    // roster has no creation entry and simply vanished from the log. We rebuild
+    // those entries from each advisor's own record at read time. Nothing is
+    // written to audit_logs: the reconstruction stays reversible and the real
+    // audit table stays a record of what was actually captured.
+    const haveCreate = new Set(
+      logs.filter((l) => l.action === "create").map((l) => l.partnershipId),
+    );
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    const rebuilt = advisorList
+      .filter((a) => !haveCreate.has(a.id))
+      .map((a) => ({
+        id: -a.id, // synthetic, never collides with a real row id
+        entityType: "advisor",
+        partnershipId: a.id,
+        userId: a.submittedBy ?? null,
+        userName:
+          (a.submittedBy != null ? nameById.get(a.submittedBy) : null) ??
+          a.originStaff ??
+          ORIGINAL_SUBMITTER_UNKNOWN,
+        action: "create",
+        changes: null,
+        createdAt: a.createdAt,
+        advisorId: a.id,
+        advisorName: a.name,
+        advisorStatus: a.status,
+        reconstructed: true,
+      }));
+
+    const statusById = new Map(advisorList.map((a) => [a.id, a.status]));
+    const merged = [
+      ...logs.map((l) => ({
+        ...l,
+        advisorStatus: l.advisorId != null ? statusById.get(l.advisorId) ?? null : null,
+        reconstructed: false,
+      })),
+      ...rebuilt,
+    ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id - a.id));
+
+    res.json(merged);
+  });
+
+  // ---------- v6.04: advisor document filing (CVs + signed letters) ----------
+  const advisorFileSchema = z.object({
+    type: z.enum(["cv", "letter"]),
+    filename: z.string().min(1).max(200),
+    mime: z.string().min(3).max(120),
+    data: z.string().min(16), // base64
+  });
+  const FILE_MIME_OK = /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/msword|text\/plain|image\/jpeg|image\/png)$/;
+
+
   app.get("/api/advisors/:id", requireAuth(), async (req: AuthedRequest, res) => {
     const [a, allRoles, tagMap] = await Promise.all([
       storage.getAdvisor(Number(req.params.id)),
@@ -1953,20 +2040,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // v7.04 — aggregated advisor update log for the Updates page
-  app.get("/api/advisors/audit", requireAuth("submit"), async (_req, res) => {
-    const logs = await storage.listAdvisorAuditLogs();
-    res.json(logs);
-  });
-
-  // ---------- v6.04: advisor document filing (CVs + signed letters) ----------
-  const advisorFileSchema = z.object({
-    type: z.enum(["cv", "letter"]),
-    filename: z.string().min(1).max(200),
-    mime: z.string().min(3).max(120),
-    data: z.string().min(16), // base64
-  });
-  const FILE_MIME_OK = /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/msword|text\/plain|image\/jpeg|image\/png)$/;
-
   app.get("/api/advisors/:id/files", requireAuth("submit"), async (req, res) => {
     const id = Number(req.params.id);
     const type = req.query.type === "letter" ? "advisor_letter" : "advisor_cv";
@@ -2439,9 +2512,12 @@ www.gobi.vc`,
   const DEFAULT_APPROVAL_CC = ["fred@gobi.vc", "analyst01@gobi.vc"];
 
   // v7.01 — approval emails always CC the sender and chibo@gobi.vc, plus any defaults.
-  function mergeApprovalCc(base: string[], senderEmail: string): string[] {
+  // v7.09 — the recipient is excluded: the approver was being CC'd on their own
+  // email whenever they also appeared in the default CC list.
+  function mergeApprovalCc(base: string[], senderEmail: string, to?: string): string[] {
     const required = [senderEmail, "chibo@gobi.vc"];
     const seen = new Set<string>();
+    if (to) seen.add(to.trim().toLowerCase());
     const out: string[] = [];
     for (const e of [...required, ...base]) {
       const normalized = e.trim().toLowerCase();
@@ -2511,7 +2587,7 @@ www.gobi.vc`,
     res.json({
       base,
       to: cooEmail,
-      cc: mergeApprovalCc(DEFAULT_APPROVAL_CC, senderEmail),
+      cc: mergeApprovalCc(DEFAULT_APPROVAL_CC, senderEmail, cooEmail),
       subject: approvalSubject(base),
       fallbackIntro: fallbackIntro(base),
       expiryDays: APPROVAL_EXPIRY_DAYS,
@@ -2590,7 +2666,7 @@ www.gobi.vc`,
 
     // v7.01 — sender and chibo@gobi.vc are always CC'd; CV is auto-attached if present.
     const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
-    const cc = mergeApprovalCc(parsed.data.cc, senderEmail);
+    const cc = mergeApprovalCc(parsed.data.cc, senderEmail, to);
 
     const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + APPROVAL_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();

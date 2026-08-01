@@ -20,9 +20,24 @@ import { cn } from "@/lib/utils";
 import { thankYou } from "@/components/thank-you";
 
 // The partnerships API enriches each row with the submitter's display name.
-type PartnershipWithAuthor = Partnership & { submittedByName?: string | null };
+// v7.09 — the API also reports when the record was last entered or edited, and
+// who did it, so the log can order by activity rather than by effective date.
+type PartnershipWithAuthor = Partnership & {
+  submittedByName?: string | null;
+  lastActivityAt?: string;
+  lastAction?: string;
+  lastActionBy?: string | null;
+  lastActionReconstructed?: boolean;
+};
 // v7.04 — advisor audit log rows are joined with the advisor's name
-type AdvisorAuditLog = AuditLog & { advisorId: number | null; advisorName: string | null };
+// v7.09 — plus the advisor's current status, and a flag marking entries that
+// were rebuilt from the advisor record because they predate audit logging.
+type AdvisorAuditLog = AuditLog & {
+  advisorId: number | null;
+  advisorName: string | null;
+  advisorStatus?: string | null;
+  reconstructed?: boolean;
+};
 
 export const STATUS_STYLES: Record<FeedbackStatus, string> = {
   open: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
@@ -37,6 +52,42 @@ export function FeedbackStatusBadge({ status }: { status: FeedbackStatus }) {
     <Badge variant="outline" className={cn("text-[11px] font-semibold", STATUS_STYLES[status])} data-testid={`badge-status-${status}`}>
       {t(`fbStatus_${status}` as any)}
     </Badge>
+  );
+}
+
+// v7.09 — every log row carries the record's status, approved included, so the
+// log never implies that what it shows has already been signed off.
+export function LogStatusBadge({ status, testId }: { status: string; testId?: string }) {
+  const { t } = useLang();
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] font-semibold",
+        status === "approved" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
+        status === "pending" && "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+        status === "rejected" && "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
+      )}
+      data-testid={testId}
+    >
+      {t(`status_${status}` as any)}
+    </Badge>
+  );
+}
+
+// v7.09 — marks an entry rebuilt from the record itself because it predates
+// audit logging. The log stays honest about which dates were captured and which
+// were derived.
+export function ReconstructedBadge({ testId }: { testId?: string }) {
+  const { t } = useLang();
+  return (
+    <span
+      className="text-[10px] italic text-muted-foreground/70 border border-dashed border-border rounded px-1.5 py-px"
+      title={t("logReconstructedHint")}
+      data-testid={testId}
+    >
+      {t("logReconstructed")}
+    </span>
   );
 }
 
@@ -78,8 +129,10 @@ export default function Updates() {
     enabled: !!user,
   });
 
-  // Partnership records log: newest first, keyed on start date (fallback to created date)
-  const logDate = (p: Partnership) => p.startDate || p.createdAt;
+  // v7.09 — the log orders by when a record was entered or last modified, newest
+  // first. It deliberately ignores the effective/start date: a partnership edited
+  // today belongs at the top even if it starts next year.
+  const logDate = (p: PartnershipWithAuthor) => p.lastActivityAt || p.createdAt;
   const partnerLog = (partnerships ?? [])
     .slice()
     .sort((a, b) => (logDate(a) < logDate(b) ? 1 : logDate(a) > logDate(b) ? -1 : b.id - a.id));
@@ -93,7 +146,12 @@ export default function Updates() {
   const isTeam = user?.role === "admin" || user?.isDev === 1;
   const mine = (requests ?? []).filter((r) => r.userId === user?.id);
   const scoped = isTeam && scope === "all" ? (requests ?? []) : mine;
-  const visible = statusFilter ? scoped.filter((r) => r.status === statusFilter) : scoped;
+  // v7.09 — newest activity first: a request answered today outranks an older
+  // one that has not moved.
+  const reqDate = (r: Feedback) => r.updatedAt || r.createdAt;
+  const visible = (statusFilter ? scoped.filter((r) => r.status === statusFilter) : scoped)
+    .slice()
+    .sort((a, b) => (reqDate(a) < reqDate(b) ? 1 : reqDate(a) > reqDate(b) ? -1 : b.id - a.id));
   const countOf = (s: FeedbackStatus) => mine.filter((r) => r.status === s).length;
 
   const submit = useMutation({
@@ -313,31 +371,23 @@ export default function Updates() {
                     <div key={p.id} className="relative pl-6" data-testid={`partner-log-entry-${p.id}`}>
                       <span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-[hsl(193,52%,38%)]" />
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-xs text-muted-foreground tabular-nums" data-testid={`partner-log-date-${p.id}`}>{fmtDate(logDate(p))}</span>
+                        {/* v7.09 — the row states its own last activity: when, what
+                            happened, and who did it. */}
+                        <span className="text-xs text-muted-foreground tabular-nums" data-testid={`partner-log-date-${p.id}`}>{fmtDateTime(logDate(p))}</span>
                         <span className="text-[11px] text-muted-foreground/70">·</span>
-                        <span className="text-[11px] text-muted-foreground/80">
-                          {p.startDate ? t("partnerLogStarted") : t("partnerLogAdded")}
+                        <span className="text-[11px] font-semibold text-foreground" data-testid={`partner-log-action-${p.id}`}>
+                          {t(`audit_${p.lastAction || "create"}` as any)}
                         </span>
-                        {p.submittedByName && (
+                        {(p.lastActionBy || p.submittedByName) && (
                           <>
                             <span className="text-[11px] text-muted-foreground/70">·</span>
                             <span className="text-[11px] text-muted-foreground/80" data-testid={`partner-log-by-${p.id}`}>
-                              {t("versionBy")} {p.submittedByName}
+                              {t("auditBy")} {p.lastActionBy || p.submittedByName}
                             </span>
                           </>
                         )}
-                        {p.status !== "approved" && (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px]",
-                              p.status === "pending" && "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-                              p.status === "rejected" && "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
-                            )}
-                          >
-                            {t(`status_${p.status}` as any)}
-                          </Badge>
-                        )}
+                        <LogStatusBadge status={p.status} testId={`partner-log-status-${p.id}`} />
+                        {p.lastActionReconstructed && <ReconstructedBadge testId={`partner-log-rebuilt-${p.id}`} />}
                       </div>
                       <div
                         role="button"
@@ -404,6 +454,8 @@ export default function Updates() {
                           <span className="text-[11px] text-muted-foreground/80" data-testid={`advisor-log-by-${l.id}`}>
                             {t("auditBy")} {l.userName}
                           </span>
+                          {l.advisorStatus && <LogStatusBadge status={l.advisorStatus} testId={`advisor-log-status-${l.id}`} />}
+                          {l.reconstructed && <ReconstructedBadge testId={`advisor-log-rebuilt-${l.id}`} />}
                         </div>
                         <div
                           role="button"

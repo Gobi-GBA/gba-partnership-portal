@@ -92,6 +92,9 @@ export interface IStorage {
   createAuditLog(data: Omit<AuditLog, "id">): Promise<AuditLog>;
   // v6.04 — entityType 'partnership' (default) or 'advisor'; entityId is stored in partnership_id
   listAuditLogs(entityId: number, entityType?: string): Promise<AuditLog[]>;
+  // v7.09 — every audit entry for one entity type, used by the update logs to
+  // work out when each record was last touched without one query per record.
+  listAllAuditLogs(entityType?: string): Promise<AuditLog[]>;
   // v7.04 — all advisor audit events across the roster, joined with advisor name
   listAdvisorAuditLogs(): Promise<(AuditLog & { advisorId: number | null; advisorName: string | null })[]>;
 

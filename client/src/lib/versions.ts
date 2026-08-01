@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.08";
+export const CURRENT_VERSION = "7.09";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.09",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.09 — the update logs are complete, sorted by activity, and the advisor log works again",
+    titleCn: "v7.09 — 更新日志恢复完整，按活动时间排序，顾问日志重新可用",
+    itemsEn: [
+      "Fixed: the advisor update log had never returned data. Its route sat below /api/advisors/:id, so Express read \"audit\" as an advisor id and the tab silently showed nothing.",
+      "The three data logs now sort by when a record was entered or last edited, newest first, instead of by its effective or start date.",
+      "Every log row now shows the record's status, including approved, plus the last action and who took it.",
+      "Recovered the missing history: entries created before audit logging began are rebuilt from the records themselves and marked \"reconstructed\", so nothing is hidden and nothing is passed off as captured.",
+      "Fixed: the approval email no longer CCs the approver on their own message.",
+      "Added the missing Approved and Rejected labels, which previously rendered as raw keys in the advisor log.",
+    ],
+    itemsCn: [
+      "修复：顾问更新日志此前从未返回数据。其路由位于 /api/advisors/:id 之下，Express 将 \"audit\" 误读为顾问编号，页面因此始终为空。",
+      "三个数据日志改按录入或最近修改时间排序，最新在前，不再以生效日期或起始日期排序。",
+      "每条日志现显示记录状态（含已批准），并注明最近操作及操作人。",
+      "找回缺失历史：审计日志启用之前的条目根据记录本身追溯补录，并标注\"追溯补录\"，既不隐藏，也不冒充原始记录。",
+      "修复：审批邮件不再将收件人抄送给其本人。",
+      "补充缺失的\"批准\"与\"拒绝\"标签，此前在顾问日志中显示为原始字段名。",
+    ],
+  },
   {
     version: "7.08",
     date: "2026-08-01",

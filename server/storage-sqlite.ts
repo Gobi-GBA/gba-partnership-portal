@@ -474,6 +474,9 @@ UPDATE users SET role = 'staff' WHERE role = 'member';
     async listAuditLogs(entityId: number, entityType = "partnership") {
       return db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType))).all();
     }
+    async listAllAuditLogs(entityType = "partnership") {
+      return db.select().from(auditLogs).where(eq(auditLogs.entityType, entityType)).all();
+    }
     async listAdvisorAuditLogs() {
       return db.select({
         ...getTableColumns(auditLogs),

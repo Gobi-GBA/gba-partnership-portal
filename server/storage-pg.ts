@@ -592,6 +592,10 @@ export function createPgStorage(): IStorage {
       await init();
       return (await db.select().from(auditLogs).where(and(eq(auditLogs.partnershipId, entityId), eq(auditLogs.entityType, entityType)))) as AuditLog[];
     }
+    async listAllAuditLogs(entityType = "partnership") {
+      await init();
+      return (await db.select().from(auditLogs).where(eq(auditLogs.entityType, entityType))) as AuditLog[];
+    }
     async listAdvisorAuditLogs() {
       await init();
       return (await db.select({

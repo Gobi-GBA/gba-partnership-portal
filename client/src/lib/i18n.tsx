@@ -150,14 +150,20 @@ const dict = {
   tabSystemRequests: { en: "System requests", cn: "系统需求" },
   tabAdvisorLog: { en: "Advisor update log", cn: "顾问更新日志" },
   partnerLogTitle: { en: "Partnership records log", cn: "合作记录日志" },
-  partnerLogSub: { en: "Every partnership on record, by date, newest first.", cn: "按日期记录的每个合作伙伴，最新在前。" },
+  partnerLogSub: { en: "Every partnership on record, by when it was entered or last edited, newest first.", cn: "所有合作记录，按录入或最近修改时间排序，最新在前。" },
   partnerLogEmpty: { en: "No partnership records yet.", cn: "暂无合作记录。" },
   advisorLogTitle: { en: "Advisor update log", cn: "顾问更新日志" },
-  advisorLogSub: { en: "Every advisor change on record, newest first.", cn: "按时间记录的每位顾问变更，最新在前。" },
+  advisorLogSub: { en: "Every advisor entry and change on record, newest first.", cn: "所有顾问的录入与变更记录，最新在前。" },
   advisorLogEmpty: { en: "No advisor changes yet.", cn: "暂无顾问变更记录。" },
   advisorLogUnknown: { en: "Unknown advisor", cn: "未知顾问" },
   partnerLogAdded: { en: "Added", cn: "录入" },
   partnerLogStarted: { en: "Partnership start", cn: "合作起始" },
+  // v7.09 — update logs
+  logReconstructed: { en: "reconstructed", cn: "追溯补录" },
+  logReconstructedHint: {
+    en: "Rebuilt from the record itself because it predates audit logging.",
+    cn: "此条目早于审计日志启用，系根据记录本身追溯补录。",
+  },
   partnerLogPending: { en: "Pending approval", cn: "待审批" },
   requestsTitle: { en: "System requests & feedback", cn: "系统需求与反馈" },
   requestsSub: {
@@ -251,6 +257,10 @@ const dict = {
   audit_create: { en: "Created", cn: "创建" },
   audit_update: { en: "Updated", cn: "更新" },
   audit_delete: { en: "Deleted", cn: "删除" },
+  // v7.09 — these two actions are written by the advisor approval flow but had
+  // no label, so the log showed the raw key.
+  audit_approve: { en: "Approved", cn: "批准" },
+  audit_reject: { en: "Rejected", cn: "拒绝" },
   audit_change_request: { en: "Change requested", cn: "提交变更申请" },
   audit_change_approved: { en: "Change approved", cn: "变更已批准" },
   audit_change_rejected: { en: "Change rejected", cn: "变更已拒绝" },
