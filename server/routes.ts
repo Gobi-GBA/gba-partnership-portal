@@ -644,6 +644,23 @@ function attachmentTooLarge(b64: string) {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // v7.06 — email clients and security gateways sometimes strip the # from
+  // hash-based emailed links. If that happens, the non-hash path hits Vercel's
+  // static file serving and 404s. Rewrite those paths to this function and
+  // redirect back to the hash equivalent, preserving the token query param.
+  app.get("/advisor-approval", (req, res) => {
+    const url = new URL(`${appBaseUrl(req)}/#/advisor-approval`);
+    const token = req.query.token;
+    if (typeof token === "string" && token) url.searchParams.set("token", token);
+    res.redirect(302, url.toString());
+  });
+  app.get("/reset", (req, res) => {
+    const url = new URL(`${appBaseUrl(req)}/#/reset`);
+    const token = req.query.token;
+    if (typeof token === "string" && token) url.searchParams.set("token", token);
+    res.redirect(302, url.toString());
+  });
+
   // ---------- Auth ----------
   app.post("/api/auth/register", async (req, res) => {
     const parsed = insertUserSchema.safeParse(req.body);

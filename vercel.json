@@ -4,7 +4,9 @@
   "buildCommand": "npm run build:client",
   "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" }
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/advisor-approval", "destination": "/api" },
+    { "source": "/reset", "destination": "/api" }
   ],
   "functions": {
     "api/index.ts": {

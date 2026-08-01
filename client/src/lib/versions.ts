@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.05";
+export const CURRENT_VERSION = "7.06";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.06",
+    date: "2026-08-01",
+    by: "Fred",
+    titleEn: "v7.06 — emailed advisor approval links no longer 404",
+    titleCn: "v7.06 — 修复邮件顾问审批链接 404",
+    itemsEn: [
+      "Some email clients and security gateways strip the # from hash-based links, turning /#/advisor-approval?token=... into /advisor-approval?token=... and causing a Vercel 404",
+      "Added Vercel rewrites so /advisor-approval and /reset are handled by the serverless function",
+      "The server now redirects those non-hash paths back to their hash equivalents while preserving the token query parameter",
+    ],
+    itemsCn: [
+      "部分邮件客户端与安全网关会去掉哈希链接中的 #，使 /#/advisor-approval?token=... 变成 /advisor-approval?token=...，导致 Vercel 404",
+      "新增 Vercel rewrite，使 /advisor-approval 与 /reset 由 serverless 函数处理",
+      "服务端现在将这些无哈希路径重定向回对应的哈希路径，并保留 token 查询参数",
+    ],
+  },
   {
     version: "7.05",
     date: "2026-08-01",
