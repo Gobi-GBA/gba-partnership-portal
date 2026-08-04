@@ -266,6 +266,14 @@ const dict = {
   audit_change_rejected: { en: "Change rejected", cn: "变更已拒绝" },
   auditChangedFields: { en: "Changed", cn: "变更字段" },
   changeRequestHint: { en: "Your edits will be submitted as a change request for admin approval.", cn: "您的修改将作为变更申请提交，需管理员批准后生效。" },
+  // v7.11 — direct editing for @gobi.vc colleagues
+  stageNeedsApproval: { en: "Changing the partnership level needs admin approval. Every other field saves immediately.", cn: "变更合作层级需管理员审批。其余字段将立即保存。" },
+  savedStageQueued: { en: "Saved. The partnership level change is waiting for admin approval.", cn: "已保存。合作层级的变更正在等待管理员审批。" },
+  savedStageQueuedHint: { en: "All your other edits are already live.", cn: "您的其他修改已即时生效。" },
+  advisorStageNeedsApproval: { en: "Changing the onboarding status needs admin approval. Every other field saves immediately.", cn: "变更入库状态需管理员审批。其余字段将立即保存。" },
+  savedLifecycleQueued: { en: "Saved. The onboarding status change is waiting for admin approval.", cn: "已保存。入库状态的变更正在等待管理员审批。" },
+  crEntityPartnership: { en: "Partnership", cn: "合作伙伴" },
+  crEntityAdvisor: { en: "Advisor", cn: "顾问" },
   submitForApproval: { en: "Submit for approval", cn: "提交审批" },
   devNote: { en: "Developed by Fred Li, Elaine Zhang and Ameen — every great partnership begins with a single connection. Keep building.", cn: "由 Fred Li、Elaine Zhang 与 Ameen 开发 — 每一段伟大的合作，都始于一次真诚的连接。继续前行。" },
   disclaimer: {

@@ -81,7 +81,9 @@ function jsonWithEtag(req: Request, res: Response, payload: unknown) {
 
 function safe(user: User): SafeUser {
   const { passwordHash, secretA1Hash, secretA2Hash, resetTokenHash, resetExpires, ...rest } = user;
-  return rest;
+  // v7.11 — surface the direct-edit capability so every client that receives a
+  // user object (login, /me, register) gets it without a second request.
+  return { ...rest, canEditDirectly: isGobiEditor(user) };
 }
 
 // Secret answers are case/whitespace-insensitive, hashed with the same scrypt scheme as passwords.
@@ -218,6 +220,16 @@ function displayNameForGoogle(email: string, name?: string | null): string {
 
 function isGobiEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith(AUTO_APPROVE_DOMAIN);
+}
+
+// v7.11 — a "Gobi editor" may add and edit records directly, with no admin in
+// the loop. The privilege is tied to the email domain and not to the staff role
+// alone: an approved external collaborator keeps the change-request path.
+// Partnership stage and advisor lifecycle remain gated for non-admins.
+function isGobiEditor(user?: Pick<User, "role" | "status" | "email"> | null): boolean {
+  if (!user || user.status !== "approved") return false;
+  if (user.role === "admin") return true;
+  return user.role === "staff" && isGobiEmail(user.email);
 }
 
 // ---------- gobi.vc team page (profile sync) ----------
@@ -634,6 +646,31 @@ function requireAuth(level?: "admin" | "submit" | "dev") {
   };
 }
 
+// v7.11 — Gated fields need admin approval even for a Gobi editor. Rather than
+// rejecting the whole edit, the caller applies everything else immediately and
+// hands the gated slice to this function, which parks it as a change request.
+// Returns the new request id, or null when nothing needed queueing.
+async function queueGatedChange(
+  user: User,
+  entityType: "partnership" | "advisor",
+  entityId: number,
+  gated: Record<string, unknown>,
+  note?: string | null,
+): Promise<number | null> {
+  if (Object.keys(gated).length === 0) return null;
+  const cr = await storage.createChangeRequest({
+    entityType,
+    partnershipId: entityId,
+    proposedBy: user.id,
+    changes: JSON.stringify(gated),
+    note: note ?? null,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+  await audit(user, entityId, "change_request", gated, entityType);
+  return cr.id;
+}
+
 // Keep only valid Gobi staff names, dedupe, cap at 8
 function sanitizePics(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -679,8 +716,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       name: parsed.data.name,
       email,
       passwordHash: hashPassword(parsed.data.password),
-      // @gobi.vc colleagues get instant viewer access; everyone else awaits admin approval
-      ...(autoApproved ? { status: "approved", role: "viewer" } : {}),
+      // v7.11 — @gobi.vc colleagues are approved instantly with edit rights;
+      // everyone else awaits admin approval
+      ...(autoApproved ? { status: "approved", role: "staff" } : {}),
       secretQ1: parsed.data.secretQ1,
       secretA1Hash: hashPassword(normalizeAnswer(parsed.data.secretA1)),
       secretQ2: parsed.data.secretQ2,
@@ -789,7 +827,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           name: displayName,
           email,
           passwordHash: hashPassword(randomBytes(32).toString("hex")),
-          role: autoApproved ? "viewer" : "staff",
+          // v7.11 — @gobi.vc gets edit rights on first sign-in. External accounts
+          // are created as staff but stay pending, and are not Gobi editors.
+          role: "staff",
           status: autoApproved ? "approved" : "pending",
         });
         if (profile.picture) {
@@ -1198,7 +1238,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         canSeeLp(req.user) && (LP_STATUSES as readonly string[]).includes(parsed.data.lpStatus ?? "")
           ? parsed.data.lpStatus!
           : "na",
-      status: isAdmin ? "approved" : "pending",
+      // v7.11 — Gobi editors publish immediately, at any stage (spec 3.1)
+      status: isGobiEditor(req.user) ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
     });
@@ -1222,14 +1263,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json(redactLp(created, req.user));
   });
 
-  // Direct edit — admin only (staff must use change requests; owner may edit own pending submission)
+  // Direct edit — admins and Gobi editors (v7.11); other staff must use change
+  // requests, though any owner may still fix their own pending submission.
   app.patch("/api/partnerships/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const id = Number(req.params.id);
     const existing = await storage.getPartnership(id);
     if (!existing) return res.status(404).json({ message: "Not found" });
     const isAdmin = req.user!.role === "admin";
+    const canEditDirectly = isGobiEditor(req.user);
     const isOwnerPending = existing.submittedBy === req.user!.id && existing.status === "pending";
-    if (!isAdmin && !isOwnerPending) {
+    if (!canEditDirectly && !isOwnerPending) {
       return res.status(403).json({ message: "Use a change request to propose edits to approved records" });
     }
     const body = { ...req.body };
@@ -1237,6 +1280,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       delete body.status;
       delete body.hallOfFame;
       delete body.isDomainKnowledgePartner;
+    }
+    // v7.11 — Partnership stage is the one gated field. A non-admin Gobi editor
+    // may propose it but not apply it, so it is lifted out of this patch and
+    // queued for an admin. Everything else in the same edit still saves now.
+    // Owners fixing their own pending record are exempt: it is not live yet.
+    const gated: Record<string, unknown> = {};
+    if (!isAdmin && !isOwnerPending && typeof body.stage === "string" && body.stage !== existing.stage) {
+      gated.stage = body.stage;
+      delete body.stage;
+      delete body.collabLevel;
     }
     // LP status: only the IR team (or admins) may view or change it
     if (!canSeeLp(req.user) || !(LP_STATUSES as readonly string[]).includes(body.lpStatus)) {
@@ -1256,7 +1309,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     delete (changed as any).lpStatus; // never expose LP status in the shared audit trail
     const updated = await storage.updatePartnership(id, body);
     if (Object.keys(changed).length) await audit(req.user!, id, "update", changed);
-    res.json(updated ? redactLp(updated, req.user) : updated);
+    const changeRequestId = await queueGatedChange(req.user!, "partnership", id, gated, req.body?.note ?? null);
+    const payload = updated ? redactLp(updated, req.user) : updated;
+    if (changeRequestId) {
+      return res.json({ ...(payload as object), queued: gated, changeRequestId });
+    }
+    res.json(payload);
   });
 
   app.delete("/api/partnerships/:id", requireAuth("admin"), async (req: AuthedRequest, res) => {
@@ -1370,13 +1428,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid change request", errors: parsed.error.flatten() });
     }
-    const target = await storage.getPartnership(parsed.data.partnershipId);
-    if (!target) return res.status(404).json({ message: "Partnership not found" });
+    const entityType = parsed.data.entityType ?? "partnership";
+    const target =
+      entityType === "advisor"
+        ? await storage.getAdvisor(parsed.data.partnershipId)
+        : await storage.getPartnership(parsed.data.partnershipId);
+    if (!target) return res.status(404).json({ message: entityType === "advisor" ? "Advisor not found" : "Partnership not found" });
     // LP status can only be proposed by IR team members
     if (!canSeeLp(req.user) && parsed.data.changes && typeof parsed.data.changes === "object") {
       delete (parsed.data.changes as Record<string, unknown>).lpStatus;
     }
     const cr = await storage.createChangeRequest({
+      entityType,
       partnershipId: parsed.data.partnershipId,
       proposedBy: req.user!.id,
       changes: JSON.stringify(parsed.data.changes),
@@ -1384,7 +1447,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       status: "pending",
       createdAt: new Date().toISOString(),
     });
-    await audit(req.user!, parsed.data.partnershipId, "change_request", parsed.data.changes as Record<string, unknown>);
+    await audit(req.user!, parsed.data.partnershipId, "change_request", parsed.data.changes as Record<string, unknown>, entityType);
     res.status(201).json(cr);
   });
 
@@ -1414,16 +1477,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } catch {
         return res.status(422).json({ message: "Corrupt change payload" });
       }
-      // collabLevel always mirrors the stage
-      if (typeof changes.stage === "string" && STAGE_LEVEL[changes.stage]) {
-        changes.collabLevel = STAGE_LEVEL[changes.stage];
+      if (cr.entityType === "advisor") {
+        // v7.11 — advisor requests carry lifecycleStatus; keep onboardedAt in step
+        const patch: Record<string, unknown> = { ...changes };
+        if (patch.lifecycleStatus === "onboarded") {
+          const advisor = await storage.getAdvisor(cr.partnershipId);
+          patch.onboardedAt = advisor?.onboardedAt ?? new Date().toISOString().slice(0, 10);
+        }
+        await storage.updateAdvisor(cr.partnershipId, patch as any);
+        await audit(req.user!, cr.partnershipId, "change_approved", changes, "advisor");
       } else {
-        delete changes.collabLevel;
+        // collabLevel always mirrors the stage
+        if (typeof changes.stage === "string" && STAGE_LEVEL[changes.stage]) {
+          changes.collabLevel = STAGE_LEVEL[changes.stage];
+        } else {
+          delete changes.collabLevel;
+        }
+        await storage.updatePartnership(cr.partnershipId, changes);
+        await audit(req.user!, cr.partnershipId, "change_approved", changes);
       }
-      await storage.updatePartnership(cr.partnershipId, changes);
-      await audit(req.user!, cr.partnershipId, "change_approved", changes);
     } else {
-      await audit(req.user!, cr.partnershipId, "change_rejected");
+      await audit(req.user!, cr.partnershipId, "change_rejected", undefined, cr.entityType === "advisor" ? "advisor" : "partnership");
     }
     const updated = await storage.updateChangeRequestStatus(id, action === "approve" ? "approved" : "rejected");
     res.json(updated);
@@ -1831,7 +1905,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       approvalTokenExpires: null,
       approvalDecidedBy: null,
       approvalDecidedAt: null,
-      status: isAdmin ? "approved" : "pending",
+      // v7.11 — Gobi editors publish immediately
+      status: isGobiEditor(req.user) ? "approved" : "pending",
       submittedBy: req.user!.id,
       createdAt: new Date().toISOString(),
     });
@@ -1851,13 +1926,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json({ ...created, roles: savedRoles });
   });
 
-  // Edit — admins edit anything; staff may fix their own pending submissions
+  // Edit — admins and Gobi editors (v7.11); any owner may fix their own pending
+  // submission. Lifecycle and approval status stay gated for non-admins.
   app.patch("/api/advisors/:id", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const id = Number(req.params.id);
     const existing = await storage.getAdvisor(id);
     if (!existing) return res.status(404).json({ message: "Not found" });
     const isAdmin = req.user!.role === "admin";
-    if (!isAdmin && !(existing.submittedBy === req.user!.id && existing.status === "pending")) {
+    const canEditDirectly = isGobiEditor(req.user);
+    const isOwnerPending = existing.submittedBy === req.user!.id && existing.status === "pending";
+    if (!canEditDirectly && !isOwnerPending) {
       return res.status(403).json({ message: "Only admins can edit approved advisors" });
     }
     const parsed = advisorInputSchema.partial().extend({ status: z.enum(["pending", "approved", "rejected"]).optional() }).safeParse(req.body);
@@ -1880,6 +1958,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (isAdmin && lifecycleStatus) {
       patch.lifecycleStatus = lifecycleStatus;
       if (lifecycleStatus === "onboarded") patch.onboardedAt = existing.onboardedAt ?? new Date().toISOString().slice(0, 10);
+    }
+    // v7.11 — a non-admin Gobi editor may propose a lifecycle change but not
+    // apply it. Previously this was dropped in silence; now it is queued so the
+    // rest of the edit still saves and the intent is not lost. The dedicated
+    // /workflow route remains the admin path for onboarding transitions.
+    const gated: Record<string, unknown> = {};
+    if (!isAdmin && !isOwnerPending && lifecycleStatus && lifecycleStatus !== existing.lifecycleStatus) {
+      gated.lifecycleStatus = lifecycleStatus;
     }
     // Roles-only PATCHes are valid — skip the advisor update when nothing else changed
     const updated = Object.keys(patch).length > 0 ? await storage.updateAdvisor(id, patch) : existing;
@@ -1911,6 +1997,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
     } else {
       savedRoles = (await storage.listAdvisorRoles()).filter((r) => r.advisorId === id);
+    }
+    const changeRequestId = await queueGatedChange(req.user!, "advisor", id, gated, null);
+    if (changeRequestId) {
+      return res.json({ ...updated, roles: savedRoles, queued: gated, changeRequestId });
     }
     res.json({ ...updated, roles: savedRoles });
   });

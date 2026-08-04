@@ -105,6 +105,7 @@ const BOOTSTRAP: string[] = [
     created_at TEXT NOT NULL
   )`,
   `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'partnership'`,
+  `ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'partnership'`, // v7.11
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_q1 TEXT`,

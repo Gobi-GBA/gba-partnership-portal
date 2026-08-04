@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS file_assets (
 );
 CREATE TABLE IF NOT EXISTS change_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL DEFAULT 'partnership',
   partnership_id INTEGER NOT NULL,
   proposed_by INTEGER NOT NULL,
   changes TEXT NOT NULL,
@@ -142,6 +143,8 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("users", "last_seen_updates_at", "last_seen_updates_at TEXT");
   ensureColumn("users", "edit_requested_at", "edit_requested_at TEXT");
   ensureColumn("partnerships", "photos", "photos TEXT");
+  // v7.11 — generalized change requests (partnership | advisor)
+  ensureColumn("change_requests", "entity_type", "entity_type TEXT NOT NULL DEFAULT 'partnership'");
   // v6.04 — generalized audit log (partnership | advisor)
   ensureColumn("audit_logs", "entity_type", "entity_type TEXT NOT NULL DEFAULT 'partnership'");
   ensureColumn("partnerships", "lp_status", "lp_status TEXT NOT NULL DEFAULT 'na'");

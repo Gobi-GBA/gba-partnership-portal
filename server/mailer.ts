@@ -129,8 +129,8 @@ export function registrationEmail(name: string, autoApproved: boolean): { subjec
       subject: "Welcome — your account is ready · 账户已开通",
       html: `
         <p>Hi ${name},</p>
-        <p>Your registration on the Gobi Partnership Portal is complete. Your @gobi.vc account has been approved automatically as a <strong>viewer</strong> — you can sign in right away. An admin can upgrade your role if you need to register or edit partnerships.</p>
-        <p>${name}，您好：您在 Gobi 合作伙伴门户的注册已完成。您的 @gobi.vc 账户已自动获批为<strong>查看者</strong>，现在即可登录。如需登记或编辑合作伙伴，管理员可为您升级权限。</p>`,
+        <p>Your registration on the Gobi Partnership Portal is complete. Your @gobi.vc account has been approved automatically with <strong>edit rights</strong> — you can sign in right away and add or update partnership and advisor records yourself, with no approval step. Changes to a partnership level go to an admin for review, as does deleting a record.</p>
+        <p>${name}，您好：您在 Gobi 合作伙伴门户的注册已完成。您的 @gobi.vc 账户已自动获批并具备<strong>编辑权限</strong>，现在即可登录，并可直接新增或更新合作伙伴与顾问资料，无需审批。变更合作层级或删除记录仍需管理员审核。</p>`,
     };
   }
   return {

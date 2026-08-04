@@ -593,6 +593,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
   contactName: "contactName", contactEmail: "contactEmail", picName: "picLabel", picNames: "picsLabel", parentId: "parentLabel",
   context: "contextLabel", partnershipType: "partnershipType", startDate: "startDate",
   stage: "filterStage", collabLevel: "collabLevel", notes: "notes", photos: "photosLabel",
+  lifecycleStatus: "lifecycleStatusLabel", // v7.11 — advisor requests
 };
 
 function ChangeRequestAdmin() {
@@ -601,6 +602,10 @@ function ChangeRequestAdmin() {
   const { data: requests, isLoading } = useQuery<ChangeRequest[]>({ queryKey: ["/api/change-requests"] });
   const { data: partners } = useQuery<Partnership[]>({ queryKey: ["/api/admin/partnerships"] });
   const { data: users } = useQuery<SafeUser[]>({ queryKey: ["/api/admin/users"] });
+  // v7.11 — the queue now also carries advisor requests
+  const { data: advisors } = useQuery<Array<{ id: number; name: string; nameCn?: string | null; lifecycleStatus?: string }>>({
+    queryKey: ["/api/advisors"],
+  });
 
   const mutation = useMutation({
     mutationFn: async ({ id, action }: { id: number; action: "approve" | "reject" }) => {
@@ -611,6 +616,7 @@ function ChangeRequestAdmin() {
       queryClient.invalidateQueries({ queryKey: ["/api/change-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/partnerships"] });
       queryClient.invalidateQueries({ queryKey: ["/api/partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
     },
     onError: () => toast({ title: "Update failed", variant: "destructive" }),
   });
@@ -629,13 +635,25 @@ function ChangeRequestAdmin() {
     if (k === "stage" && (STAGES as readonly string[]).includes(String(v))) {
       return `${STAGE_NUM[v as Stage]} · ${t(`stage_${v}` as any)}`;
     }
+    if (k === "lifecycleStatus") return t(`lifecycle_${v}` as any);
     if (k === "region" && (REGIONS as readonly string[]).includes(String(v))) return t(`region_${v}` as any);
     if (k === "category" && (CATEGORIES as readonly string[]).includes(String(v))) return t(`cat_${v}` as any);
     return String(v);
   };
 
   const card = (r: ChangeRequest) => {
-    const p = partnerOf(r.partnershipId);
+    // v7.11 — entityType decides which table the row refers to. Rows created
+    // before v7.11 default to "partnership", so old requests still resolve.
+    const isAdvisor = r.entityType === "advisor";
+    const subject: Record<string, any> | undefined = isAdvisor
+      ? advisors?.find((a) => a.id === r.partnershipId)
+      : partnerOf(r.partnershipId);
+    const p = subject;
+    const subjectName = subject
+      ? isAdvisor
+        ? ((lang === "cn" && subject.nameCn) || subject.name)
+        : ((lang === "cn" && subject.nameCn) || subject.nameEn)
+      : `#${r.partnershipId}`;
     const proposer = userOf(r.proposedBy);
     let changes: Record<string, unknown> = {};
     try { changes = JSON.parse(r.changes); } catch { /* noop */ }
@@ -644,8 +662,11 @@ function ChangeRequestAdmin() {
       <div key={r.id} className="rounded-lg border border-card-border bg-card p-4 space-y-3" data-testid={`card-change-${r.id}`}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-sm truncate">
-              {p ? (lang === "cn" && p.nameCn ? p.nameCn : p.nameEn) : `#${r.partnershipId}`}
+            <p className="font-semibold text-sm truncate flex items-center gap-2">
+              <Badge variant="outline" className="shrink-0 text-[10px] font-medium" data-testid={`badge-entity-${r.id}`}>
+                {t(isAdvisor ? "crEntityAdvisor" : "crEntityPartnership")}
+              </Badge>
+              <span className="truncate">{subjectName}</span>
             </p>
             <p className="text-xs text-muted-foreground">
               {proposer?.name ?? "—"} · {new Date(r.createdAt).toLocaleDateString(lang === "cn" ? "zh-CN" : "en-GB")}

@@ -58,7 +58,12 @@ export type User = typeof users.$inferSelect;
 export type SafeUser = Omit<
   User,
   "passwordHash" | "secretA1Hash" | "secretA2Hash" | "resetTokenHash" | "resetExpires"
->;
+> & {
+  // v7.11 — server-computed: may this account add and edit records directly,
+  // with no admin approval? Derived from role plus the @gobi.vc domain, so the
+  // client never has to re-derive the rule.
+  canEditDirectly?: boolean;
+};
 
 // Profile fields a user may edit about themselves
 export const profileUpdateSchema = z.object({
@@ -501,6 +506,9 @@ export type PhotoAssetInput = z.infer<typeof photoAssetInputSchema>;
 // ---------- Change requests (staff propose edits; admin approves) ----------
 export const changeRequests = sqliteTable("change_requests", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  // v7.11 — generalized the same way audit_logs was in v6.04: 'partnership' or
+  // 'advisor'. partnershipId doubles as the generic entity id.
+  entityType: text("entity_type").notNull().default("partnership"),
   partnershipId: integer("partnership_id").notNull(),
   proposedBy: integer("proposed_by").notNull(),
   changes: text("changes").notNull(), // JSON: partial partnership fields
@@ -512,8 +520,9 @@ export const changeRequests = sqliteTable("change_requests", {
 export type ChangeRequest = typeof changeRequests.$inferSelect;
 
 export const changeRequestInputSchema = z.object({
+  entityType: z.enum(["partnership", "advisor"]).optional().default("partnership"),
   partnershipId: z.number().int(),
-  changes: insertPartnershipSchema.partial(),
+  changes: z.record(z.any()),
   note: z.string().optional(),
 });
 export type ChangeRequestInput = z.infer<typeof changeRequestInputSchema>;

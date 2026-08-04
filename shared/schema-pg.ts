@@ -128,6 +128,7 @@ export const fileAssetsPg = pgTable("file_assets", {
 
 export const changeRequestsPg = pgTable("change_requests", {
   id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull().default("partnership"), // v7.11
   partnershipId: integer("partnership_id").notNull(),
   proposedBy: integer("proposed_by").notNull(),
   changes: text("changes").notNull(),

@@ -732,7 +732,8 @@ function AdvisorFormDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
-      toast({ description: user?.role === "admin" || editing ? t("advisorSaved") : t("advisorSubmitted") });
+      // v7.11 — Gobi editors save and publish directly, so no "pending review" copy
+      toast({ description: user?.canEditDirectly || editing ? t("advisorSaved") : t("advisorSubmitted") });
       onOpenChange(false);
       thankYou();
     },
@@ -1251,7 +1252,7 @@ function AdvisorDetailDialog({
               {/* Admin / owner actions */}
               {isStaff && (
                 <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-                  {(isAdmin || (a.submittedBy === user?.id && a.status === "pending")) && (
+                  {(user?.canEditDirectly || (a.submittedBy === user?.id && a.status === "pending")) && (
                     <Button size="sm" variant="outline" onClick={() => onEdit(a)} data-testid="button-edit-advisor">
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t("editAdvisor")}
                     </Button>

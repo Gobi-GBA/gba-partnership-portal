@@ -9,9 +9,38 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.10";
+export const CURRENT_VERSION = "7.11";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.11",
+    date: "2026-08-04",
+    by: "Fred",
+    titleEn: "v7.11 — colleagues on @gobi.vc can add and edit records directly, without waiting for approval",
+    titleCn: "v7.11 — @gobi.vc 同事可直接新增与编辑资料，无需等待审批",
+    itemsEn: [
+      "Signing in with an @gobi.vc Google account now grants edit rights immediately. The old default was viewer, which was read-only and needed an admin to upgrade it — in practice every one of the 15 non-admin accounts had already been upgraded by hand, and no submission had ever waited in the pending queue",
+      "Adding a partnership or an advisor publishes it straight away, at any stage including strategic. No approval step",
+      "Editing an approved record no longer requires a change request: descriptions, contacts, PIC, context, notes, photos and the rest save immediately",
+      "Changing a partnership level, or an advisor's onboarding status, still goes to an admin. If one edit touches both a free field and a gated one, the free fields save now and only the gated change waits — nothing is lost, and the confirmation says exactly what saved and what is pending",
+      "Deleting records, Hall of Fame, Domain Knowledge Partner and LP status remain admin or IR only, unchanged",
+      "The change-request queue now handles advisors as well as partnerships, and labels which is which",
+      "Every direct edit is still recorded in the update log with the author and the fields changed, so removing the approval step does not remove the audit trail",
+      "External collaborators without an @gobi.vc address keep the change-request path exactly as before",
+      "The welcome email no longer tells new colleagues they are a read-only viewer awaiting an upgrade",
+    ],
+    itemsCn: [
+      "使用 @gobi.vc 的 Google 账户登录后即刻获得编辑权限。此前默认为只读的查看者身份，需管理员手动升级 —— 实际上 15 个非管理员账户全部已被手动升级，且从未有提交在待审队列中等待过",
+      "新增合作伙伴或顾问后立即发布，可选择任意层级（含战略级），无需审批",
+      "编辑已通过的记录不再需要提交变更申请：简介、联系人、负责人、背景、备注、照片等字段即时保存",
+      "变更合作层级、或顾问的入库状态，仍需管理员审批。若一次编辑同时涉及普通字段与受限字段，普通字段立即保存，仅受限项进入待审 —— 内容不会丢失，提示会明确说明哪些已保存、哪些在等待",
+      "删除记录、名人堂、领域知识伙伴与 LP 状态仍限管理员或 IR 团队，保持不变",
+      "变更申请队列现同时支持顾问与合作伙伴，并标注类型",
+      "所有直接编辑仍记入更新日志，含操作人与变更字段 —— 取消审批环节不等于取消留痕",
+      "无 @gobi.vc 邮箱的外部协作者仍沿用原有的变更申请流程",
+      "欢迎邮件不再告知新同事其为只读查看者、需等待升级",
+    ],
+  },
   {
     version: "7.10",
     date: "2026-08-01",

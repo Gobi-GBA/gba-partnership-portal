@@ -22,8 +22,10 @@ import type { Partnership, AttachmentMeta, Stage } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 
 // Shared full edit dialog.
-// mode "direct"  — admin: PATCH the record immediately.
-// mode "request" — staff: submit a change request for admin approval.
+// mode "direct"  — admins and Gobi editors (v7.11): PATCH the record immediately.
+//                  A non-admin's stage change is queued by the server rather
+//                  than applied, and the toast says so.
+// mode "request" — external collaborators: submit a change request for approval.
 export function EditPartnershipDialog({
   p, allPartners, onClose, onSaved,
 }: {
@@ -37,7 +39,8 @@ export function EditPartnershipDialog({
   const { toast } = useToast();
   const [form, setForm] = useState<Record<string, any>>({});
   const [loadedId, setLoadedId] = useState<number | null>(null);
-  const mode: "direct" | "request" = user?.role === "admin" ? "direct" : "request";
+  const isAdmin = user?.role === "admin";
+  const mode: "direct" | "request" = user?.canEditDirectly ? "direct" : "request";
 
   const { data: attachments } = useQuery<AttachmentMeta[]>({
     queryKey: ["/api/partnerships", p?.id ?? 0, "attachments"],
@@ -143,8 +146,11 @@ export function EditPartnershipDialog({
         .slice(0, 12);
       if (mode === "direct") {
         const res = await apiRequest("PATCH", `/api/partnerships/${p.id}`, payload);
-        await apiRequest("PUT", `/api/partnerships/${p.id}/tags`, { tagIds });
-        queryClient.invalidateQueries({ queryKey: ["/api/partnership-tags"] });
+        // Sector tags stay an admin-only endpoint; skip for non-admin editors
+        if (isAdmin) {
+          await apiRequest("PUT", `/api/partnerships/${p.id}/tags`, { tagIds });
+          queryClient.invalidateQueries({ queryKey: ["/api/partnership-tags"] });
+        }
         return res.json();
       }
       // Change request: send only fields that differ from the current record
@@ -173,6 +179,9 @@ export function EditPartnershipDialog({
     onSuccess: (r: any) => {
       if (mode === "request" && !r?.noop) {
         toast({ title: t("changeSubmitted") });
+      } else if (r?.queued?.stage) {
+        // v7.11 — the free fields saved; the stage change is waiting on an admin
+        toast({ title: t("savedStageQueued"), description: t("savedStageQueuedHint") });
       }
       onSaved();
       onClose();
@@ -283,6 +292,11 @@ export function EditPartnershipDialog({
                 </SelectContent>
               </Select>
               <StageGuide selected={form.stage} />
+              {mode === "direct" && !isAdmin && (
+                <p className="mt-1 text-xs text-muted-foreground" data-testid="text-stage-gated-note">
+                  {t("stageNeedsApproval")}
+                </p>
+              )}
             </EField>
             {(user?.role === "admin" || user?.isIr === 1) && (
               <EField label={t("lpStatus")}>
@@ -338,7 +352,7 @@ export function EditPartnershipDialog({
                   >
                     {a.name}
                   </a>
-                  {mode === "direct" && (
+                  {isAdmin && (
                     <button
                       type="button"
                       className="ml-auto rounded p-1 text-muted-foreground transition-colors hover:text-destructive hover:bg-destructive/10"
