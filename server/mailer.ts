@@ -4,6 +4,7 @@
 // gracefully: registration succeeds without a confirmation email, password reset
 // falls back to secret questions).
 import nodemailer from "nodemailer";
+import { renderEmailMarkdownHtml } from "../shared/markdown.js";
 
 function parseBool(value: string | undefined, fallback = false): boolean {
   if (value == null) return fallback;
@@ -51,13 +52,8 @@ function wrap(bodyHtml: string): string {
 // v5.9 — Gobi-branded wrapper for person-to-person outreach email.
 // Navy masthead with the Gobi wordmark, gold rule, Calibri body, and the
 // official footer — but no automated/do-not-reply chrome.
-export function outreachHtml(bodyText: string): string {
-  const escaped = bodyText
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const paragraphs = escaped
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 14px;line-height:1.55;">${p.replace(/\n/g, "<br/>")}</p>`) 
-    .join("");
+export function outreachHtml(bodyMarkdown: string): string {
+  const renderedBody = renderEmailMarkdownHtml(bodyMarkdown);
   return `
   <div style="font-family:${GOBI_FONT};max-width:600px;margin:0 auto;color:#1a2433;">
     <div style="background:#0C2340;padding:18px 28px;">
@@ -65,7 +61,7 @@ export function outreachHtml(bodyText: string): string {
     </div>
     <div style="height:3px;background:#D4A843;"></div>
     <div style="padding:26px 28px;font-size:15px;">
-      ${paragraphs}
+      ${renderedBody}
     </div>
     <div style="border-top:1px solid #e2e8f0;padding:14px 28px 22px;font-size:12px;color:#64748b;">
       Gobi Partners · ${GOBI_ADDRESS}<br/>

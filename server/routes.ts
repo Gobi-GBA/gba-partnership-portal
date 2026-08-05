@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction, CookieOptions } from "ex
 import type { Server } from "node:http";
 import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
 import { normalizeUrl, linkedinSlug } from "../shared/urls.js";
+import { markdownToPlainText, resolveOutreachPlaceholders } from "../shared/markdown.js";
 import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail, type OutreachAttachment } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -2502,12 +2503,6 @@ www.gobi.vc`,
     const parts = full.trim().split(/\s+/).filter((p) => !/^(prof\.?|dr\.?|mr\.?|mrs\.?|ms\.?|ir\.?|sir|dato'?|tan\s?sri)$/i.test(p));
     return parts[0] ?? full.trim();
   };
-  const fillPlaceholders = (text: string, r: { name: string; firstName: string; organization: string }) =>
-    text
-      .replace(/\{\{\s*name\s*\}\}/gi, r.name)
-      .replace(/\{\{\s*first_name\s*\}\}/gi, r.firstName)
-      .replace(/\{\{\s*organization\s*\}\}/gi, r.organization);
-
   app.post("/api/advisors/outreach/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
     if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
     const parsed = z.object({
@@ -2565,13 +2560,14 @@ www.gobi.vc`,
       firstName: firstNameOf(advisor.name),
       organization: roles0[0]?.organization ?? "",
     };
-    const subject = fillPlaceholders(parsed.data.subject, rctx);
-    const body = fillPlaceholders(parsed.data.body, rctx);
+    const subject = resolveOutreachPlaceholders(parsed.data.subject, rctx);
+    const body = resolveOutreachPlaceholders(parsed.data.body, rctx, true);
     const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
     const ok = await sendOutreach(parsed.data.to, subject, outreachHtml(body), {
       fromName: `${req.user!.name} · Gobi Partners`,
       replyTo: senderEmail,
       isHtml: true,
+      text: markdownToPlainText(body),
     });
     if (!ok) return res.status(502).json({ message: "Send failed" });
     // Log the outreach into the advisor's activity feed.

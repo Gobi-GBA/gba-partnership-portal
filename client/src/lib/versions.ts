@@ -9,9 +9,30 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.11";
+export const CURRENT_VERSION = "7.12";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.12",
+    date: "2026-08-05",
+    by: "Analyst01",
+    titleEn: "v7.12 — advisor emails now support Markdown formatting with an accurate preview",
+    titleCn: "v7.12 — 顾问邮件现支持 Markdown 格式编辑与准确预览",
+    itemsEn: [
+      "Email Advisors now includes formatting controls for bold, italic, headings, bulleted and numbered lists, links and block quotes, plus keyboard shortcuts for bold and italic",
+      "The existing recipient preview step renders the final formatting after advisor placeholders are filled, using the same safe Markdown rules as the delivered email",
+      "Admin outreach templates use the same editor and add Write and Preview tabs, so reusable onboarding and general-update messages can be checked before saving",
+      "Portal-sent emails carry the formatted Gobi-branded HTML plus a readable plain-text alternative; Copy text and Open in mail client preserve list markers and link addresses",
+      "Raw HTML stays visible as text and unsafe links are blocked; recipient names and organisations remain literal even when they contain Markdown punctuation",
+    ],
+    itemsCn: [
+      "“顾问邮件”现提供粗体、斜体、标题、项目符号列表、编号列表、链接与引用格式工具，并支持粗体和斜体快捷键",
+      "现有收件人预览步骤会在填入顾问占位符后呈现最终格式，并与实际发送邮件采用相同的安全 Markdown 规则",
+      "后台拓展邮件模板采用同一编辑器，并新增“编辑／预览”标签页，入网邀请和一般通知可在保存前检查效果",
+      "门户直接发送的邮件包含戈壁品牌样式 HTML 与易读的纯文本版本；“复制文本”和“用邮件客户端打开”会保留列表符号与链接地址",
+      "原始 HTML 会按文字显示，危险链接会被拦截；顾问姓名与机构名称即使含有 Markdown 标点也会保持原样",
+    ],
+  },
   {
     version: "7.11",
     date: "2026-08-04",

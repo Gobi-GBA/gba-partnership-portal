@@ -30,6 +30,7 @@ import { ROLES } from "@shared/schema";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 import { ExportCsvButtons } from "@/pages/advisors";
 import { createDirtyRegistry, UnsavedDialog, type DirtyRegistry } from "@/components/unsaved-guard";
+import { MarkdownEmailEditor } from "@/components/markdown-email-editor";
 
 export default function Admin() {
   const { t } = useLang();
@@ -1166,7 +1167,13 @@ function TemplatesAdmin({ registry }: { registry?: DirtyRegistry }) {
           </div>,
           <div key="b" className="space-y-1.5">
             <Label>{t("tplBody")}</Label>
-            <Textarea rows={12} className="font-mono text-xs leading-relaxed" value={fields.outreachOnboardingBody} onChange={(e) => set("outreachOnboardingBody")(e.target.value)} data-testid="textarea-tpl-onboarding-body" />
+            <MarkdownEmailEditor
+              rows={12}
+              value={fields.outreachOnboardingBody}
+              onChange={set("outreachOnboardingBody")}
+              previewable
+              testId="textarea-tpl-onboarding-body"
+            />
           </div>,
         ],
       })}
@@ -1183,7 +1190,13 @@ function TemplatesAdmin({ registry }: { registry?: DirtyRegistry }) {
           </div>,
           <div key="b" className="space-y-1.5">
             <Label>{t("tplBody")}</Label>
-            <Textarea rows={8} className="font-mono text-xs leading-relaxed" value={fields.outreachUpdateBody} onChange={(e) => set("outreachUpdateBody")(e.target.value)} data-testid="textarea-tpl-update-body" />
+            <MarkdownEmailEditor
+              rows={8}
+              value={fields.outreachUpdateBody}
+              onChange={set("outreachUpdateBody")}
+              previewable
+              testId="textarea-tpl-update-body"
+            />
           </div>,
         ],
       })}

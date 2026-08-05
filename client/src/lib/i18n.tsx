@@ -718,7 +718,7 @@ const dict = {
   close: { en: "Close", cn: "关闭" },
   // v5.11 — template editor
   tabTemplates: { en: "Templates", cn: "模板" },
-  tplHint: { en: "Edit the outreach email templates and the invitation letter text used across the portal. Placeholders in double braces are filled per advisor automatically.", cn: "编辑门户中使用的邮件模板与邀请函文本。双花括号占位符会按顾问自动填充。" },
+  tplHint: { en: "Edit the outreach email templates and invitation letter text used across the portal. Outreach bodies support Markdown formatting, and placeholders in double braces are filled per advisor automatically.", cn: "编辑门户中使用的邮件模板与邀请函文本。拓展邮件正文支持 Markdown 格式，双花括号占位符会按顾问自动填充。" },
   tplOnboardingEmail: { en: "Outreach email — onboarding invitation", cn: "拓展邮件——入网邀请" },
   tplUpdateEmail: { en: "Outreach email — general update", cn: "拓展邮件——常规更新" },
   tplLetter: { en: "Invitation letter", cn: "邀请函" },
@@ -726,7 +726,7 @@ const dict = {
   tplLetterAck: { en: "Acknowledgment receipt (page 2)", cn: "签收回执（第二页）" },
   tplSubject: { en: "Subject", cn: "主题" },
   tplBody: { en: "Body", cn: "正文" },
-  tplEmailPlaceholders: { en: "Placeholders: {{name}}, {{first_name}}, {{organization}}", cn: "占位符：{{name}}、{{first_name}}、{{organization}}" },
+  tplEmailPlaceholders: { en: "Use the formatting toolbar and placeholders: {{name}}, {{first_name}}, {{organization}}", cn: "可使用格式工具栏与占位符：{{name}}、{{first_name}}、{{organization}}" },
   tplLetterPlaceholders: { en: "Placeholders: {{name}}, {{salutation}}, {{organization}}, {{domains}}, {{date}}", cn: "占位符：{{name}}、{{salutation}}、{{organization}}、{{domains}}、{{date}}" },
   tplReset: { en: "Reset to default", cn: "恢复默认" },
   // v5.5 — LinkedIn sync
@@ -950,7 +950,7 @@ const dict = {
   outreachStepTemplate: { en: "Template and message", cn: "模板与内容" },
   outreachStepPreview: { en: "Preview", cn: "预览" },
   outreachStepSend: { en: "Send", cn: "发送" },
-  outreachPlaceholderHint: { en: "Placeholders are filled per recipient.", cn: "占位符将按收件人自动填充。" },
+  outreachPlaceholderHint: { en: "Format the message with the toolbar. Placeholders are filled per recipient.", cn: "可使用工具栏设置正文格式；占位符将按收件人自动填充。" },
   outreachInsertPlaceholder: { en: "Insert placeholder", cn: "插入占位符" },
   outreachNext: { en: "Next", cn: "下一步" },
   outreachPrev: { en: "Back", cn: "上一步" },
@@ -962,6 +962,20 @@ const dict = {
   outreachToLabel: { en: "To", cn: "收件地址" },
   outreachResolvedBody: { en: "Resolved message", cn: "实际发送内容" },
   outreachNoRecipients: { en: "No recipients with an email address.", cn: "没有可用邮箱的收件人。" },
+  markdownBold: { en: "Bold (⌘/Ctrl+B)", cn: "粗体（⌘/Ctrl+B）" },
+  markdownItalic: { en: "Italic (⌘/Ctrl+I)", cn: "斜体（⌘/Ctrl+I）" },
+  markdownHeading: { en: "Heading", cn: "标题" },
+  markdownBulletList: { en: "Bulleted list", cn: "项目符号列表" },
+  markdownNumberedList: { en: "Numbered list", cn: "编号列表" },
+  markdownLink: { en: "Link", cn: "链接" },
+  markdownQuote: { en: "Block quote", cn: "引用" },
+  markdownBoldText: { en: "bold text", cn: "粗体文字" },
+  markdownItalicText: { en: "italic text", cn: "斜体文字" },
+  markdownLinkText: { en: "link text", cn: "链接文字" },
+  markdownWrite: { en: "Write", cn: "编辑" },
+  markdownPreview: { en: "Preview", cn: "预览" },
+  markdownPreviewEmpty: { en: "Enter a message to preview its formatting.", cn: "输入邮件内容后可预览格式效果。" },
+  markdownFormattingHint: { en: "Markdown formatting ·", cn: "Markdown 格式 ·" },
 } as const;
 
 export type DictKey = keyof typeof dict;

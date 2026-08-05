@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLang } from "@/lib/i18n";
 import { apiRequest } from "@/lib/queryClient";
@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -20,9 +19,15 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AdvisorWithRoles } from "@shared/schema";
+import { markdownToPlainText, resolveOutreachPlaceholders } from "@shared/markdown";
 import { Mail, Send, Loader2, Users, Check, Braces, Copy } from "lucide-react";
 import { copyText } from "@/lib/download";
 import { cn } from "@/lib/utils";
+import {
+  MarkdownEmailEditor,
+  MarkdownPreview,
+  type MarkdownEmailEditorHandle,
+} from "@/components/markdown-email-editor";
 
 type OutreachTemplate = "onboarding_invite" | "general_update";
 
@@ -42,13 +47,17 @@ interface ComposeResponse {
 
 const PLACEHOLDERS = ["{{name}}", "{{first_name}}", "{{organization}}"] as const;
 
-/** Resolve {{name}} / {{first_name}} / {{organization}} for one recipient. */
-function resolve(text: string, r: Recipient): string {
-  return text
-    .replace(/\{\{\s*first_name\s*\}\}/gi, r.firstName || r.name)
-    .replace(/\{\{\s*name\s*\}\}/gi, r.name)
-    .replace(/\{\{\s*organization\s*\}\}/gi, r.organization || "");
-}
+const recipientValues = (r: Recipient) => ({
+  name: r.name,
+  firstName: r.firstName || r.name,
+  organization: r.organization || "",
+});
+
+const resolvePlain = (text: string, r: Recipient) =>
+  resolveOutreachPlaceholders(text, recipientValues(r));
+
+const resolveMarkdown = (text: string, r: Recipient) =>
+  resolveOutreachPlaceholders(text, recipientValues(r), true);
 
 type Step = 1 | 2 | 3;
 
@@ -74,6 +83,7 @@ export function OutreachDialog({
   const [failed, setFailed] = useState<number[]>([]);
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const bodyEditorRef = useRef<MarkdownEmailEditorHandle>(null);
 
   const compose = useMutation({
     mutationFn: async (key: OutreachTemplate) => {
@@ -115,15 +125,15 @@ export function OutreachDialog({
     [chosen, previewId],
   );
 
-  const insertPlaceholder = (ph: string) => setBody((b) => (b ? `${b}${b.endsWith(" ") ? "" : " "}${ph}` : ph));
+  const insertPlaceholder = (ph: string) => bodyEditorRef.current?.insertText(ph);
 
   const send = useMutation({
     mutationFn: async (r: Recipient) => {
       const res = await apiRequest("POST", "/api/advisors/outreach/send", {
         advisorId: r.advisorId,
-        to: r.to,
-        subject: resolve(subject, r),
-        body: resolve(body, r),
+        to: r.to[0],
+        subject,
+        body,
       });
       return res.json();
     },
@@ -151,11 +161,11 @@ export function OutreachDialog({
   };
 
   const mailtoFor = (r: Recipient) =>
-    `mailto:${r.to.join(",")}?subject=${encodeURIComponent(resolve(subject, r))}&body=${encodeURIComponent(resolve(body, r))}`;
+    `mailto:${r.to.join(",")}?subject=${encodeURIComponent(resolvePlain(subject, r))}&body=${encodeURIComponent(markdownToPlainText(resolveMarkdown(body, r)))}`;
 
   // v5.10 — copy the fully resolved email as plain text (fallback when no mail client is set up)
   const copyFor = async (r: Recipient) => {
-    const text = `To: ${r.to.join(", ")}\nSubject: ${resolve(subject, r)}\n\n${resolve(body, r)}`;
+    const text = `To: ${r.to.join(", ")}\nSubject: ${resolvePlain(subject, r)}\n\n${markdownToPlainText(resolveMarkdown(body, r))}`;
     const ok = await copyText(text);
     toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
   };
@@ -171,8 +181,8 @@ export function OutreachDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto" data-testid="dialog-outreach">
-        <DialogHeader>
+      <DialogContent className="grid-cols-[minmax(0,1fr)] w-[calc(100%-1rem)] max-w-3xl max-h-[88vh] overflow-x-hidden overflow-y-auto p-4 sm:p-6" data-testid="dialog-outreach">
+        <DialogHeader className="min-w-0">
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-4 w-4 text-[hsl(var(--gold))]" /> {t("outreachTitle")}
           </DialogTitle>
@@ -180,7 +190,7 @@ export function OutreachDialog({
         </DialogHeader>
 
         {/* Stepper */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border pb-3">
           {STEPS.map((s, i) => (
             <span key={s.n} className="flex items-center gap-2">
               <button
@@ -212,7 +222,7 @@ export function OutreachDialog({
         ) : recipients.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground" data-testid="text-outreach-empty">{t("outreachNoRecipients")}</p>
         ) : (
-          <div className="space-y-4 pt-1">
+          <div className="min-w-0 space-y-4 pt-1">
             {/* ---------- Step 1: one editable template ---------- */}
             {step === 1 && (
               <>
@@ -222,7 +232,7 @@ export function OutreachDialog({
                     value={template}
                     onValueChange={(v) => { setTemplate(v as OutreachTemplate); compose.mutate(v as OutreachTemplate); }}
                   >
-                    <SelectTrigger className="w-64" data-testid="select-outreach-template"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-64 max-w-full" data-testid="select-outreach-template"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="onboarding_invite">{t("outreachTplOnboarding")}</SelectItem>
                       <SelectItem value="general_update">{t("outreachTplUpdate")}</SelectItem>
@@ -236,7 +246,7 @@ export function OutreachDialog({
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label>{t("outreachBody")}</Label>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -253,13 +263,21 @@ export function OutreachDialog({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} data-testid="textarea-outreach-body" />
-                  <p className="text-[11px] text-muted-foreground">{PLACEHOLDERS.join("  ")}</p>
+                  <MarkdownEmailEditor
+                    ref={bodyEditorRef}
+                    rows={10}
+                    value={body}
+                    onChange={setBody}
+                    testId="textarea-outreach-body"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("markdownFormattingHint")} {PLACEHOLDERS.join(" · ")}
+                  </p>
                 </div>
 
                 {/* Recipient selection */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label className="flex items-center gap-1.5">
                       <Users className="h-3.5 w-3.5" /> {t("outreachRecipients")}
                     </Label>
@@ -280,7 +298,7 @@ export function OutreachDialog({
                       return (
                         <label
                           key={r.advisorId}
-                          className={cn("flex cursor-pointer items-center gap-2 px-3 py-2 text-sm", noEmail && "cursor-not-allowed opacity-60")}
+                          className={cn("flex min-w-0 cursor-pointer items-center gap-2 px-3 py-2 text-sm", noEmail && "cursor-not-allowed opacity-60")}
                           data-testid={`row-outreach-candidate-${r.advisorId}`}
                         >
                           <Checkbox
@@ -291,7 +309,7 @@ export function OutreachDialog({
                             }
                             data-testid={`checkbox-outreach-${r.advisorId}`}
                           />
-                          <span className="font-medium">{r.name}</span>
+                          <span className="min-w-0 truncate font-medium">{r.name}</span>
                           {r.organization && <span className="truncate text-xs text-muted-foreground">{r.organization}</span>}
                           <span className="ml-auto truncate text-xs text-muted-foreground">
                             {noEmail ? t("outreachNoEmail") : r.to.join(", ")}
@@ -313,7 +331,7 @@ export function OutreachDialog({
                     value={previewRecipient ? String(previewRecipient.advisorId) : ""}
                     onValueChange={(v) => setPreviewId(Number(v))}
                   >
-                    <SelectTrigger className="w-72" data-testid="select-outreach-preview"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-72 max-w-full" data-testid="select-outreach-preview"><SelectValue /></SelectTrigger>
                     <SelectContent className="max-h-64">
                       {chosen.map((r) => (
                         <SelectItem key={r.advisorId} value={String(r.advisorId)}>{r.name}</SelectItem>
@@ -326,9 +344,13 @@ export function OutreachDialog({
                     <p className="text-xs text-muted-foreground">
                       {t("outreachToLabel")}: <span className="font-medium text-foreground" data-testid="text-preview-to">{previewRecipient.to.join(", ")}</span>
                     </p>
-                    <p className="text-sm font-semibold" data-testid="text-preview-subject">{resolve(subject, previewRecipient)}</p>
+                    <p className="text-sm font-semibold" data-testid="text-preview-subject">{resolvePlain(subject, previewRecipient)}</p>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("outreachResolvedBody")}</p>
-                    <p className="whitespace-pre-line text-sm leading-relaxed" data-testid="text-preview-body">{resolve(body, previewRecipient)}</p>
+                    <MarkdownPreview
+                      markdown={resolveMarkdown(body, previewRecipient)}
+                      className="rounded-md bg-background/35 p-3"
+                      testId="text-preview-body"
+                    />
                   </div>
                 ) : (
                   <p className="py-6 text-center text-sm text-muted-foreground">{t("outreachNoneSelected")}</p>
@@ -362,10 +384,10 @@ export function OutreachDialog({
                 </div>
                 <div className="divide-y divide-border rounded-lg border border-border">
                   {chosen.map((r) => (
-                    <div key={r.advisorId} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm" data-testid={`row-outreach-send-${r.advisorId}`}>
+                    <div key={r.advisorId} className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2 text-sm" data-testid={`row-outreach-send-${r.advisorId}`}>
                       <span className="font-medium">{r.name}</span>
                       <span className="truncate text-xs text-muted-foreground">{r.to.join(", ")}</span>
-                      <div className="ml-auto flex items-center gap-2">
+                      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                         {sent.includes(r.advisorId) && (
                           <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-600" data-testid={`badge-outreach-sent-${r.advisorId}`}>
                             <Check className="mr-1 h-3 w-3" /> {t("outreachSent")}
