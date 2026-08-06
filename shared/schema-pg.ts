@@ -175,6 +175,14 @@ export const advisorsPg = pgTable("advisors", {
   approvalTokenExpires: text("approval_token_expires"),
   approvalDecidedBy: text("approval_decided_by"),
   approvalDecidedAt: text("approval_decided_at"),
+  // ---- v7.14 conflict-of-interest gate on the COO approval email ----
+  coiStatus: text("coi_status").notNull().default("none"),
+  coiDeclaredBy: text("coi_declared_by"),
+  coiDeclaredByEmail: text("coi_declared_by_email"),
+  coiDeclaredAt: text("coi_declared_at"),
+  coiDetails: text("coi_details"),
+  coiClearedBy: text("coi_cleared_by"),
+  coiClearedAt: text("coi_cleared_at"),
 });
 
 export const advisorRolesPg = pgTable("advisor_roles", {

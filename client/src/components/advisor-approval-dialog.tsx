@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/dialog";
 import type { AdvisorWithRoles } from "@shared/schema";
 import { buildApprovalEmail, type ApprovalEmailData } from "@shared/approval-email";
-import { Mail, Send, Loader2, CheckCircle2, Copy, Sparkles } from "lucide-react";
+import { coiAttestationText, type CoiStatus } from "@shared/coi";
+import { Mail, Send, Loader2, CheckCircle2, Copy, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 type ApprovalBase = Omit<ApprovalEmailData, "intro" | "approvalLink">;
 
@@ -38,6 +39,16 @@ interface ComposeResponse {
   mailEnabled: boolean;
   cooEmailConfigured: boolean;
   aiEnabled: boolean;
+  coi: CoiState;
+}
+
+// v7.14 — the conflict-of-interest slice the server reports back for this advisor.
+interface CoiState {
+  status: CoiStatus;
+  blocked: boolean;
+  declaredBy: string | null;
+  declaredAt: string | null;
+  details: string | null;
 }
 
 /** Split a comma / semicolon / whitespace separated recipient list. */
@@ -69,6 +80,13 @@ export function ApprovalSendDialog({
   const [aiEnabled, setAiEnabled] = useState(false);
   const [sent, setSent] = useState(false);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
+  // v7.14 — conflict-of-interest gate. `null` means unanswered, which is the
+  // state the dialog always opens in: the declaration is never pre-filled, so
+  // the sender has to make the statement deliberately every time.
+  const [coiConflict, setCoiConflict] = useState<boolean | null>(null);
+  const [coiDetails, setCoiDetails] = useState("");
+  const [coiState, setCoiState] = useState<CoiState | null>(null);
+  const [coiJustRecorded, setCoiJustRecorded] = useState(false);
 
   const emailLang = lang === "cn" ? "cn" : "en";
 
@@ -97,6 +115,7 @@ export function ApprovalSendDialog({
       setMailEnabled(data.mailEnabled);
       setCooEmailConfigured(data.cooEmailConfigured);
       setAiEnabled(data.aiEnabled);
+      setCoiState(data.coi ?? null);
       if (data.aiEnabled) draftIntro.mutate();
     },
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
@@ -108,6 +127,12 @@ export function ApprovalSendDialog({
       setLoadedFor(advisor.id);
       setSent(false);
       setBase(null);
+      // Reset the declaration on every open — an attestation from a previous
+      // session must never be carried silently into a new send.
+      setCoiConflict(null);
+      setCoiDetails("");
+      setCoiState(null);
+      setCoiJustRecorded(false);
       compose.mutate();
     }
     if (!open && loadedFor !== null) setLoadedFor(null);
@@ -117,21 +142,32 @@ export function ApprovalSendDialog({
   const toValid = EMAIL_RE.test(to.trim());
   const ccValid = cc.every((e) => EMAIL_RE.test(e));
 
+  const coiBlocked = Boolean(coiState?.blocked);
+
   // Live preview — identical to what the server renders, apart from the link,
   // which only exists once a one-time token is minted at send time.
+  // v7.14 — the attestation row appears in the preview as soon as "no conflict"
+  // is selected, using a provisional timestamp; the server stamps the real one.
   const rendered = useMemo(() => {
     if (!base) return null;
     return buildApprovalEmail({
       ...base,
       intro,
       approvalLink: "https://gba-partnership-portal.vercel.app/#/advisor-approval?token=…",
+      coiAttestation:
+        coiConflict === false
+          ? coiAttestationText(base.lang, base.requesterName, new Date().toISOString())
+          : null,
     });
-  }, [base, intro]);
+  }, [base, intro, coiConflict]);
 
   const send = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/send`, {
         lang: emailLang, to: to.trim(), cc, subject, intro,
+        // v7.14 — the gate is enforced server-side; this is the declaration the
+        // server evaluates, records and stamps into the email.
+        coi: { conflict: coiConflict === true, details: coiConflict ? coiDetails.trim() : undefined },
       });
       return res.json();
     },
@@ -145,6 +181,35 @@ export function ApprovalSendDialog({
     onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
   });
 
+  // v7.14 — recording a declared conflict travels the same endpoint as a send,
+  // because the server is the thing that decides. A conflict comes back as a 409
+  // with the updated flag, and nothing was emailed.
+  const declareConflict = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/advisors/${advisor.id}/approval/send`, {
+        lang: emailLang, to: to.trim(), cc, subject, intro,
+        coi: { conflict: true, details: coiDetails.trim() || undefined },
+      });
+      return res.json();
+    },
+    // A 409 is the expected outcome here, so both paths land on the same state.
+    onSettled: () => {
+      setCoiJustRecorded(true);
+      setCoiState((prev) => ({
+        status: "blocked",
+        blocked: true,
+        declaredBy: prev?.declaredBy ?? null,
+        declaredAt: prev?.declaredAt ?? new Date().toISOString(),
+        details: coiDetails.trim() || null,
+      }));
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors", advisor.id, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors/coi/blocked"] });
+      toast({ description: t("coiRecorded") });
+    },
+  });
+
   const copy = async () => {
     if (!rendered) return;
     const header = `To: ${to}\nCc: ${cc.join(", ")}\nSubject: ${subject}\n\n`;
@@ -153,7 +218,10 @@ export function ApprovalSendDialog({
   };
 
   const canSend = Boolean(
-    mailEnabled && toValid && ccValid && subject.trim() && intro.trim() && !send.isPending,
+    mailEnabled && toValid && ccValid && subject.trim() && intro.trim() && !send.isPending &&
+    // v7.14 — an unanswered or conflicted declaration, or a pre-existing block,
+    // all keep the send button off. The server re-checks every one of these.
+    coiConflict === false && !coiBlocked,
   );
 
   return (
@@ -252,6 +320,80 @@ export function ApprovalSendDialog({
               <p className="text-[11px] text-muted-foreground">{t("approvalRelevanceHint")}</p>
             </div>
 
+            {/* v7.14 — conflict-of-interest gate. Sits directly above the preview
+                so the sender reads the declaration before the send button. */}
+            <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3" data-testid="section-approval-coi">
+              <div className="flex items-center gap-2">
+                {coiBlocked
+                  ? <ShieldAlert className="h-4 w-4 text-destructive" />
+                  : <ShieldCheck className="h-4 w-4 text-[hsl(var(--gold))]" />}
+                <Label className="text-sm font-semibold">{t("coiSectionTitle")}</Label>
+              </div>
+
+              {coiBlocked ? (
+                <div className="space-y-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2" data-testid="text-approval-coi-blocked">
+                  <p className="text-xs font-medium text-destructive">{t("coiBlockedBanner")}</p>
+                  {coiState?.declaredBy || coiState?.declaredAt ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("coiDeclaredByAt")}: {coiState?.declaredBy ?? "—"}
+                      {coiState?.declaredAt ? ` · ${coiState.declaredAt.slice(0, 10)}` : ""}
+                    </p>
+                  ) : null}
+                  {coiState?.details ? (
+                    <p className="whitespace-pre-wrap text-[11px] text-muted-foreground">{coiState.details}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">{t("coiScope")}</p>
+                  <div className="space-y-1.5">
+                    <label className="flex cursor-pointer items-start gap-2 text-xs" data-testid="radio-approval-coi-none">
+                      <input
+                        type="radio"
+                        name="approval-coi"
+                        className="mt-0.5"
+                        checked={coiConflict === false}
+                        onChange={() => { setCoiConflict(false); setCoiDetails(""); }}
+                      />
+                      <span>{t("coiNone")}</span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-2 text-xs" data-testid="radio-approval-coi-yes">
+                      <input
+                        type="radio"
+                        name="approval-coi"
+                        className="mt-0.5"
+                        checked={coiConflict === true}
+                        onChange={() => setCoiConflict(true)}
+                      />
+                      <span>{t("coiYes")}</span>
+                    </label>
+                  </div>
+
+                  {coiConflict === true && (
+                    <div className="space-y-1 pt-1">
+                      <Label htmlFor="approval-coi-details" className="text-xs">{t("coiDetailsLabel")}</Label>
+                      <Textarea
+                        id="approval-coi-details"
+                        rows={3}
+                        value={coiDetails}
+                        placeholder={t("coiDetailsPlaceholder")}
+                        onChange={(e) => setCoiDetails(e.target.value)}
+                        data-testid="textarea-approval-coi-details"
+                      />
+                      <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400" data-testid="text-approval-coi-will-block">
+                        {t("coiWillBlock")}
+                      </p>
+                    </div>
+                  )}
+
+                  {coiConflict === null && (
+                    <p className="text-[11px] text-muted-foreground" data-testid="text-approval-coi-required">{t("coiRequired")}</p>
+                  )}
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">{t("coiScopeNote")}</p>
+                </>
+              )}
+            </div>
+
             <div className="space-y-1">
               <Label>{t("approvalPreview")}</Label>
               <iframe
@@ -271,16 +413,34 @@ export function ApprovalSendDialog({
             <Button type="button" variant="outline" onClick={copy} data-testid="button-approval-copy">
               <Copy className="mr-1.5 h-3.5 w-3.5" /> {t("copyEmail")}
             </Button>
-            <Button
-              type="button"
-              disabled={!canSend}
-              onClick={() => send.mutate()}
-              className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
-              data-testid="button-approval-send"
-            >
-              {send.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-              {t("approvalSend")}
-            </Button>
+            {/* v7.14 — a declared conflict swaps the send action for a record-only
+                action. There is no path from this dialog that both declares a
+                conflict and sends the email. */}
+            {coiConflict === true && !coiBlocked ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={declareConflict.isPending || coiJustRecorded}
+                onClick={() => declareConflict.mutate()}
+                data-testid="button-approval-coi-declare"
+              >
+                {declareConflict.isPending
+                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  : <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />}
+                {t("coiRecordButton")}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                disabled={!canSend}
+                onClick={() => send.mutate()}
+                className="bg-[hsl(193,52%,38%)] text-white hover:bg-[hsl(193,52%,30%)]"
+                data-testid="button-approval-send"
+              >
+                {send.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                {t("approvalSend")}
+              </Button>
+            )}
           </DialogFooter>
         )}
       </DialogContent>

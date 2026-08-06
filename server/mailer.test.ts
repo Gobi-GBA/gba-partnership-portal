@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { campaignCopyEmail } from "./mailer.js";
+import { buildApprovalEmail, type ApprovalEmailData } from "../shared/approval-email.js";
+import { coiAttestationText, evaluateCoiGate, normalizeCoiDetails } from "../shared/coi.js";
 
 test("renders one safe campaign copy with the shared Markdown template", () => {
   const email = campaignCopyEmail({
@@ -38,4 +40,91 @@ test("lists subset advisor names in HTML and plain text", () => {
   assert.match(email.html, /<li>Bo Zhang<\/li>/);
   assert.match(email.text, /Advisors · 顾问: Amy & Co, Bo Zhang/);
   assert.match(email.text, /Dear \{\{name\}\}/);
+});
+
+// ---------------- v7.14 — conflict-of-interest gate ----------------
+
+const baseApproval: Omit<ApprovalEmailData, "lang" | "coiAttestation"> = {
+  fullName: "Ruizhao JIANG (蒋蕊钊)",
+  advisorType: "Technical Advisor",
+  roleLine: "Technical Lead — HKUST",
+  tags: ["AI & Robotics"],
+  domains: "Optical switching",
+  background: "Twelve years in photonics.",
+  engagement: "Quarterly technical review of two portfolio companies.",
+  publicClearance: true,
+  requesterName: "Fred Li",
+  intro: "A rare bench-to-fab operator in a field where we have two live deals.",
+  approvalLink: "https://network.gobi.vc/#/advisor-approval?token=abc",
+  expiryDays: 7,
+};
+
+test("a clean declaration lets the send proceed and marks the record cleared", () => {
+  const result = evaluateCoiGate({ coiStatus: "none" }, { conflict: false });
+  assert.equal(result.allowed, true);
+  assert.equal(result.nextStatus, "cleared");
+});
+
+test("an advisor previously cleared can be sent again", () => {
+  const result = evaluateCoiGate({ coiStatus: "cleared" }, { conflict: false });
+  assert.equal(result.allowed, true);
+  assert.equal(result.nextStatus, "cleared");
+});
+
+test("declaring a conflict blocks the send and raises the flag", () => {
+  const result = evaluateCoiGate({ coiStatus: "none" }, { conflict: true });
+  assert.equal(result.allowed, false);
+  assert.equal(result.allowed === false && result.reason, "coi_declared");
+  assert.equal(result.nextStatus, "blocked");
+});
+
+test("an existing block stops a second sender who declares no conflict", () => {
+  // The whole point of the flag: a colleague must not be able to route around
+  // someone else's declaration by attesting cleanly themselves.
+  const result = evaluateCoiGate({ coiStatus: "blocked" }, { conflict: false });
+  assert.equal(result.allowed, false);
+  assert.equal(result.allowed === false && result.reason, "coi_blocked");
+  assert.equal(result.nextStatus, null);
+});
+
+test("an existing block outranks a fresh conflict declaration", () => {
+  const result = evaluateCoiGate({ coiStatus: "blocked" }, { conflict: true });
+  assert.equal(result.allowed === false && result.reason, "coi_blocked");
+});
+
+test("conflict details are trimmed, capped and normalised to null when empty", () => {
+  assert.equal(normalizeCoiDetails("  I hold shares.  "), "I hold shares.");
+  assert.equal(normalizeCoiDetails("   "), null);
+  assert.equal(normalizeCoiDetails(undefined), null);
+  assert.equal(normalizeCoiDetails(null), null);
+  assert.equal(normalizeCoiDetails("x".repeat(2500))?.length, 2000);
+});
+
+test("the attestation names the requester and a UTC timestamp in both languages", () => {
+  const en = coiAttestationText("en", "Fred Li", "2026-08-06T15:42:09.000Z");
+  assert.match(en, /Fred Li declared no conflict of interest on 2026-08-06 15:42 UTC/);
+  assert.match(en, /their employer or any affiliated organisation, including any equity holding or payment/);
+
+  const cn = coiAttestationText("cn", "李国樑", "2026-08-06T15:42:09.000Z");
+  assert.match(cn, /李国樑 已于 2026-08-06 15:42 UTC 声明/);
+  assert.match(cn, /其雇主或任何关联机构，包括任何股权或报酬安排/);
+});
+
+test("the approval email renders the attestation row in English and Chinese", () => {
+  const attestation = coiAttestationText("en", "Fred Li", "2026-08-06T15:42:09.000Z");
+  const en = buildApprovalEmail({ ...baseApproval, lang: "en", coiAttestation: attestation });
+  assert.match(en.html, /Conflict of interest/);
+  assert.match(en.html, /Fred Li declared no conflict of interest on 2026-08-06 15:42 UTC/);
+  assert.match(en.plain, /Fred Li declared no conflict of interest/);
+
+  const cnAttestation = coiAttestationText("cn", "李国樑", "2026-08-06T15:42:09.000Z");
+  const cn = buildApprovalEmail({ ...baseApproval, lang: "cn", coiAttestation: cnAttestation });
+  assert.match(cn.html, /利益冲突/);
+  assert.match(cn.html, /李国樑 已于 2026-08-06 15:42 UTC 声明/);
+});
+
+test("the approval email omits the attestation row before a declaration is made", () => {
+  const email = buildApprovalEmail({ ...baseApproval, lang: "en" });
+  assert.doesNotMatch(email.html, /Conflict of interest/);
+  assert.doesNotMatch(email.plain, /conflict of interest/i);
 });

@@ -34,6 +34,12 @@ const ORIGINAL_SUBMITTER_UNKNOWN = "original submitter not recorded";
 import mammoth from "mammoth";
 import { invitationLetterHtml, invitationLetterDocx, letterFilename, DEFAULT_LETTER_BODY, DEFAULT_LETTER_ACK } from "./letter.js";
 import { buildApprovalEmail, approvalSubject, fallbackIntro, type ApprovalEmailData, type ApprovalLang } from "../shared/approval-email.js";
+import {
+  evaluateCoiGate,
+  normalizeCoiDetails,
+  coiAttestationText,
+  type CoiStatus,
+} from "../shared/coi.js";
 import { z } from "zod";
 
 // Single source of truth: collaboration level is always derived from the stage.
@@ -1666,7 +1672,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
     isStaffUser(user)
       ? a
-      : { ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null, mobile: null, mobiles: null, wechatId: null, originStaff: null };
+      : {
+          ...a, emails: null, engagement: null, birthDay: null, birthMonth: null, birthYear: null,
+          mobile: null, mobiles: null, wechatId: null, originStaff: null,
+          // v7.14 — who declared what conflict is internal governance data; a
+          // viewer account has no business seeing it. The bare status stays so
+          // the UI can still explain why an action is unavailable.
+          coiDeclaredBy: null, coiDeclaredByEmail: null, coiDeclaredAt: null,
+          coiDetails: null, coiClearedBy: null, coiClearedAt: null,
+        };
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
   async function advisorTagMap(): Promise<Map<number, SectorTag[]>> {
@@ -1906,6 +1920,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       approvalTokenExpires: null,
       approvalDecidedBy: null,
       approvalDecidedAt: null,
+      // v7.14 — a new candidate starts with no declaration on file.
+      coiStatus: "none",
+      coiDeclaredBy: null,
+      coiDeclaredByEmail: null,
+      coiDeclaredAt: null,
+      coiDetails: null,
+      coiClearedBy: null,
+      coiClearedAt: null,
       // v7.11 — Gobi editors publish immediately
       status: isGobiEditor(req.user) ? "approved" : "pending",
       submittedBy: req.user!.id,
@@ -2725,6 +2747,20 @@ www.gobi.vc`,
 
   const approvalLangSchema = z.enum(["en", "cn"]).default("en");
 
+  // v7.14 — the conflict-of-interest slice the dialog needs to render its gate.
+  // Read from the advisor record so a block raised by one colleague is visible
+  // to the next person who opens the dialog.
+  function coiStateOf(advisor: Advisor) {
+    const status = (advisor.coiStatus ?? "none") as CoiStatus;
+    return {
+      status,
+      blocked: status === "blocked",
+      declaredBy: advisor.coiDeclaredBy ?? null,
+      declaredAt: advisor.coiDeclaredAt ?? null,
+      details: advisor.coiDetails ?? null,
+    };
+  }
+
   // Compose — returns the recipients plus the structured data the client renders
   // its live preview from. No token is minted here.
   app.post("/api/advisors/:id/approval/compose", requireAuth("submit"), async (req: AuthedRequest, res) => {
@@ -2744,6 +2780,7 @@ www.gobi.vc`,
       mailEnabled,
       cooEmailConfigured: Boolean(cooEmail),
       aiEnabled: Boolean(process.env.DEEPSEEK_API_KEY),
+      coi: coiStateOf(advisor),
     });
   });
 
@@ -2804,15 +2841,76 @@ www.gobi.vc`,
     cc: z.array(z.string().trim().email().max(200)).max(10).default([]),
     subject: z.string().trim().min(1).max(300),
     intro: z.string().trim().max(4000).default(""),
+    // v7.14 — required, with no default. A client that has not collected the
+    // declaration cannot send: the omission is a 400, not a silent pass.
+    coi: z.object({
+      conflict: z.boolean(),
+      details: z.string().max(2000).optional(),
+    }),
   });
 
   app.post("/api/advisors/:id/approval/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
     const advisor = await storage.getAdvisor(Number(req.params.id));
     if (!advisor) return res.status(404).json({ message: "Not found" });
-    if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
     const parsed = approvalSendSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid email" });
     const { lang, to, subject, intro } = parsed.data;
+
+    // ---- v7.14 conflict-of-interest gate ----
+    // Evaluated before the mail-transport check so a declared conflict is filed
+    // even on an instance where SMTP happens to be unconfigured: the declaration
+    // is a governance record in its own right, not a side effect of sending.
+    const declaredAt = new Date().toISOString();
+    const declarerEmail = req.user!.email.includes("@") ? req.user!.email : null;
+    const gate = evaluateCoiGate({ coiStatus: (advisor.coiStatus ?? "none") as CoiStatus }, parsed.data.coi);
+
+    if (!gate.allowed) {
+      if (gate.reason === "coi_blocked") {
+        // Someone already declared a conflict. No re-recording, no send, and
+        // deliberately no route around it for a second sender.
+        return res.status(409).json({
+          message: "coi_blocked",
+          coi: coiStateOf(advisor),
+        });
+      }
+      // A fresh declaration. Raise the flag, leave status/lifecycle untouched so
+      // the candidate stays pending and an admin can reassign the request.
+      const details = normalizeCoiDetails(parsed.data.coi.details);
+      await storage.updateAdvisor(advisor.id, {
+        coiStatus: "blocked",
+        coiDeclaredBy: req.user!.name,
+        coiDeclaredByEmail: declarerEmail,
+        coiDeclaredAt: declaredAt,
+        coiDetails: details,
+        coiClearedBy: null,
+        coiClearedAt: null,
+      });
+      try {
+        await storage.createAdvisorActivity({
+          advisorId: advisor.id,
+          date: declaredAt.slice(0, 10),
+          type: "note",
+          note: `[Conflict of interest] ${req.user!.name} declared a conflict; the COO approval email was not sent. The candidate remains pending and needs a different sender.${details ? ` Declared: ${details}` : ""}`,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          createdAt: declaredAt,
+        });
+      } catch {}
+      await audit(
+        req.user!,
+        advisor.id,
+        "update",
+        { coiStatus: "blocked", coiDeclaredBy: req.user!.name, approvalEmailBlocked: true },
+        "advisor",
+      );
+      const refreshed = await storage.getAdvisor(advisor.id);
+      return res.status(409).json({
+        message: "coi_declared",
+        coi: refreshed ? coiStateOf(refreshed) : null,
+      });
+    }
+
+    if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
 
     // v7.01 — sender and chibo@gobi.vc are always CC'd; CV is auto-attached if present.
     const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
@@ -2822,7 +2920,11 @@ www.gobi.vc`,
     const expires = new Date(Date.now() + APPROVAL_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const approvalLink = `${appBaseUrl(req)}/#/advisor-approval?token=${token}`;
     const base = await approvalEmailBase(advisor, lang, req.user!.name);
-    const { html, plain } = buildApprovalEmail({ ...base, intro, approvalLink });
+    // v7.14 — the attestation the requester just gave is stamped onto the face
+    // of the email, so the COO approves against a named, timestamped statement
+    // rather than having to trust that the gate ran.
+    const coiAttestation = coiAttestationText(lang, req.user!.name, declaredAt);
+    const { html, plain } = buildApprovalEmail({ ...base, intro, approvalLink, coiAttestation });
 
     const cvMeta = (await storage.listFileAssetMeta("advisor_cv", advisor.id))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -2850,6 +2952,12 @@ www.gobi.vc`,
       approvalEmailedAt: new Date().toISOString(),
       approvalDecidedBy: null,
       approvalDecidedAt: null,
+      // v7.14 — persist the clean attestation alongside the send.
+      coiStatus: "cleared",
+      coiDeclaredBy: req.user!.name,
+      coiDeclaredByEmail: declarerEmail,
+      coiDeclaredAt: declaredAt,
+      coiDetails: null,
     });
     try {
       await storage.createAdvisorActivity({
@@ -2862,8 +2970,91 @@ www.gobi.vc`,
         createdAt: new Date().toISOString(),
       });
     } catch {}
-    await audit(req.user!, advisor.id, "update", { approvalEmailSent: true }, "advisor");
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: advisor.id,
+        date: declaredAt.slice(0, 10),
+        type: "note",
+        note: `[Conflict of interest] ${coiAttestationText("en", req.user!.name, declaredAt)}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: declaredAt,
+      });
+    } catch {}
+    await audit(
+      req.user!,
+      advisor.id,
+      "update",
+      { approvalEmailSent: true, coiStatus: "cleared", coiDeclaredBy: req.user!.name },
+      "advisor",
+    );
     res.json({ ok: true });
+  });
+
+  // v7.14 — Admin clears a declared conflict, which is the only way a blocked
+  // advisor becomes sendable again. Clearing does not send anything and does not
+  // alter the candidate's approval status: it simply reopens the path so the
+  // request can be reassigned to a colleague without a conflict.
+  app.post("/api/advisors/:id/coi/clear", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const advisor = await storage.getAdvisor(Number(req.params.id));
+    if (!advisor) return res.status(404).json({ message: "Not found" });
+    if ((advisor.coiStatus ?? "none") !== "blocked") {
+      return res.status(409).json({ message: "coi_not_blocked" });
+    }
+    const now = new Date().toISOString();
+    const note = z.object({ note: z.string().trim().max(2000).optional() }).safeParse(req.body ?? {});
+    const reason = note.success ? normalizeCoiDetails(note.data.note) : null;
+    const declaredBy = advisor.coiDeclaredBy ?? "a colleague";
+    await storage.updateAdvisor(advisor.id, {
+      coiStatus: "none",
+      coiClearedBy: req.user!.name,
+      coiClearedAt: now,
+    });
+    try {
+      await storage.createAdvisorActivity({
+        advisorId: advisor.id,
+        date: now.slice(0, 10),
+        type: "note",
+        note: `[Conflict of interest] ${req.user!.name} cleared the conflict declared by ${declaredBy}; the COO approval email can be sent again.${reason ? ` Note: ${reason}` : ""}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: now,
+      });
+    } catch {}
+    await audit(
+      req.user!,
+      advisor.id,
+      "update",
+      { coiStatus: "none", coiClearedBy: req.user!.name, coiPreviouslyDeclaredBy: declaredBy },
+      "advisor",
+    );
+    const refreshed = await storage.getAdvisor(advisor.id);
+    res.json({ ok: true, coi: refreshed ? coiStateOf(refreshed) : null });
+  });
+
+  // v7.14 — Admin console feed of everything currently blocked on a declared
+  // conflict. Two path segments after /api/advisors, so it cannot be swallowed by
+  // the single-segment /api/advisors/:id route the way /api/advisors/audit was in
+  // v7.09 — same shape as the existing /api/advisors/outreach/* endpoints. Do not
+  // introduce an /api/advisors/:id/:something route above this one.
+  app.get("/api/advisors/coi/blocked", requireAuth("admin"), async (_req, res) => {
+    const all = await storage.listAdvisors();
+    res.json(
+      all
+        .filter((a) => (a.coiStatus ?? "none") === "blocked")
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          nameCn: a.nameCn,
+          status: a.status,
+          lifecycleStatus: a.lifecycleStatus,
+          declaredBy: a.coiDeclaredBy ?? null,
+          declaredByEmail: a.coiDeclaredByEmail ?? null,
+          declaredAt: a.coiDeclaredAt ?? null,
+          details: a.coiDetails ?? null,
+        }))
+        .sort((x, y) => String(y.declaredAt ?? "").localeCompare(String(x.declaredAt ?? ""))),
+    );
   });
 
   // Public lookup — the approver follows the emailed link before signing in;

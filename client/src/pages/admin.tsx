@@ -68,6 +68,7 @@ export default function Admin() {
             <TabsTrigger value="changes" data-testid="tab-admin-changes">{t("changeRequests")}</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
+            <TabsTrigger value="coi" data-testid="tab-admin-coi">{t("adminCoi")}</TabsTrigger>
             <TabsTrigger value="scoreboard" data-testid="tab-admin-scoreboard">{t("sbNavLabel")}</TabsTrigger>
             <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
@@ -76,6 +77,7 @@ export default function Admin() {
           <TabsContent value="changes"><ChangeRequestAdmin /></TabsContent>
           <TabsContent value="users"><UserAdmin /></TabsContent>
           <TabsContent value="tags"><TagAdmin /></TabsContent>
+          <TabsContent value="coi"><CoiAdmin /></TabsContent>
           <TabsContent value="scoreboard"><ScoreboardPanel /></TabsContent>
           <TabsContent value="exports">
             <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-exports">
@@ -1074,6 +1076,102 @@ function TagAdmin() {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Conflicts of interest (v7.14) ----------------
+// v7.14 — Conflicts of interest.
+//
+// When a staff member declares a conflict on the COO approval email, the send is
+// blocked and the candidate is parked here. Nothing about the candidate's own
+// status changes: they stay pending, and clearing the flag is explicitly not a
+// decision on them. It exists so an admin can hand the approval request to a
+// colleague who has no conflict.
+function CoiAdmin() {
+  const { t } = useLang();
+  const { toast } = useToast();
+
+  type BlockedAdvisor = {
+    id: number;
+    name: string;
+    nameCn?: string | null;
+    organisation?: string | null;
+    coiDeclaredBy?: string | null;
+    coiDeclaredAt?: string | null;
+    coiDetails?: string | null;
+  };
+
+  const { data, isLoading } = useQuery<BlockedAdvisor[]>({
+    queryKey: ["/api/advisors/coi/blocked"],
+  });
+
+  const clear = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/advisors/${id}/coi/clear`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors/coi/blocked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      toast({ description: t("coiCleared") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const rows = data ?? [];
+
+  return (
+    <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-coi">
+      <h2 className="text-sm font-semibold">{t("coiAdminTitle")}</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-muted-foreground">{t("coiAdminHint")}</p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> …
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-sm text-muted-foreground" data-testid="text-admin-coi-empty">{t("coiAdminEmpty")}</p>
+      ) : (
+        <ul className="space-y-3">
+          {rows.map((a) => (
+            <li
+              key={a.id}
+              className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 sm:flex-row sm:items-start sm:justify-between"
+              data-testid={`row-admin-coi-${a.id}`}
+            >
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-semibold">
+                  {a.name}{a.nameCn ? ` · ${a.nameCn}` : ""}
+                </p>
+                {a.organisation ? (
+                  <p className="truncate text-xs text-muted-foreground">{a.organisation}</p>
+                ) : null}
+                <p className="text-[11px] text-muted-foreground">
+                  {t("coiDeclaredByAt")}: {a.coiDeclaredBy ?? "—"}
+                  {a.coiDeclaredAt ? ` · ${a.coiDeclaredAt.slice(0, 10)}` : ""}
+                </p>
+                {a.coiDetails ? (
+                  <p className="whitespace-pre-wrap text-[11px] text-muted-foreground">{a.coiDetails}</p>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={clear.isPending}
+                onClick={() => clear.mutate(a.id)}
+                data-testid={`button-admin-coi-clear-${a.id}`}
+              >
+                {clear.isPending && clear.variables === a.id
+                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  : <Check className="mr-1.5 h-3.5 w-3.5" />}
+                {t("coiClear")}
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

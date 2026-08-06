@@ -9,13 +9,36 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.13";
+export const CURRENT_VERSION = "7.14";
 
 export const VERSIONS: VersionEntry[] = [
   {
+    version: "7.14",
+    date: "2026-08-06",
+    by: "Fred Li",
+    titleEn: "v7.14 — conflict-of-interest declaration required before the COO approval email",
+    titleCn: "v7.14 — 发送 COO 审批邮件前必须先作利益冲突声明",
+    itemsEn: [
+      "Sending an advisor approval email now requires the staff member to declare whether they have a conflict of interest with the candidate personally, or with the candidate's employer or any affiliated organisation, including any equity holding or payment.",
+      "No conflict: the send proceeds as before, and the approval email carries a bilingual attestation row naming the requester and the declaration timestamp.",
+      "Conflict declared: the send is blocked, the declaration is stored on the advisor record, and the candidate is flagged in the admin console as blocked on a declared conflict. The candidate is never auto-rejected — they stay pending.",
+      "A declared conflict blocks the approval email for every sender, not only the person who declared it, until an admin clears the flag from the new Conflicts tab so the request can be reassigned to a colleague.",
+      "Every declaration and every clearance is written to the advisor activity feed and the audit log. The gate is enforced server-side, so it cannot be bypassed from the browser.",
+      "Advisor outreach emails and invitation letters are deliberately unaffected — the gate covers the COO approval email only.",
+    ],
+    itemsCn: [
+      "发送顾问审批邮件前，员工必须声明其与该人选本人、其雇主或任何关联机构之间是否存在利益冲突，包括任何股权或报酬安排。",
+      "无冲突：照常发送，审批邮件中新增中英双语声明行，列明申请人姓名与声明时间。",
+      "声明冲突：阻止发送，声明内容存于顾问记录，并在管理后台标记为“因已声明冲突而被阻止”。系统绝不会自动否决该人选 — 其仍保持待审状态。",
+      "已声明的冲突对所有发送人均生效，而非仅限声明人本人；需由管理员在新增的“利益冲突”页签中解除标记，方可将申请改派给其他同事。",
+      "每一次声明与每一次解除均记入顾问动态与审计日志。该机制在服务端强制执行，无法经浏览器绕过。",
+      "顾问群发邮件与邀请函有意不受影响 — 本机制仅适用于 COO 审批邮件。",
+    ],
+  },
+  {
     version: "7.13",
     date: "2026-08-06",
-    by: "Analyst01",
+    by: "Elaine Zhang",
     titleEn: "v7.13 — advisor outreach can send one campaign copy to selected colleagues",
     titleCn: "v7.13 — 顾问群发现可向指定同事发送一封汇总抄送",
     itemsEn: [
@@ -36,7 +59,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "7.12",
     date: "2026-08-05",
-    by: "Analyst01",
+    by: "Elaine Zhang",
     titleEn: "v7.12 — advisor emails now support Markdown formatting with an accurate preview",
     titleCn: "v7.12 — 顾问邮件现支持 Markdown 格式编辑与准确预览",
     itemsEn: [
@@ -376,7 +399,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "6.07",
     date: "2026-07-29",
-    by: "Analyst01",
+    by: "Elaine Zhang",
     titleEn: "v6.07 — multiple advisor mobiles and faster country-based partner selection",
     titleCn: "v6.07 — 顾问多手机号码与按国家快速选择合作伙伴",
     itemsEn: [
@@ -395,7 +418,7 @@ export const VERSIONS: VersionEntry[] = [
   {
     version: "6.06",
     date: "2026-07-29",
-    by: "Analyst01",
+    by: "Elaine Zhang",
     titleEn: "v6.06 — rapid-click camel sprints and corrected caravan direction",
     titleCn: "v6.06 — 连点骆驼冲刺与正确行进方向",
     itemsEn: [

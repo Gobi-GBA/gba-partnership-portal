@@ -206,6 +206,14 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "approval_token_expires", "approval_token_expires TEXT");
   ensureColumn("advisors", "approval_decided_by", "approval_decided_by TEXT");
   ensureColumn("advisors", "approval_decided_at", "approval_decided_at TEXT");
+  // ---- v7.14 conflict-of-interest gate ----
+  ensureColumn("advisors", "coi_status", "coi_status TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn("advisors", "coi_declared_by", "coi_declared_by TEXT");
+  ensureColumn("advisors", "coi_declared_by_email", "coi_declared_by_email TEXT");
+  ensureColumn("advisors", "coi_declared_at", "coi_declared_at TEXT");
+  ensureColumn("advisors", "coi_details", "coi_details TEXT");
+  ensureColumn("advisors", "coi_cleared_by", "coi_cleared_by TEXT");
+  ensureColumn("advisors", "coi_cleared_at", "coi_cleared_at TEXT");
   ensureColumn("users", "google_linked_at", "google_linked_at TEXT");
   ensureColumn("users", "last_active_at", "last_active_at TEXT");
   try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}

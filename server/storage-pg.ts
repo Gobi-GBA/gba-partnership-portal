@@ -196,6 +196,14 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_token_expires TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_by TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS approval_decided_at TEXT`,
+  // ---- v7.14 conflict-of-interest gate ----
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_status TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_declared_by TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_declared_by_email TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_declared_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_details TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_cleared_by TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_cleared_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_linked_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TEXT`,
   `CREATE TABLE IF NOT EXISTS sector_tags (

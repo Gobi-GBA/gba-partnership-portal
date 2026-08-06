@@ -304,6 +304,17 @@ export const advisors = sqliteTable("advisors", {
   approvalTokenExpires: text("approval_token_expires"), // ISO timestamp
   approvalDecidedBy: text("approval_decided_by"), // name of the approver who actioned the link
   approvalDecidedAt: text("approval_decided_at"), // ISO timestamp of the decision
+  // ---- v7.14 conflict-of-interest gate on the COO approval email ----
+  // Scope: the approval email only. CRM outreach and the invitation letter are
+  // deliberately unaffected. 'blocked' stops the send for every staff member
+  // until an admin clears it; the candidate record itself is never rejected.
+  coiStatus: text("coi_status").notNull().default("none"), // 'none' | 'cleared' | 'blocked'
+  coiDeclaredBy: text("coi_declared_by"),        // name of the staff member who attested
+  coiDeclaredByEmail: text("coi_declared_by_email"),
+  coiDeclaredAt: text("coi_declared_at"),        // ISO timestamp of the attestation
+  coiDetails: text("coi_details"),               // free-text description of a declared conflict
+  coiClearedBy: text("coi_cleared_by"),          // admin who lifted the block
+  coiClearedAt: text("coi_cleared_at"),
 });
 
 export const ADVISOR_LIFECYCLE = ["proposed", "onboarded", "terminated"] as const;

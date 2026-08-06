@@ -27,6 +27,8 @@ shipped.
 | [SPEC-v6.04.md](SPEC-v6.04.md) | 2026-07-28 | Advisor record update log, CV filing with AI auto-pull, signed-letter filing, contact layout; introduced the GitHub update-log SOP |
 | [SPEC-v6.05.md](SPEC-v6.05.md) | 2026-07-28 | Sync-from-link hardening with photo/logo auto-pull, guided input flow, mandatory-field highlighting, pending badges |
 | [SPEC-v7.09.md](SPEC-v7.09.md) | 2026-08-01 | Update logs made complete and activity-sorted; advisor log route fix; history reconstruction; approval email and Google OAuth diagnosis |
+| [SPEC-v7.11.md](SPEC-v7.11.md) | 2026-08-04 | Gobi staff edit rights by default; approval reserved for partnership level and admin-only delete |
+| [SPEC-v7.14.md](SPEC-v7.14.md) | 2026-08-06 | Conflict-of-interest declaration required before the COO advisor approval email; declared conflicts block the send and park the candidate for admin reassignment |
 
 Releases v6.06 through v7.08 shipped without a standalone spec; their scope is
 recorded in `UPDATE_LOG.md` and in the in-app system update log

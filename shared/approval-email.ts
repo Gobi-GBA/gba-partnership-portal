@@ -31,6 +31,12 @@ export interface ApprovalEmailData {
   /** empty string renders the email without the approval call-to-action */
   approvalLink: string;
   expiryDays?: number;
+  /**
+   * v7.14 — conflict-of-interest attestation. Present once the requester has
+   * declared no conflict; renders an extra profile row naming them and the
+   * moment they attested. Omitted in the pre-declaration preview.
+   */
+  coiAttestation?: string | null;
 }
 
 const L = {
@@ -50,6 +56,7 @@ const L = {
     background: "Background",
     engagement: "Suggested engagement and potential projects",
     clearance: "Public listing clearance",
+    coi: "Conflict of interest",
     requestedBy: "Requested by",
     clearanceYes: "Yes — cleared for public listing",
     clearanceNo: "No — internal only",
@@ -79,6 +86,7 @@ const L = {
     background: "背景简介",
     engagement: "建议合作方式与可能项目",
     clearance: "公开展示许可",
+    coi: "利益冲突声明",
     requestedBy: "申请人",
     clearanceYes: "是 — 可公开展示",
     clearanceNo: "否 — 仅限内部",
@@ -144,6 +152,12 @@ export function buildApprovalEmail(data: ApprovalEmailData): { subject: string; 
     [t.tags, tagsLine],
     [t.domains, data.domains || dash],
     [t.clearance, clearance],
+    // v7.14 — the attestation sits next to the public-clearance row, which is
+    // the closest existing analogue: both are undertakings by the requester
+    // that the COO needs on the face of the email, not buried in an audit log.
+    ...((data.coiAttestation ?? "").trim()
+      ? ([[t.coi, (data.coiAttestation as string).trim()]] as Array<[string, string]>)
+      : []),
     [t.requestedBy, data.requesterName || dash],
   ];
 
