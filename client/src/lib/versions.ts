@@ -9,9 +9,28 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.15";
+export const CURRENT_VERSION = "7.16";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.16",
+    date: "2026-08-07",
+    by: "Fred Li",
+    titleEn: "v7.16 — Conflicts of interest now stand out in the update log",
+    titleCn: "v7.16 — 利益冲突记录在更新日志中独立标示",
+    itemsEn: [
+      "Declaring a conflict, and clearing one, are now recorded in the log under their own labels — \u201cConflict declared\u201d and \u201cConflict cleared\u201d — instead of appearing as an ordinary \u201cUpdated\u201d entry. Anyone reviewing the record can now pick the conflict history out of routine edits at a glance.",
+      "The two entry types are colour-coded on the log timeline: red when a conflict is declared, green when it is cleared.",
+      "The reason someone gives for a conflict is still kept out of the log itself, as with every other entry. The full text remains on the advisor record and in the activity feed, where access is controlled.",
+      "No change to the rules: a declared conflict still blocks the COO approval email for every sender until an admin clears it, the candidate still stays pending, and outreach emails and invitation letters are still unaffected.",
+    ],
+    itemsCn: [
+      "声明利益冲突与解除利益冲突现以独立标签记入日志\u2014\u2014「声明利益冲突」与「利益冲突已解除」\u2014\u2014不再混入普通的「更新」记录。查阅记录时可一眼将冲突历史与日常修改区分开。",
+      "两类记录在日志时间轴上以颜色区分：声明冲突为红色，解除冲突为绿色。",
+      "与其他日志记录一致，声明理由本身仍不写入日志。完整内容仍保存在顾问档案与动态记录中，并受权限控制。",
+      "规则本身不变：已声明的冲突仍会对所有发送人阻止 COO 审批邮件，直至管理员解除；人选仍保持待审状态；顾问外联邮件与邀请函仍不受影响。",
+    ],
+  },
   {
     version: "7.15",
     date: "2026-08-06",

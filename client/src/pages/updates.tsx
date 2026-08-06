@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PartnerLogo, StageBadge, CategoryBadge } from "@/components/shared";
+import { PartnerLogo, StageBadge, CategoryBadge, auditDotClass } from "@/components/shared";
 import { VERSIONS, CURRENT_VERSION } from "@/lib/versions";
 import type { Feedback, FeedbackStatus, Partnership, Stage, Category, AuditLog } from "@shared/schema";
 import { FEEDBACK_STATUSES } from "@shared/schema";
@@ -445,7 +445,7 @@ export default function Updates() {
                     })();
                     return (
                       <div key={l.id} className="relative pl-6" data-testid={`advisor-log-entry-${l.id}`}>
-                        <span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-[hsl(193,52%,38%)]" />
+                        <span className={`absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-background ${auditDotClass(l.action)}`} />
                         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           <span className="text-xs text-muted-foreground tabular-nums" data-testid={`advisor-log-date-${l.id}`}>{fmtDateTime(l.createdAt)}</span>
                           <span className="text-[11px] text-muted-foreground/70">·</span>

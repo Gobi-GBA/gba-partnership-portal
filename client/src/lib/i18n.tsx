@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from "react";
+import type { AuditAction } from "@shared/schema";
 
 export type Lang = "en" | "cn";
 
@@ -264,6 +265,10 @@ const dict = {
   audit_change_request: { en: "Change requested", cn: "提交变更申请" },
   audit_change_approved: { en: "Change approved", cn: "变更已批准" },
   audit_change_rejected: { en: "Change rejected", cn: "变更已拒绝" },
+  // v7.16 — conflict-of-interest events are logged under their own actions so
+  // they read as governance entries rather than ordinary edits.
+  audit_coi_declared: { en: "Conflict declared", cn: "声明利益冲突" },
+  audit_coi_cleared: { en: "Conflict cleared", cn: "利益冲突已解除" },
   auditChangedFields: { en: "Changed", cn: "变更字段" },
   changeRequestHint: { en: "Your edits will be submitted as a change request for admin approval.", cn: "您的修改将作为变更申请提交，需管理员批准后生效。" },
   // v7.11 — direct editing for @gobi.vc colleagues
@@ -1027,6 +1032,16 @@ const dict = {
 } as const;
 
 export type DictKey = keyof typeof dict;
+
+// v7.16 — compile-time guarantee that every AuditAction has a label in the
+// dictionary. The three places that render an audit action do so with
+// t(`audit_${action}` as any), and t() falls back to String(key), so a missing
+// entry would silently print the raw "audit_coi_declared" on screen instead of
+// failing anywhere. Adding an action to the union without a label is now a
+// build error.
+type AuditLabelKey = `audit_${AuditAction}`;
+const _everyAuditActionHasALabel: AuditLabelKey extends DictKey ? true : never = true;
+void _everyAuditActionHasALabel;
 
 interface LangContextValue {
   lang: Lang;

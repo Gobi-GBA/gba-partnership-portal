@@ -553,7 +553,23 @@ export const auditLogs = sqliteTable("audit_logs", {
 });
 
 export type AuditLog = typeof auditLogs.$inferSelect;
-export type AuditAction = "create" | "update" | "approve" | "reject" | "delete" | "change_request" | "change_approved" | "change_rejected";
+// v7.16 — `coi_declared` and `coi_cleared` are distinct actions rather than a
+// generic `update`, so a conflict-of-interest event can be filtered out of
+// ordinary edit noise when the log is read as a governance record. The `action`
+// column is free text, so no migration is needed; any renderer that maps an
+// action to a label must carry an `audit_<action>` entry in the i18n dictionary
+// or the raw key will be shown.
+export type AuditAction =
+  | "create"
+  | "update"
+  | "approve"
+  | "reject"
+  | "delete"
+  | "change_request"
+  | "change_approved"
+  | "change_rejected"
+  | "coi_declared"
+  | "coi_cleared";
 
 // ---------- Feedback / system requests ----------
 export const FEEDBACK_STATUSES = ["open", "in_progress", "solved", "declined"] as const;

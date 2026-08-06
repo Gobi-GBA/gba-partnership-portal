@@ -1349,6 +1349,14 @@ export function PartnershipDetailDialog({
 
 // ---------------- Per-entity change log (audit) ----------------
 // v6.04 — generalised: partnerships and advisors share the same audit trail UI.
+// v7.16 — conflict-of-interest entries are tinted so they stand out when an
+// auditor scans a long log; every other action keeps the standard aqua dot.
+export function auditDotClass(action: string): string {
+  if (action === "coi_declared") return "bg-destructive";
+  if (action === "coi_cleared") return "bg-emerald-500";
+  return "bg-[hsl(var(--aqua))]";
+}
+
 export function AuditSection({ entityId, entityType = "partnership", open }: { entityId: number; entityType?: "partnership" | "advisor"; open: boolean }) {
   const { t, lang } = useLang();
   const { data: logs } = useQuery<AuditLog[]>({
@@ -1384,7 +1392,7 @@ export function AuditSection({ entityId, entityType = "partnership", open }: { e
             const fields = fieldNames(l.changes);
             return (
               <li key={l.id} className="flex items-start gap-2 text-sm" data-testid={`row-audit-${l.id}`}>
-                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--aqua))]" />
+                <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${auditDotClass(l.action)}`} />
                 <div className="min-w-0">
                   <p className="leading-snug">
                     <span className="font-semibold">{t(`audit_${l.action}` as any)}</span>

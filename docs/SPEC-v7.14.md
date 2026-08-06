@@ -210,6 +210,37 @@ Every declaration and every clearance writes both an advisor activity note and
 an audit entry with `entityType = "advisor"`. Details text is staff-visible only,
 in line with §4.
 
+### 9.1 Dedicated audit actions (v7.16)
+
+v7.14 recorded both events as `action: "update"`, distinguishable only by reading
+the `changes` payload. Since a conflict of interest is a governance control
+rather than an ordinary edit, v7.16 gives each event its own action on the
+`AuditAction` union:
+
+| Event | Action | Changes payload |
+|---|---|---|
+| Conflict declared, approval email refused | `coi_declared` | `coiStatus`, `coiDeclaredBy`, `approvalEmailBlocked` |
+| Admin clears a declared conflict | `coi_cleared` | `coiStatus`, `coiClearedBy`, `coiPreviouslyDeclaredBy` |
+
+Notes:
+
+- No migration. `audit_logs.action` is plain `text`; existing rows are unaffected
+  and there was nothing to backfill (production held zero COI audit rows).
+- `coiDetails` stays out of both payloads. Audit `changes` are field-names-only
+  by the v6.04 design, and the declared reason is already held on the advisor
+  record and in the activity feed, where access is controlled.
+- A successful approval send still audits as `update` even though it writes
+  `coiStatus: "cleared"` — that entry records an email being sent, not a conflict
+  event.
+- The three render sites resolve labels with ``t(`audit_${action}`)``, and `t()`
+  falls back to `String(key)`, so a missing dictionary entry would print the raw
+  key on screen rather than failing anywhere. `client/src/lib/i18n.tsx` therefore
+  carries a compile-time assertion that every `AuditAction` has a matching
+  `audit_<action>` key; adding an action without a label is a build error.
+- On the advisor log timeline the two actions are colour-coded via
+  `auditDotClass()` in `client/src/components/shared.tsx` — red for `coi_declared`,
+  green for `coi_cleared`, standard aqua for everything else.
+
 ## 10. Out of scope
 
 - `client/src/components/advisor-outreach.tsx` — the CRM outreach email. Untouched by decision 1.

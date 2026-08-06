@@ -2898,10 +2898,15 @@ www.gobi.vc`,
           createdAt: declaredAt,
         });
       } catch {}
+      // v7.16 — a dedicated action, not a generic "update": this is the entry an
+      // auditor filters on. The declared reason is deliberately NOT copied into
+      // the changes payload — the audit log is field-names-only by the v6.04
+      // design, and the full text already lives on the advisor record and in the
+      // activity feed.
       await audit(
         req.user!,
         advisor.id,
-        "update",
+        "coi_declared",
         { coiStatus: "blocked", coiDeclaredBy: req.user!.name, approvalEmailBlocked: true },
         "advisor",
       );
@@ -3023,10 +3028,12 @@ www.gobi.vc`,
         createdAt: now,
       });
     } catch {}
+    // v7.16 — paired with "coi_declared" so a declaration and its clearance can
+    // be read as one governance trail rather than two anonymous updates.
     await audit(
       req.user!,
       advisor.id,
-      "update",
+      "coi_cleared",
       { coiStatus: "none", coiClearedBy: req.user!.name, coiPreviouslyDeclaredBy: declaredBy },
       "advisor",
     );
