@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { campaignCopyEmail } from "./mailer.js";
 import { buildApprovalEmail, type ApprovalEmailData } from "../shared/approval-email.js";
-import { coiAttestationText, evaluateCoiGate, normalizeCoiDetails } from "../shared/coi.js";
+import { coiAttestationText, evaluateCoiGate, normalizeCoiDetails, toCoiBlockedRow } from "../shared/coi.js";
 
 test("renders one safe campaign copy with the shared Markdown template", () => {
   const email = campaignCopyEmail({
@@ -127,4 +127,56 @@ test("the approval email omits the attestation row before a declaration is made"
   const email = buildApprovalEmail({ ...baseApproval, lang: "en" });
   assert.doesNotMatch(email.html, /Conflict of interest/);
   assert.doesNotMatch(email.plain, /conflict of interest/i);
+});
+
+// ---- v7.15 regression: the admin Conflicts feed wire contract ----------------
+// v7.14 emitted declaredBy/declaredByEmail/declaredAt/details while the admin
+// tab read coiDeclaredBy/coiDeclaredAt/coiDetails, so every blocked row showed
+// "Declared by: —" and never showed the stated reason. These lock the key names
+// the client reads; renaming a field now fails the build and this test.
+test("the blocked-advisor row uses the coi-prefixed names the admin tab reads", () => {
+  const row = toCoiBlockedRow(
+    {
+      id: 42,
+      name: "Test Advisor",
+      nameCn: "测试顾问",
+      status: "pending",
+      lifecycleStatus: "proposed",
+      coiDeclaredBy: "Elaine Zhang",
+      coiDeclaredByEmail: "elaine@gobi.vc",
+      coiDeclaredAt: "2026-08-06T15:42:09.000Z",
+      coiDetails: "Holds equity in the candidate's employer.",
+    },
+    "  Test Organisation  ",
+  );
+
+  assert.deepEqual(Object.keys(row).sort(), [
+    "coiDeclaredAt",
+    "coiDeclaredBy",
+    "coiDeclaredByEmail",
+    "coiDetails",
+    "id",
+    "lifecycleStatus",
+    "name",
+    "nameCn",
+    "organisation",
+    "status",
+  ]);
+  assert.equal(row.coiDeclaredBy, "Elaine Zhang");
+  assert.equal(row.coiDeclaredByEmail, "elaine@gobi.vc");
+  assert.equal(row.coiDeclaredAt, "2026-08-06T15:42:09.000Z");
+  assert.equal(row.coiDetails, "Holds equity in the candidate's employer.");
+  assert.equal(row.organisation, "Test Organisation");
+});
+
+test("a blocked row with no declared reason or organisation degrades to null", () => {
+  const row = toCoiBlockedRow({ id: 7, name: "Sparse Advisor" }, "   ");
+  assert.equal(row.nameCn, null);
+  assert.equal(row.organisation, null);
+  assert.equal(row.coiDeclaredBy, null);
+  assert.equal(row.coiDeclaredByEmail, null);
+  assert.equal(row.coiDeclaredAt, null);
+  assert.equal(row.coiDetails, null);
+  assert.equal(row.status, "pending");
+  assert.equal(row.lifecycleStatus, null);
 });

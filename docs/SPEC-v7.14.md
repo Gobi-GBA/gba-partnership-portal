@@ -129,8 +129,8 @@ recorded even on an instance where outbound email is not configured.
 
 | Outcome | Status | Body | Side effects |
 |---|---|---|---|
-| Already blocked | `409` | `{ reason: "coi_blocked", coi }` | None. |
-| Conflict declared now | `409` | `{ reason: "coi_declared", coi }` | `coiStatus = "blocked"`, declarer + timestamp + details persisted, activity note, audit entry. Candidate `status` and `lifecycleStatus` unchanged. |
+| Already blocked | `409` | `{ message: "coi_blocked", coi }` | None. |
+| Conflict declared now | `409` | `{ message: "coi_declared", coi }` | `coiStatus = "blocked"`, declarer + timestamp + details persisted, activity note, audit entry. Candidate `status` and `lifecycleStatus` unchanged. |
 | Clean declaration | `200` | as before | `coiStatus = "cleared"`, declarer + timestamp persisted, attestation rendered into the email, activity note, enriched audit entry. |
 
 ### 6.2 `POST /api/advisors/:id/coi/clear` — new, admin only
@@ -241,3 +241,32 @@ v7.13) and the matching four in `client/src/lib/versions.ts` were rewritten to
 **Elaine Zhang**, her real name, in the same release. The `analyst01@gobi.vc`
 address in `DEFAULT_APPROVAL_CC` is a mailbox rather than a display name and was
 deliberately left alone.
+
+## v7.15 correction
+
+Two defects in the v7.14 release were found by a live end-to-end run of the
+whole flow against a real instance, and are fixed in v7.15:
+
+1. **The admin Conflicts feed rendered empty attribution.**
+   `GET /api/advisors/coi/blocked` projected `declaredBy` / `declaredByEmail` /
+   `declaredAt` / `details`, while the admin tab read `coiDeclaredBy` /
+   `coiDeclaredAt` / `coiDetails` and an `organisation` the route never sent. Every
+   blocked row therefore showed `Declared by: —` with no date and never showed the
+   stated reason — the governance record was on disk but invisible to the admin
+   who has to act on it. `tsc` could not see the mismatch because the client's
+   local row type marked all of those fields optional.
+
+   The fix moves the row shape into `shared/coi.ts` as the exported
+   `CoiBlockedRow` type plus a `toCoiBlockedRow()` projection, which both the
+   route and the admin tab now use. Renaming a field on either side is now a
+   build error, and the projection is covered by unit tests. The route also now
+   sends the primary-role `organisation` the tab was already trying to display.
+
+2. **This document described the wrong response field.** The refusal body is
+   `{ message: "coi_blocked" | "coi_declared", coi }`, matching the convention
+   used by every other route in `server/routes.ts`. The table above said
+   `reason`.
+
+The gate's behaviour — precedence, persistence, the activity and audit records,
+the pending candidate, the untouched outreach and letter paths — was verified
+correct as shipped and is unchanged.

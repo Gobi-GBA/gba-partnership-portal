@@ -27,6 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { UserAvatar } from "@/components/user-panels";
 import type { Partnership, SafeUser, Stage, ChangeRequest, SectorTag } from "@shared/schema";
 import { ROLES } from "@shared/schema";
+import type { CoiBlockedRow } from "@shared/coi";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 import { ExportCsvButtons } from "@/pages/advisors";
 import { createDirtyRegistry, UnsavedDialog, type DirtyRegistry } from "@/components/unsaved-guard";
@@ -1093,17 +1094,9 @@ function CoiAdmin() {
   const { t } = useLang();
   const { toast } = useToast();
 
-  type BlockedAdvisor = {
-    id: number;
-    name: string;
-    nameCn?: string | null;
-    organisation?: string | null;
-    coiDeclaredBy?: string | null;
-    coiDeclaredAt?: string | null;
-    coiDetails?: string | null;
-  };
-
-  const { data, isLoading } = useQuery<BlockedAdvisor[]>({
+  // v7.15 — the row shape is imported from shared/coi so a server-side rename
+  // breaks the build instead of silently blanking this table.
+  const { data, isLoading } = useQuery<CoiBlockedRow[]>({
     queryKey: ["/api/advisors/coi/blocked"],
   });
 

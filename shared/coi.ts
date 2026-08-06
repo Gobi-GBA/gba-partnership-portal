@@ -107,3 +107,58 @@ export function coiAttestationText(
   }
   return `${requesterName} declared no conflict of interest on ${when}, covering ${COI_SCOPE.en}.`;
 }
+
+/**
+ * v7.15 — wire contract for GET /api/advisors/coi/blocked, shared so the server
+ * projection and the admin Conflicts tab cannot drift apart. v7.14 shipped with
+ * the server emitting `declaredBy`/`details` and the client reading
+ * `coiDeclaredBy`/`coiDetails`; because the client's local type marked those
+ * fields optional, tsc saw nothing wrong and every row rendered an em dash.
+ * Both sides now import this type, so a rename fails the build.
+ */
+export type CoiBlockedRow = {
+  id: number;
+  name: string;
+  nameCn: string | null;
+  status: string;
+  lifecycleStatus: string | null;
+  organisation: string | null;
+  coiDeclaredBy: string | null;
+  coiDeclaredByEmail: string | null;
+  coiDeclaredAt: string | null;
+  coiDetails: string | null;
+};
+
+/**
+ * Builds one row of the admin Conflicts feed. Kept here, beside the type it
+ * returns, so the projection is unit-testable without standing up the route —
+ * the v7.14 field-name bug was invisible precisely because the mapping lived
+ * inline in an Express handler that no test touched.
+ */
+export function toCoiBlockedRow(
+  advisor: {
+    id: number;
+    name: string;
+    nameCn?: string | null;
+    status?: string | null;
+    lifecycleStatus?: string | null;
+    coiDeclaredBy?: string | null;
+    coiDeclaredByEmail?: string | null;
+    coiDeclaredAt?: string | null;
+    coiDetails?: string | null;
+  },
+  organisation?: string | null,
+): CoiBlockedRow {
+  return {
+    id: advisor.id,
+    name: advisor.name,
+    nameCn: advisor.nameCn ?? null,
+    status: advisor.status ?? "pending",
+    lifecycleStatus: advisor.lifecycleStatus ?? null,
+    organisation: (organisation ?? "").trim() || null,
+    coiDeclaredBy: advisor.coiDeclaredBy ?? null,
+    coiDeclaredByEmail: advisor.coiDeclaredByEmail ?? null,
+    coiDeclaredAt: advisor.coiDeclaredAt ?? null,
+    coiDetails: advisor.coiDetails ?? null,
+  };
+}

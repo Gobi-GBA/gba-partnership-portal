@@ -9,9 +9,26 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.14";
+export const CURRENT_VERSION = "7.15";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.15",
+    date: "2026-08-06",
+    by: "Fred Li",
+    titleEn: "v7.15 — Conflicts tab now shows who declared the conflict and why",
+    titleCn: "v7.15 — 冲突清单现可显示声明人及声明原因",
+    itemsEn: [
+      "Bugfix: the admin Conflicts tab showed a dash instead of the person who declared the conflict, and never showed the reason they gave or the organisation involved. The declaration was always recorded correctly — it simply was not reaching the screen. It now displays in full.",
+      "The row format is now shared between the server and the console, so this class of mismatch fails the build instead of silently blanking the table, and it is covered by tests.",
+      "No change to the conflict-of-interest rules themselves: a declared conflict still blocks the COO approval email for every sender until an admin clears it, the candidate still stays pending, and outreach emails and invitation letters are still unaffected.",
+    ],
+    itemsCn: [
+      "缺陷修复：管理后台「利益冲突」清单此前只显示破折号，未能显示声明人、声明原因及涉及机构。声明记录本身一直正确保存，只是未传到界面。现已完整显示。",
+      "服务端与管理后台现共用同一行数据格式，此类字段不一致将直接导致构建失败，而不会再静默清空表格，并已加入测试覆盖。",
+      "利益冲突规则本身不变：已声明的冲突仍会对所有发送人阻止 COO 审批邮件，直至管理员解除；人选仍保持待审状态；顾问外联邮件与邀请函仍不受影响。",
+    ],
+  },
   {
     version: "7.14",
     date: "2026-08-06",

@@ -39,6 +39,8 @@ import {
   normalizeCoiDetails,
   coiAttestationText,
   type CoiStatus,
+  toCoiBlockedRow,
+  type CoiBlockedRow,
 } from "../shared/coi.js";
 import { z } from "zod";
 
@@ -3037,24 +3039,24 @@ www.gobi.vc`,
   // the single-segment /api/advisors/:id route the way /api/advisors/audit was in
   // v7.09 — same shape as the existing /api/advisors/outreach/* endpoints. Do not
   // introduce an /api/advisors/:id/:something route above this one.
+  // v7.15 — the field names below are the wire contract the admin Conflicts tab
+  // reads. They intentionally keep the `coi*` prefix of the Advisor record rather
+  // than being shortened: v7.14 shipped this projection as declaredBy/details
+  // while the client read coiDeclaredBy/coiDetails, so every row rendered
+  // "Declared by: —" with no reason. Optional client fields meant tsc could not
+  // see it. Renaming either side is a breaking change — keep them in step.
   app.get("/api/advisors/coi/blocked", requireAuth("admin"), async (_req, res) => {
-    const all = await storage.listAdvisors();
-    res.json(
-      all
-        .filter((a) => (a.coiStatus ?? "none") === "blocked")
-        .map((a) => ({
-          id: a.id,
-          name: a.name,
-          nameCn: a.nameCn,
-          status: a.status,
-          lifecycleStatus: a.lifecycleStatus,
-          declaredBy: a.coiDeclaredBy ?? null,
-          declaredByEmail: a.coiDeclaredByEmail ?? null,
-          declaredAt: a.coiDeclaredAt ?? null,
-          details: a.coiDetails ?? null,
-        }))
-        .sort((x, y) => String(y.declaredAt ?? "").localeCompare(String(x.declaredAt ?? ""))),
-    );
+    const [all, roles] = await Promise.all([storage.listAdvisors(), storage.listAdvisorRoles()]);
+    const rows: CoiBlockedRow[] = all
+      .filter((a) => (a.coiStatus ?? "none") === "blocked")
+      .map((a) => {
+        const primary = roles
+          .filter((r) => r.advisorId === a.id)
+          .sort((x, y) => y.isPrimary - x.isPrimary || x.sortOrder - y.sortOrder)[0];
+        return toCoiBlockedRow(a, primary?.organization);
+      })
+      .sort((x, y) => String(y.coiDeclaredAt ?? "").localeCompare(String(x.coiDeclaredAt ?? "")));
+    res.json(rows);
   });
 
   // Public lookup — the approver follows the emailed link before signing in;
