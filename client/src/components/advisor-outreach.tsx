@@ -18,9 +18,11 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import type { AdvisorWithRoles } from "@shared/schema";
 import { markdownToPlainText, resolveOutreachPlaceholders } from "@shared/markdown";
-import { Mail, Send, Loader2, Users, Check, Braces, Copy } from "lucide-react";
+import { Mail, Send, Loader2, Users, Check, Braces, Copy, ChevronDown, Plus, X, CircleAlert, CircleCheck } from "lucide-react";
 import { copyText } from "@/lib/download";
 import { cn } from "@/lib/utils";
 import {
@@ -42,8 +44,26 @@ interface Recipient {
 interface ComposeResponse {
   template: { key: string; subject: string; body: string };
   recipients: Recipient[];
+  copyCandidates: CopyCandidate[];
   mailEnabled: boolean;
 }
+
+interface CopyCandidate {
+  userId: number;
+  name: string;
+  email: string;
+}
+
+interface CampaignSnapshot {
+  subject: string;
+  body: string;
+  recipientIds: number[];
+  campaignAdvisorIds: number[];
+  userIds: number[];
+  customEmails: string[];
+}
+
+type CopyStatus = "idle" | "sending" | "sent" | "failed";
 
 const PLACEHOLDERS = ["{{name}}", "{{first_name}}", "{{organization}}"] as const;
 
@@ -83,7 +103,17 @@ export function OutreachDialog({
   const [failed, setFailed] = useState<number[]>([]);
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [copyCandidates, setCopyCandidates] = useState<CopyCandidate[]>([]);
+  const [copyUserIds, setCopyUserIds] = useState<number[]>([]);
+  const [customEmails, setCustomEmails] = useState<string[]>([]);
+  const [customEmailInput, setCustomEmailInput] = useState("");
+  const [copyPickerOpen, setCopyPickerOpen] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
+  const [campaignLocked, setCampaignLocked] = useState(false);
   const bodyEditorRef = useRef<MarkdownEmailEditorHandle>(null);
+  const sentRef = useRef<number[]>([]);
+  const copyStatusRef = useRef<CopyStatus>("idle");
+  const campaignSnapshotRef = useRef<CampaignSnapshot | null>(null);
 
   const compose = useMutation({
     mutationFn: async (key: OutreachTemplate) => {
@@ -97,6 +127,7 @@ export function OutreachDialog({
       setSubject(data.template.subject);
       setBody(data.template.body);
       setRecipients(data.recipients);
+      setCopyCandidates(data.copyCandidates);
       setMailEnabled(data.mailEnabled);
       const withEmail = data.recipients.filter((r) => r.to.length > 0).map((r) => r.advisorId);
       setSelected(withEmail);
@@ -112,6 +143,14 @@ export function OutreachDialog({
     setStep(1);
     setSent([]);
     setFailed([]);
+    sentRef.current = [];
+    setCopyUserIds([]);
+    setCustomEmails([]);
+    setCustomEmailInput("");
+    setCopyStatus("idle");
+    copyStatusRef.current = "idle";
+    setCampaignLocked(false);
+    campaignSnapshotRef.current = null;
     compose.mutate(template);
   }
   if (!open && loadedFor !== null) setLoadedFor(null);
@@ -128,23 +167,63 @@ export function OutreachDialog({
   const insertPlaceholder = (ph: string) => bodyEditorRef.current?.insertText(ph);
 
   const send = useMutation({
-    mutationFn: async (r: Recipient) => {
+    mutationFn: async ({ r, message }: { r: Recipient; message: Pick<CampaignSnapshot, "subject" | "body"> }) => {
       const res = await apiRequest("POST", "/api/advisors/outreach/send", {
         advisorId: r.advisorId,
         to: r.to[0],
-        subject,
-        body,
+        subject: message.subject,
+        body: message.body,
       });
       return res.json();
     },
   });
 
+  const currentSnapshot = (): CampaignSnapshot => ({
+    subject,
+    body,
+    recipientIds: chosen.map((r) => r.advisorId),
+    campaignAdvisorIds: recipients.filter((r) => r.to.length > 0).map((r) => r.advisorId),
+    userIds: [...copyUserIds],
+    customEmails: [...customEmails],
+  });
+
+  const sendCampaignCopy = async (snapshot: CampaignSnapshot, sentIds: number[]) => {
+    const hasCopyRecipients = snapshot.userIds.length + snapshot.customEmails.length > 0;
+    const allSent = snapshot.recipientIds.every((id) => sentIds.includes(id));
+    if (!hasCopyRecipients || !allSent || copyStatusRef.current === "sending" || copyStatusRef.current === "sent") return;
+    copyStatusRef.current = "sending";
+    setCopyStatus("sending");
+    try {
+      await apiRequest("POST", "/api/advisors/outreach/summary", {
+        campaignAdvisorIds: snapshot.campaignAdvisorIds,
+        sentAdvisorIds: snapshot.recipientIds,
+        subject: snapshot.subject,
+        body: snapshot.body,
+        userIds: snapshot.userIds,
+        customEmails: snapshot.customEmails,
+      });
+      copyStatusRef.current = "sent";
+      setCopyStatus("sent");
+      toast({ description: t("outreachCopySent") });
+    } catch (e: any) {
+      copyStatusRef.current = "failed";
+      setCopyStatus("failed");
+      toast({ description: String(e?.message ?? e), variant: "destructive" });
+    }
+  };
+
   const sendOne = async (r: Recipient) => {
     setSendingId(r.advisorId);
+    const snapshot = campaignSnapshotRef.current ?? currentSnapshot();
     try {
-      await send.mutateAsync(r);
-      setSent((s) => (s.includes(r.advisorId) ? s : [...s, r.advisorId]));
+      await send.mutateAsync({ r, message: snapshot });
+      if (!campaignSnapshotRef.current) campaignSnapshotRef.current = snapshot;
+      setCampaignLocked(true);
+      const nextSent = sentRef.current.includes(r.advisorId) ? sentRef.current : [...sentRef.current, r.advisorId];
+      sentRef.current = nextSent;
+      setSent(nextSent);
       setFailed((f) => f.filter((x) => x !== r.advisorId));
+      await sendCampaignCopy(snapshot, nextSent);
     } catch (e: any) {
       setFailed((f) => (f.includes(r.advisorId) ? f : [...f, r.advisorId]));
       toast({ description: String(e?.message ?? e), variant: "destructive" });
@@ -155,9 +234,51 @@ export function OutreachDialog({
 
   const sendAll = async () => {
     for (const r of chosen) {
-      if (sent.includes(r.advisorId)) continue;
+      if (sentRef.current.includes(r.advisorId)) continue;
       await sendOne(r);
     }
+  };
+
+  const retryCampaignCopy = () => {
+    const snapshot = campaignSnapshotRef.current;
+    if (!snapshot) return;
+    copyStatusRef.current = "idle";
+    void sendCampaignCopy(snapshot, sentRef.current);
+  };
+
+  const addCustomEmail = () => {
+    const email = customEmailInput.trim().toLowerCase();
+    if (!/^[^@\s]+@gobi\.vc$/i.test(email)) {
+      toast({ description: t("outreachCopyGobiOnly"), variant: "destructive" });
+      return;
+    }
+    const candidate = copyCandidates.find((item) => item.email.toLowerCase() === email);
+    if (candidate) {
+      if (copyUserIds.includes(candidate.userId)) {
+        toast({ description: t("outreachCopyDuplicate"), variant: "destructive" });
+        return;
+      }
+      if (customEmails.length + copyUserIds.length >= 50) {
+        toast({ description: t("outreachCopyLimit"), variant: "destructive" });
+        return;
+      }
+      setCopyUserIds((ids) => [...ids, candidate.userId]);
+      setCustomEmailInput("");
+      return;
+    }
+    const selectedCandidateEmails = copyCandidates
+      .filter((item) => copyUserIds.includes(item.userId))
+      .map((item) => item.email.toLowerCase());
+    if (customEmails.includes(email) || selectedCandidateEmails.includes(email)) {
+      toast({ description: t("outreachCopyDuplicate"), variant: "destructive" });
+      return;
+    }
+    if (customEmails.length + copyUserIds.length >= 50) {
+      toast({ description: t("outreachCopyLimit"), variant: "destructive" });
+      return;
+    }
+    setCustomEmails((emails) => [...emails, email]);
+    setCustomEmailInput("");
   };
 
   const mailtoFor = (r: Recipient) =>
@@ -169,6 +290,9 @@ export function OutreachDialog({
     const ok = await copyText(text);
     toast(ok ? { description: t("copiedToClipboard") } : { description: t("copyFailed"), variant: "destructive" });
   };
+
+  const selectedCopyUsers = copyCandidates.filter((item) => copyUserIds.includes(item.userId));
+  const copyRecipientCount = selectedCopyUsers.length + customEmails.length;
 
   const templateLabel = template === "onboarding_invite" ? t("outreachTplOnboarding") : t("outreachTplUpdate");
   const summary = t("outreachSummary").replace("{n}", String(chosen.length)).replace("{t}", templateLabel);
@@ -195,8 +319,8 @@ export function OutreachDialog({
             <span key={s.n} className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => { if (s.n < step) setStep(s.n); }}
-                disabled={s.n > step}
+                onClick={() => { if (s.n < step && !campaignLocked) setStep(s.n); }}
+                disabled={s.n > step || (campaignLocked && s.n < step)}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors",
                   s.n === step
@@ -366,6 +490,166 @@ export function OutreachDialog({
                     {t("outreachMailDisabled")}
                   </p>
                 )}
+                <div className="space-y-2 rounded-lg border border-border bg-secondary/15 p-3" data-testid="panel-outreach-copy-recipients">
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <Label className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5" /> {t("outreachCopyRecipients")}
+                      </Label>
+                      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("outreachCopyHint")}</p>
+                    </div>
+                    {campaignLocked && (
+                      <Badge variant="outline" className="shrink-0 text-[10px]">{t("outreachCampaignLocked")}</Badge>
+                    )}
+                  </div>
+
+                  <Popover open={copyPickerOpen} onOpenChange={setCopyPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={copyPickerOpen}
+                        disabled={campaignLocked || sendingId !== null}
+                        className="h-auto min-h-9 w-full min-w-0 justify-between px-3 py-2 font-normal"
+                        data-testid="select-outreach-copy-users"
+                      >
+                        <span className={cn("truncate", copyUserIds.length === 0 && "text-muted-foreground")}>
+                          {copyUserIds.length > 0
+                            ? t("outreachCopyUsersSelected").replace("{n}", String(copyUserIds.length))
+                            : t("outreachCopySelectUsers")}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start" collisionPadding={16}>
+                      <Command>
+                        <CommandInput placeholder={t("outreachCopySearchUsers")} data-testid="input-outreach-copy-search" />
+                        <CommandList className="max-h-64">
+                          <CommandEmpty>{t("outreachCopyNoUsers")}</CommandEmpty>
+                          {copyCandidates.map((candidate) => {
+                            const checked = copyUserIds.includes(candidate.userId);
+                            return (
+                              <CommandItem
+                                key={candidate.userId}
+                                value={`${candidate.name} ${candidate.email}`}
+                                onSelect={() => {
+                                  if (checked) {
+                                    setCopyUserIds((ids) => ids.filter((id) => id !== candidate.userId));
+                                    return;
+                                  }
+                                  if (copyRecipientCount >= 50) {
+                                    toast({ description: t("outreachCopyLimit"), variant: "destructive" });
+                                    return;
+                                  }
+                                  setCustomEmails((emails) => emails.filter((email) => email !== candidate.email.toLowerCase()));
+                                  setCopyUserIds((ids) => [...ids, candidate.userId]);
+                                }}
+                                data-testid={`option-outreach-copy-user-${candidate.userId}`}
+                              >
+                                <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate font-medium">{candidate.name}</span>
+                                  <span className="block truncate text-xs text-muted-foreground">{candidate.email}</span>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  <div className="flex min-w-0 gap-2">
+                    <Input
+                      type="email"
+                      inputMode="email"
+                      value={customEmailInput}
+                      onChange={(event) => setCustomEmailInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addCustomEmail();
+                        }
+                      }}
+                      disabled={campaignLocked || sendingId !== null}
+                      placeholder={t("outreachCopyEmailPlaceholder")}
+                      className="min-w-0"
+                      data-testid="input-outreach-copy-email"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={addCustomEmail}
+                      disabled={campaignLocked || sendingId !== null || !customEmailInput.trim()}
+                      aria-label={t("outreachCopyAddEmail")}
+                      title={t("outreachCopyAddEmail")}
+                      data-testid="button-outreach-copy-add-email"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {copyRecipientCount > 0 && (
+                    <div className="flex min-w-0 flex-wrap gap-1.5" data-testid="list-outreach-copy-recipients">
+                      {selectedCopyUsers.map((candidate) => (
+                        <Badge key={candidate.userId} variant="secondary" className="h-auto max-w-full gap-1 py-1 pl-2 pr-1 font-normal">
+                          <span className="min-w-0 truncate">{candidate.name} · {candidate.email}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCopyUserIds((ids) => ids.filter((id) => id !== candidate.userId))}
+                            disabled={campaignLocked || sendingId !== null}
+                            aria-label={t("outreachCopyRemove").replace("{email}", candidate.email)}
+                            title={t("outreachCopyRemove").replace("{email}", candidate.email)}
+                            className="rounded p-0.5 hover:bg-background/60 disabled:opacity-50"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      {customEmails.map((email) => (
+                        <Badge key={email} variant="secondary" className="h-auto max-w-full gap-1 py-1 pl-2 pr-1 font-normal">
+                          <span className="min-w-0 truncate">{email}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCustomEmails((emails) => emails.filter((item) => item !== email))}
+                            disabled={campaignLocked || sendingId !== null}
+                            aria-label={t("outreachCopyRemove").replace("{email}", email)}
+                            title={t("outreachCopyRemove").replace("{email}", email)}
+                            className="rounded p-0.5 hover:bg-background/60 disabled:opacity-50"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {copyRecipientCount > 0 && copyStatus === "idle" && (
+                    <p className="flex items-start gap-1.5 text-xs leading-4 text-muted-foreground">
+                      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t("outreachCopyWaiting")}
+                    </p>
+                  )}
+                  {copyStatus === "sending" && (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="status-outreach-copy-sending">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("outreachCopySending")}
+                    </p>
+                  )}
+                  {copyStatus === "sent" && (
+                    <p className="flex items-center gap-1.5 text-xs text-emerald-600" data-testid="status-outreach-copy-sent">
+                      <CircleCheck className="h-3.5 w-3.5" /> {t("outreachCopySent")}
+                    </p>
+                  )}
+                  {copyStatus === "failed" && (
+                    <div className="flex flex-wrap items-center justify-between gap-2" data-testid="status-outreach-copy-failed">
+                      <p className="flex items-center gap-1.5 text-xs text-rose-600"><CircleAlert className="h-3.5 w-3.5" /> {t("outreachCopyFailed")}</p>
+                      <Button type="button" size="sm" variant="outline" className="h-7" onClick={retryCampaignCopy}>
+                        {t("outreachCopyRetry")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground" data-testid="text-outreach-progress">
                     {t("outreachSendProgress").replace("{a}", String(sent.length)).replace("{b}", String(chosen.length))}
@@ -434,7 +718,7 @@ export function OutreachDialog({
             {/* Stepper controls */}
             <div className="flex justify-end gap-2 border-t border-border pt-3">
               {step > 1 && (
-                <Button type="button" variant="outline" onClick={() => setStep((s) => (s - 1) as Step)} data-testid="button-outreach-prev">
+                <Button type="button" variant="outline" disabled={campaignLocked || sendingId !== null} onClick={() => setStep((s) => (s - 1) as Step)} data-testid="button-outreach-prev">
                   {t("outreachPrev")}
                 </Button>
               )}

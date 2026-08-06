@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { storage, getDataVersion, hashPassword, verifyPassword } from "./storage.js";
 import { normalizeUrl, linkedinSlug } from "../shared/urls.js";
 import { markdownToPlainText, resolveOutreachPlaceholders } from "../shared/markdown.js";
-import { mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail, type OutreachAttachment } from "./mailer.js";
+import { campaignCopyEmail, mailEnabled, sendMail, sendOutreach, outreachHtml, registrationEmail, resetEmail, type OutreachAttachment } from "./mailer.js";
 import { createHash, randomBytes } from "node:crypto";
 import {
   insertUserSchema,
@@ -2535,7 +2535,11 @@ www.gobi.vc`,
         to: a.emails ?? [],
       });
     }
-    res.json({ template: { key, subject: tpl.subject, body: tpl.body }, recipients, mailEnabled });
+    const copyCandidates = (await storage.listUsers())
+      .filter((u) => u.status === "approved" && isGobiEmail(u.email))
+      .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }))
+      .map((u) => ({ userId: u.id, name: u.name, email: u.email.toLowerCase() }));
+    res.json({ template: { key, subject: tpl.subject, body: tpl.body }, recipients, copyCandidates, mailEnabled });
   });
 
   app.post("/api/advisors/outreach/send", requireAuth("submit"), async (req: AuthedRequest, res) => {
@@ -2583,6 +2587,66 @@ www.gobi.vc`,
       });
     } catch {}
     res.json({ ok: true });
+  });
+
+  app.post("/api/advisors/outreach/summary", requireAuth("submit"), async (req: AuthedRequest, res) => {
+    if (!isStaffUser(req.user)) return res.status(403).json({ message: "Staff only" });
+    const gobiEmail = z.string().trim().toLowerCase().email().max(160)
+      .refine((email) => isGobiEmail(email), "Campaign copy recipients must use @gobi.vc");
+    const parsed = z.object({
+      campaignAdvisorIds: z.array(z.number().int()).min(1).max(200),
+      sentAdvisorIds: z.array(z.number().int()).min(1).max(200),
+      subject: z.string().trim().min(1).max(300),
+      body: z.string().trim().min(1).max(20000),
+      userIds: z.array(z.number().int()).max(50).default([]),
+      customEmails: z.array(gobiEmail).max(50).default([]),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid campaign copy" });
+    if (!mailEnabled) return res.status(503).json({ message: "Server email is not configured." });
+
+    const campaignIds = Array.from(new Set(parsed.data.campaignAdvisorIds));
+    const sentIds = Array.from(new Set(parsed.data.sentAdvisorIds));
+    const campaignIdSet = new Set(campaignIds);
+    if (sentIds.some((id) => !campaignIdSet.has(id))) return res.status(400).json({ message: "Sent advisors must belong to this campaign" });
+
+    const [allAdvisors, allUsers] = await Promise.all([storage.listAdvisors(), storage.listUsers()]);
+    const advisorsById = new Map(allAdvisors.map((advisor) => [advisor.id, advisor]));
+    if (campaignIds.some((id) => !advisorsById.has(id))) return res.status(404).json({ message: "Advisor not found" });
+    const eligibleCampaignIds = campaignIds.filter((id) => (advisorsById.get(id)?.emails?.length ?? 0) > 0);
+    const eligibleCampaignIdSet = new Set(eligibleCampaignIds);
+    if (sentIds.some((id) => !eligibleCampaignIdSet.has(id))) return res.status(400).json({ message: "Sent advisor is not eligible for this campaign" });
+    const advisorNames = sentIds.map((id) => advisorsById.get(id)?.name).filter((name): name is string => Boolean(name));
+    if (advisorNames.length !== sentIds.length) return res.status(404).json({ message: "Advisor not found" });
+
+    const usersById = new Map(allUsers.map((user) => [user.id, user]));
+    const selectedUsers = parsed.data.userIds.map((id) => usersById.get(id));
+    if (selectedUsers.some((user) => !user || user.status !== "approved" || !isGobiEmail(user.email))) {
+      return res.status(400).json({ message: "Invalid portal user selected" });
+    }
+    const recipients = Array.from(new Set([
+      ...selectedUsers.map((user) => user!.email.trim().toLowerCase()),
+      ...parsed.data.customEmails.map((email) => email.trim().toLowerCase()),
+    ]));
+    if (recipients.length === 0 || recipients.length > 50) return res.status(400).json({ message: "Select 1 to 50 campaign copy recipients" });
+
+    const sentAt = new Date();
+    const campaignCopy = campaignCopyEmail({
+      senderName: req.user!.name,
+      sentAt,
+      advisorNames,
+      allCampaignRecipients: sentIds.length === eligibleCampaignIds.length,
+      subject: parsed.data.subject,
+      body: parsed.data.body,
+    });
+    const senderEmail = req.user!.email.includes("@") ? req.user!.email : "fred@gobi.vc";
+    const ok = await sendOutreach(recipients, campaignCopy.subject, campaignCopy.html, {
+      fromName: `${req.user!.name} · Gobi Partners`,
+      replyTo: senderEmail,
+      isHtml: true,
+      text: campaignCopy.text,
+    });
+    if (!ok) return res.status(502).json({ message: "Campaign copy send failed" });
+    res.json({ ok: true, sentAt: sentAt.toISOString(), recipientCount: recipients.length });
   });
 
 

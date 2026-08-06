@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:markdown": "node --import tsx --test shared/markdown.test.ts",
+    "test:outreach": "node --import tsx --test shared/markdown.test.ts server/mailer.test.ts",
     "db:push": "drizzle-kit push",
     "build:client": "vite build"
   },

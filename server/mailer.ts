@@ -4,7 +4,7 @@
 // gracefully: registration succeeds without a confirmation email, password reset
 // falls back to secret questions).
 import nodemailer from "nodemailer";
-import { renderEmailMarkdownHtml } from "../shared/markdown.js";
+import { markdownToPlainText, renderEmailMarkdownHtml } from "../shared/markdown.js";
 
 function parseBool(value: string | undefined, fallback = false): boolean {
   if (value == null) return fallback;
@@ -52,8 +52,7 @@ function wrap(bodyHtml: string): string {
 // v5.9 — Gobi-branded wrapper for person-to-person outreach email.
 // Navy masthead with the Gobi wordmark, gold rule, Calibri body, and the
 // official footer — but no automated/do-not-reply chrome.
-export function outreachHtml(bodyMarkdown: string): string {
-  const renderedBody = renderEmailMarkdownHtml(bodyMarkdown);
+function outreachFrame(bodyHtml: string): string {
   return `
   <div style="font-family:${GOBI_FONT};max-width:600px;margin:0 auto;color:#1a2433;">
     <div style="background:#0C2340;padding:18px 28px;">
@@ -61,13 +60,80 @@ export function outreachHtml(bodyMarkdown: string): string {
     </div>
     <div style="height:3px;background:#D4A843;"></div>
     <div style="padding:26px 28px;font-size:15px;">
-      ${renderedBody}
+      ${bodyHtml}
     </div>
     <div style="border-top:1px solid #e2e8f0;padding:14px 28px 22px;font-size:12px;color:#64748b;">
       Gobi Partners · ${GOBI_ADDRESS}<br/>
       <a href="https://www.gobi.vc" style="color:#0C2340;">www.gobi.vc</a>
     </div>
   </div>`;
+}
+
+export function outreachHtml(bodyMarkdown: string): string {
+  return outreachFrame(renderEmailMarkdownHtml(bodyMarkdown));
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export interface CampaignCopyDetails {
+  senderName: string;
+  sentAt: Date;
+  advisorNames: string[];
+  allCampaignRecipients: boolean;
+  subject: string;
+  body: string;
+}
+
+export function campaignCopyEmail(details: CampaignCopyDetails): { subject: string; html: string; text: string } {
+  const count = details.advisorNames.length;
+  const sentAt = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Shanghai",
+  }).format(details.sentAt);
+  const scopeText = details.allCampaignRecipients
+    ? `All advisors in this campaign (${count}) / 本次群发的全部顾问（${count} 位）`
+    : details.advisorNames.join(", ");
+  const namesHtml = details.allCampaignRecipients
+    ? `<strong>${escapeHtml(scopeText)}</strong>`
+    : `<ul style="margin:6px 0 0;padding-left:22px;line-height:1.55;">${details.advisorNames.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ul>`;
+  const html = outreachFrame(`
+    <h1 style="margin:0 0 18px;font-size:22px;line-height:1.3;color:#0C2340;">Advisor campaign copy · 顾问群发汇总</h1>
+    <table role="presentation" style="width:100%;margin:0 0 22px;border-collapse:collapse;font-size:14px;line-height:1.5;">
+      <tr><td style="width:112px;padding:4px 10px 4px 0;color:#64748b;vertical-align:top;">Sent by · 发件人</td><td style="padding:4px 0;">${escapeHtml(details.senderName)}</td></tr>
+      <tr><td style="padding:4px 10px 4px 0;color:#64748b;vertical-align:top;">Sent at · 发送时间</td><td style="padding:4px 0;">${escapeHtml(sentAt)} (Asia/Shanghai)</td></tr>
+      <tr><td style="padding:4px 10px 4px 0;color:#64748b;vertical-align:top;">Advisors · 顾问</td><td style="padding:4px 0;">${namesHtml}</td></tr>
+      <tr><td style="padding:4px 10px 4px 0;color:#64748b;vertical-align:top;">Subject · 标题</td><td style="padding:4px 0;font-weight:700;">${escapeHtml(details.subject)}</td></tr>
+    </table>
+    <h2 style="margin:0 0 8px;font-size:18px;line-height:1.3;color:#0C2340;">Message template · 邮件模板</h2>
+    <p style="margin:0 0 14px;font-size:12px;line-height:1.5;color:#64748b;">Placeholders shown below were personalized for each advisor during delivery. 以下占位符在发送时已按每位顾问自动填入。</p>
+    ${renderEmailMarkdownHtml(details.body)}
+  `);
+  const text = [
+    "Advisor campaign copy · 顾问群发汇总",
+    `Sent by · 发件人: ${details.senderName}`,
+    `Sent at · 发送时间: ${sentAt} (Asia/Shanghai)`,
+    `Advisors · 顾问: ${scopeText}`,
+    `Subject · 标题: ${details.subject}`,
+    "",
+    "Message template · 邮件模板",
+    "Placeholders shown below were personalized for each advisor during delivery.",
+    "以下占位符在发送时已按每位顾问自动填入。",
+    "",
+    markdownToPlainText(details.body),
+  ].join("\n");
+  return {
+    subject: `Campaign copy · 顾问群发汇总 — ${details.subject.replace(/\s+/g, " ")}`,
+    html,
+    text,
+  };
 }
 
 export async function sendMail(to: string, subject: string, bodyHtml: string): Promise<boolean> {
@@ -93,7 +159,7 @@ export async function sendMail(to: string, subject: string, bodyHtml: string): P
 export type OutreachAttachment = { filename: string; content: Buffer; contentType?: string };
 
 export async function sendOutreach(
-  to: string,
+  to: string | string[],
   subject: string,
   body: string,
   opts?: { fromName?: string; replyTo?: string; isHtml?: boolean; cc?: string | string[]; text?: string; attachments?: OutreachAttachment[] },

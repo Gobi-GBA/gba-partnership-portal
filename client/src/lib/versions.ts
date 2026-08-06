@@ -9,9 +9,30 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.12";
+export const CURRENT_VERSION = "7.13";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.13",
+    date: "2026-08-06",
+    by: "Analyst01",
+    titleEn: "v7.13 — advisor outreach can send one campaign copy to selected colleagues",
+    titleCn: "v7.13 — 顾问群发现可向指定同事发送一封汇总抄送",
+    itemsEn: [
+      "Email Advisors adds optional campaign copy recipients in the Send step: search approved portal users or enter another @gobi.vc address",
+      "Copy recipients receive one consolidated campaign email after every selected advisor message succeeds, instead of being copied on each individual advisor email",
+      "The campaign copy records the sender, send time, advisor scope or subset names, original subject and the shared Markdown-rendered template; placeholders remain visible with a personalization note",
+      "The message, advisor selection and copy list lock after the first successful advisor send so the summary stays accurate",
+      "Advisor delivery failures postpone the campaign copy; a copy-delivery failure has its own retry action and keeps successful advisor messages untouched",
+    ],
+    itemsCn: [
+      "“顾问邮件”的发送步骤新增选填“汇总抄送人”：可搜索已批准的门户用户，也可手动输入其他 @gobi.vc 邮箱",
+      "所有已选顾问邮件发送成功后，抄送人只会收到一封群发汇总邮件，不会在每封顾问邮件中重复收件",
+      "汇总邮件记录发件人、发送时间、全部顾问范围或部分顾问姓名、原始标题及 Markdown 格式的共用模板；占位符会保留并说明发送时已个性化",
+      "第一封顾问邮件成功发送后，本次内容、顾问名单与汇总抄送名单会锁定，确保汇总准确对应实际群发",
+      "顾问邮件发送失败时会暂缓汇总；汇总邮件发送失败可单独重试，已成功发送的顾问邮件保持原状态",
+    ],
+  },
   {
     version: "7.12",
     date: "2026-08-05",
