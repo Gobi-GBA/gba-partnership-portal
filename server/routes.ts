@@ -42,6 +42,13 @@ import {
   toCoiBlockedRow,
   type CoiBlockedRow,
 } from "../shared/coi.js";
+import {
+  RESOURCE_KINDS,
+  THIN_DESCRIPTION_CHARS,
+  type ResourceKind,
+  type ResourceReviewRow,
+  type ThinRecordRow,
+} from "../shared/resources.js";
 import { z } from "zod";
 
 // Single source of truth: collaboration level is always derived from the stage.
@@ -57,8 +64,30 @@ function canSeeLp(user: User | undefined): boolean {
   return !!user && (user.role === "admin" || user.isIr === 1);
 }
 
-function redactLp<T extends { lpStatus?: string }>(p: T, user: User | undefined): T {
-  return canSeeLp(user) ? p : { ...p, lpStatus: "na" };
+// Staff = admin or staff role. Internal-only fields are gated on this.
+function isStaffUser(user: User | undefined): boolean {
+  return !!user && (user.role === "admin" || user.role === "staff");
+}
+
+/**
+ * Per-user redaction for a partnership row. Two independent concerns:
+ *   - LP status is IR-team-only; everyone else sees 'na'.
+ *   - v7.17: an unreviewed ('draft') resource paragraph is staff-only, so a
+ *     machine-written claim is never shown to a viewer as if the firm had
+ *     vetted it. Confirmed paragraphs are visible to everyone.
+ *
+ * Applied on every path that serves partnership rows, so new routes inherit it.
+ */
+function redactPartner<T extends { lpStatus?: string; resourcesStatus?: string }>(
+  p: T,
+  user: User | undefined,
+): T {
+  let out = p;
+  if (!canSeeLp(user)) out = { ...out, lpStatus: "na" };
+  if (out.resourcesStatus === "draft" && !isStaffUser(user)) {
+    out = { ...out, resourcesEn: null, resourcesCn: null, resourcesSources: null };
+  }
+  return out;
 }
 
 // ---------- v6.0: hot-list micro-cache + ETag revalidation ----------
@@ -1151,7 +1180,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       all
         .filter((p) => p.status === "approved")
         .map((p) => ({
-          ...redactLp(p, req.user),
+          ...redactPartner(p, req.user),
           submittedByName: p.submittedBy != null ? nameById.get(p.submittedBy) ?? null : null,
         })),
     );
@@ -1188,7 +1217,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // their own creation date and flag the value as reconstructed.
           const reconstructed = !last;
           return {
-            ...redactLp(p, req.user),
+            ...redactPartner(p, req.user),
             submittedByName,
             lastActivityAt: last && last.createdAt > p.createdAt ? last.createdAt : p.createdAt,
             lastAction: last ? last.action : "create",
@@ -1226,6 +1255,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const created = await storage.createPartnership({
       ...parsed.data,
       collabLevel: STAGE_LEVEL[parsed.data.stage] ?? 1,
+      // v7.17 — resource paragraph is researched/written after intake
+      resourcesEn: parsed.data.resourcesEn ?? null,
+      resourcesCn: parsed.data.resourcesCn ?? null,
+      resourcesStatus: parsed.data.resourcesStatus ?? "none",
+      resourcesSources: parsed.data.resourcesSources ?? null,
+      resourcesUpdatedAt: null,
       nameCn: parsed.data.nameCn ?? null,
       logoUrl: parsed.data.logoUrl ?? null,
       website: parsed.data.website ?? null,
@@ -1269,7 +1304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
     await audit(req.user!, created.id, "create", { nameEn: created.nameEn, stage: created.stage });
-    res.status(201).json(redactLp(created, req.user));
+    res.status(201).json(redactPartner(created, req.user));
   });
 
   // Direct edit — admins and Gobi editors (v7.11); other staff must use change
@@ -1319,7 +1354,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updated = await storage.updatePartnership(id, body);
     if (Object.keys(changed).length) await audit(req.user!, id, "update", changed);
     const changeRequestId = await queueGatedChange(req.user!, "partnership", id, gated, req.body?.note ?? null);
-    const payload = updated ? redactLp(updated, req.user) : updated;
+    const payload = updated ? redactPartner(updated, req.user) : updated;
     if (changeRequestId) {
       return res.json({ ...(payload as object), queued: gated, changeRequestId });
     }
@@ -1670,7 +1705,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ---------- Advisors (v5.0 — Gobi Advisory Network) ----------
   // Emails, engagement history, and personal data (DOB) are internal: hidden from viewer accounts.
-  const isStaffUser = (user: User | undefined) => !!user && (user.role === "admin" || user.role === "staff");
   const redactAdvisor = (a: Advisor, user: User | undefined): Advisor =>
     isStaffUser(user)
       ? a
@@ -1682,6 +1716,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // the UI can still explain why an action is unavailable.
           coiDeclaredBy: null, coiDeclaredByEmail: null, coiDeclaredAt: null,
           coiDetails: null, coiClearedBy: null, coiClearedAt: null,
+          // v7.17 — an unreviewed resource draft is withheld from viewers, so a
+          // machine-written claim is never repeated externally as firm-vetted.
+          ...(a.resourcesStatus === "draft"
+            ? { resourcesEn: null, resourcesCn: null, resourcesSources: null }
+            : {}),
         };
 
   const sortTags = (tags: SectorTag[]) => tags.sort((x, y) => x.sortOrder - y.sortOrder || x.nameEn.localeCompare(y.nameEn));
@@ -1930,6 +1969,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       coiDetails: null,
       coiClearedBy: null,
       coiClearedAt: null,
+      // v7.17 — resource paragraph is researched/written after intake
+      resourcesEn: null,
+      resourcesCn: null,
+      resourcesStatus: "none",
+      resourcesSources: null,
+      resourcesUpdatedAt: null,
       // v7.11 — Gobi editors publish immediately
       status: isGobiEditor(req.user) ? "approved" : "pending",
       submittedBy: req.user!.id,
@@ -3064,6 +3109,135 @@ www.gobi.vc`,
       })
       .sort((x, y) => String(y.coiDeclaredAt ?? "").localeCompare(String(x.coiDeclaredAt ?? "")));
     res.json(rows);
+  });
+
+  // ---------- v7.17 resource paragraphs: review queue + thin-record list ----------
+  //
+  // Admin-only. The queue lists every `draft` paragraph awaiting a human check;
+  // confirming publishes it to all viewers, discarding clears it back to `none`.
+  // Both decisions are audited under their own action names so the provenance of
+  // published resource text stays traceable.
+
+  app.get("/api/admin/resources/pending", requireAuth("admin"), async (_req, res) => {
+    const [partners, advisors] = await Promise.all([storage.listPartnerships(), storage.listAdvisors()]);
+    const rows: ResourceReviewRow[] = [
+      ...partners
+        .filter((p) => p.resourcesStatus === "draft")
+        .map((p) => ({
+          kind: "partner" as const,
+          id: p.id,
+          name: p.nameEn,
+          nameCn: p.nameCn,
+          resourcesEn: p.resourcesEn,
+          resourcesCn: p.resourcesCn,
+          resourcesSources: p.resourcesSources,
+          resourcesUpdatedAt: p.resourcesUpdatedAt,
+        })),
+      ...advisors
+        .filter((a) => a.resourcesStatus === "draft")
+        .map((a) => ({
+          kind: "advisor" as const,
+          id: a.id,
+          name: a.name,
+          nameCn: a.nameCn,
+          resourcesEn: a.resourcesEn,
+          resourcesCn: a.resourcesCn,
+          resourcesSources: a.resourcesSources,
+          resourcesUpdatedAt: a.resourcesUpdatedAt,
+        })),
+    ].sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name));
+    res.json(rows);
+  });
+
+  /**
+   * Records whose searchable prose is too short for search to reach them.
+   * Sorted shortest-first: the top of this list is where writing one sentence
+   * buys the most discoverability.
+   */
+  app.get("/api/admin/resources/thin", requireAuth("admin"), async (_req, res) => {
+    const [partners, advisors] = await Promise.all([storage.listPartnerships(), storage.listAdvisors()]);
+    const len = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(" ").trim().length;
+    const rows: ThinRecordRow[] = [
+      ...partners.map((p) => ({
+        kind: "partner" as const,
+        id: p.id,
+        name: p.nameEn,
+        nameCn: p.nameCn,
+        chars: len(p.descriptionEn, p.descriptionCn, p.context, p.resourcesEn, p.resourcesCn),
+        hasDraft: p.resourcesStatus === "draft",
+      })),
+      ...advisors.map((a) => ({
+        kind: "advisor" as const,
+        id: a.id,
+        name: a.name,
+        nameCn: a.nameCn,
+        chars: len(a.background, a.domains, a.resourcesEn, a.resourcesCn),
+        hasDraft: a.resourcesStatus === "draft",
+      })),
+    ]
+      .filter((r) => r.chars < THIN_DESCRIPTION_CHARS)
+      .sort((x, y) => x.chars - y.chars || x.name.localeCompare(y.name));
+    res.json(rows);
+  });
+
+  app.post("/api/admin/resources/:kind/:id/:decision", requireAuth("admin"), async (req: AuthedRequest, res) => {
+    const kind = String(req.params.kind);
+    const decision = String(req.params.decision);
+    const id = Number(req.params.id);
+    if (!RESOURCE_KINDS.includes(kind as ResourceKind)) {
+      return res.status(400).json({ message: "Unknown kind" });
+    }
+    if (decision !== "confirm" && decision !== "discard") {
+      return res.status(400).json({ message: "Unknown decision" });
+    }
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Bad id" });
+
+    // A reviewer may fix wording as they confirm — that is the point of the
+    // review step, so accept edited text alongside the decision.
+    const edited = z
+      .object({
+        resourcesEn: z.string().max(4000).optional(),
+        resourcesCn: z.string().max(4000).optional(),
+      })
+      .safeParse(req.body ?? {});
+    if (!edited.success) return res.status(400).json({ message: "Invalid text" });
+
+    const patch =
+      decision === "confirm"
+        ? {
+            resourcesStatus: "confirmed",
+            ...(edited.data.resourcesEn !== undefined
+              ? { resourcesEn: edited.data.resourcesEn.trim() || null }
+              : {}),
+            ...(edited.data.resourcesCn !== undefined
+              ? { resourcesCn: edited.data.resourcesCn.trim() || null }
+              : {}),
+            resourcesUpdatedAt: new Date().toISOString(),
+          }
+        : {
+            // Discard wipes the text and its sources so a rejected claim cannot
+            // linger anywhere in the record.
+            resourcesStatus: "none",
+            resourcesEn: null,
+            resourcesCn: null,
+            resourcesSources: null,
+            resourcesUpdatedAt: new Date().toISOString(),
+          };
+
+    const updated =
+      kind === "partner"
+        ? await storage.updatePartnership(id, patch)
+        : await storage.updateAdvisor(id, patch);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+
+    await audit(
+      req.user!,
+      id,
+      decision === "confirm" ? "resources_confirmed" : "resources_discarded",
+      { resources: true },
+      kind === "partner" ? "partnership" : "advisor",
+    );
+    res.json({ ok: true });
   });
 
   // Public lookup — the approver follows the emailed link before signing in;

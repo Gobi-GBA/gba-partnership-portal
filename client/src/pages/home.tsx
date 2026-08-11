@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, LayoutGrid, Share2, CalendarRange, Download, Star, SlidersHorizontal } from "lucide-react";
 import type { Partnership, Stage, AdvisorWithRoles } from "@shared/schema";
+import { scoreRecord, partnerSearchFields } from "@shared/search";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, sortPartnerships, picsOf, levelOfStage, yearsOf } from "@/lib/constants";
 
 type ViewMode = "cards" | "network" | "timeline";
@@ -75,9 +76,9 @@ export default function Home({ initialView = "network", initialHof = false }: { 
         if (year.length > 0 && !year.some((y) => (p.startDate ?? "").startsWith(y))) return false;
         if (view === "network" && hof && p.hallOfFame !== 1) return false;
         if (!q) return true;
-        return [p.nameEn, p.nameCn, p.descriptionEn, p.descriptionCn, p.partnershipType, p.contactName, picsOf(p).join(" "), p.context]
-          .filter(Boolean)
-          .some((f) => f!.toLowerCase().includes(q));
+        // v7.17 — token-aware, word-boundary scoring shared with the advisor
+        // page and Spotlight. Also searches the resources paragraph.
+        return scoreRecord(q, partnerSearchFields(p)) > 0;
       }),
     );
   }, [partnerships, search, category, stage, region, year, view, hof]);

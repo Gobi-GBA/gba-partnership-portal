@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { useTheme, Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection } from "@/components/shared";
+import { useTheme, Layout, MultiSelectFilter, PicChecklist, PartnerLogo, PicAvatars, AuditSection, ResourcesBlock } from "@/components/shared";
 import { useUnsavedGuard } from "@/components/unsaved-guard";
 import { thankYou } from "@/components/thank-you";
 import { useLang } from "@/lib/i18n";
@@ -28,6 +28,7 @@ import {
 import type { AdvisorWithRoles, AdvisorRoleInput, Partnership, AdvisorRoleType, AdvisorTrack, Pillar, SectorTag, AdvisorLifecycle, FileAssetMeta } from "@shared/schema";
 import { ADVISOR_ROLE_TYPES, ADVISOR_TRACKS, PILLARS, ADVISOR_LIFECYCLE } from "@shared/schema";
 import { normalizeUrl } from "@shared/urls";
+import { scoreRecord, advisorSearchFields } from "@shared/search";
 import {
   Users, Search, Plus, Pencil, Trash2, Star, ExternalLink, Linkedin,
   Building2, Mail, GraduationCap, Factory, Rocket, Sparkles, Check, X, ImagePlus,
@@ -969,6 +970,9 @@ function AdvisorFormDialog({
             <div className="space-y-1">
               <Label>{t("advisorBackground")}</Label>
               <Textarea rows={4} value={form.background} onChange={set("background")} data-testid="input-adv-background" />
+              {/* v7.17 — nudge toward writing down what the advisor can open doors
+                  to, since that is what colleagues search for. */}
+              <p className="text-[11px] text-muted-foreground" data-testid="hint-adv-background">{t("resourcesFieldHint")}</p>
             </div>
           </FormSection>
 
@@ -1357,6 +1361,14 @@ function AdvisorDetailDialog({
                 </div>
               )}
 
+              <ResourcesBlock
+                en={a.resourcesEn}
+                cn={a.resourcesCn}
+                status={a.resourcesStatus}
+                sources={a.resourcesSources}
+                testid={`block-resources-advisor-${a.id}`}
+              />
+
               {/* v6.04 — one tidy "Contact & links" card: contact chips, then links
                   and filed documents, then origin/PIC/birthday meta. Staff only —
                   the server nulls emails/mobile/WeChat for other roles. */}
@@ -1535,12 +1547,10 @@ export default function Advisors() {
       .filter((a) => (tagFilter.length === 0 || (a.tags ?? []).some((tg) => tagFilter.includes(String(tg.id)))))
       .filter((a) => (momentumFilter.length === 0 || momentumFilter.includes(momentumOf(a.lastActivityAt))))
       .filter((a) => (lifecycle.length === 0 || lifecycle.includes(a.lifecycleStatus)))
-      .filter((a) => {
-        if (!q) return true;
-        const hay = [a.name, a.nameCn, a.domains, ...(a.tags ?? []).flatMap((tg) => [tg.nameEn, tg.nameCn]), ...(a.roles ?? []).flatMap((r) => [r.title, r.organization])]
-          .filter(Boolean).join(" ").toLowerCase();
-        return hay.includes(q);
-      })
+      // v7.17 — token-aware scoring shared with the partner page and Spotlight.
+      // Now also searches `background` and the resources paragraph, which is what
+      // makes queries like "lab", "compute" or "biotech" actually work here.
+      .filter((a) => (!q ? true : scoreRecord(q, advisorSearchFields(a)) > 0))
       .sort((a, b) => {
         if (sortBy === "activity") {
           const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;

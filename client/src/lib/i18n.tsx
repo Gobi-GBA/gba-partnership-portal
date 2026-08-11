@@ -269,6 +269,9 @@ const dict = {
   // they read as governance entries rather than ordinary edits.
   audit_coi_declared: { en: "Conflict declared", cn: "声明利益冲突" },
   audit_coi_cleared: { en: "Conflict cleared", cn: "利益冲突已解除" },
+  // v7.17 — sign-off and rejection of a researched resource paragraph.
+  audit_resources_confirmed: { en: "Resources confirmed", cn: "资源段落已确认" },
+  audit_resources_discarded: { en: "Resources discarded", cn: "资源段落已丢弃" },
   auditChangedFields: { en: "Changed", cn: "变更字段" },
   changeRequestHint: { en: "Your edits will be submitted as a change request for admin approval.", cn: "您的修改将作为变更申请提交，需管理员批准后生效。" },
   // v7.11 — direct editing for @gobi.vc colleagues
@@ -611,6 +614,41 @@ const dict = {
   advisorLinkedin: { en: "LinkedIn URL", cn: "LinkedIn 链接" },
   advisorPhoto: { en: "Photo", cn: "照片" },
   advisorPhotoHint: { en: "Upload once — an HD copy and a thumbnail are generated automatically.", cn: "上传一次——系统自动生成高清图与缩略图。" },
+
+  // ---- v7.17 resource paragraphs ("what can they provide") ----
+  resourcesLabel: { en: "What they can provide", cn: "可提供的资源" },
+  resourcesDraftBadge: { en: "Draft — unverified", cn: "草稿——未核实" },
+  resourcesDraftHint: {
+    en: "Researched automatically and not yet checked by a colleague. Internal use only until confirmed.",
+    cn: "由系统自动检索生成，尚未经同事核实。确认前仅供内部参考。",
+  },
+  resourcesSourcesLabel: { en: "Sources:", cn: "资料来源：" },
+  resourcesFieldHint: {
+    en: "Tip: name the concrete resources on offer — cloud credits, compute/GPU, lab or test-bed access, funding schemes, distribution channels, talent. Colleagues search this text.",
+    cn: "提示：请写明可提供的具体资源——云服务额度、算力/GPU、实验室或中试场地、资助计划、渠道分销、人才。同事会通过这段文字进行搜索。",
+  },
+  resourcesReviewTab: { en: "Resources", cn: "资源" },
+  resourcesReviewTitle: { en: "Resource paragraphs awaiting review", cn: "待审核的资源段落" },
+  resourcesReviewEmpty: { en: "Nothing waiting for review.", cn: "暂无待审核内容。" },
+  resourcesConfirm: { en: "Confirm", cn: "确认" },
+  resourcesConfirmAll: { en: "Confirm all shown", cn: "确认全部显示项" },
+  resourcesDiscard: { en: "Discard", cn: "丢弃" },
+  resourcesConfirmed: { en: "Confirmed", cn: "已确认" },
+  resourcesStatusNone: { en: "None", cn: "无" },
+  thinDescTab: { en: "Thin records", cn: "信息不足记录" },
+  thinDescTitle: { en: "Records with a thin or missing description", cn: "描述缺失或过短的记录" },
+  thinDescEmpty: { en: "Every record has a substantial description.", cn: "所有记录的描述均已完善。" },
+  thinDescHint: {
+    en: "These records return few search results because there is little text to match. Adding what each one can provide is the highest-value fix.",
+    cn: "这些记录因文字过少而难以被搜索命中。补充其可提供的资源是最有效的改进。",
+  },
+  thinDescChars: { en: "chars", cn: "字符" },
+  spotlightPlaceholder: { en: "Search partners and advisors…", cn: "搜索合作伙伴与顾问……" },
+  spotlightEmpty: { en: "No matches.", cn: "没有匹配结果。" },
+  spotlightPartners: { en: "Partners", cn: "合作伙伴" },
+  spotlightAdvisors: { en: "Advisors", cn: "顾问" },
+  spotlightHintOpen: { en: "Search", cn: "搜索" },
+  spotlightFooter: { en: "Enter to open · Esc to close", cn: "回车打开 · Esc 关闭" },
   advisorPhotoRemove: { en: "Remove photo", cn: "移除照片" },
   rolesLabel: { en: "Jobs & roles", cn: "职位与角色" },
   rolesHint: { en: "One person can hold several roles. Link a role to a partner organization where relevant.", cn: "一人可担任多个角色，可将角色关联到合作伙伴机构。" },

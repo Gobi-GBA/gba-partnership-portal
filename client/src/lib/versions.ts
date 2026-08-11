@@ -9,9 +9,32 @@ export interface VersionEntry {
   itemsCn: string[];
 }
 
-export const CURRENT_VERSION = "7.16";
+export const CURRENT_VERSION = "7.17";
 
 export const VERSIONS: VersionEntry[] = [
+  {
+    version: "7.17",
+    date: "2026-08-11",
+    by: "Fred Li",
+    titleEn: "v7.17 — Spotlight search, and \u201cwhat they can provide\u201d on every record",
+    titleCn: "v7.17 — Spotlight \u5feb\u641c\uff0c\u4ee5\u53ca\u6bcf\u6761\u8bb0\u5f55\u7684\u300c\u53ef\u63d0\u4f9b\u8d44\u6e90\u300d",
+    itemsEn: [
+      "Press \u2318K (Ctrl K on Windows) anywhere in the portal to open Spotlight and jump straight to a partner or an advisor. There is also a Search button in the header if you prefer to click.",
+      "Search now understands what you type. Words are matched separately and ranked \u2014 an exact name beats a partial one \u2014 and an English search term must begin a word, so searching \u201clab\u201d no longer returns Alibaba, Global and collaborate.",
+      "Partner and advisor records gained a \u201cWhat they can provide\u201d paragraph: the concrete things that organisation or person offers founders \u2014 cloud credits, compute, lab and test-bed access, funding schemes, distribution, talent. It is searchable, so \u201ccloud credits\u201d or \u201cGPU\u201d now finds the partners that actually run those programmes.",
+      "These paragraphs are researched from public sources and arrive as drafts, visible only to the Gobi team, each carrying links to the pages the claims came from. An admin reviews the wording in Admin \u2192 Resources and either publishes it to all viewers or discards it. Nothing machine-written is shown to a viewer before a person signs off.",
+      "New Admin \u2192 Thin records list names the partners and advisors with too little text for search to reach, shortest first, so it is obvious where writing one sentence pays off most.",
+      "The browser tab icon is now the Gobi mountains in gold on navy.",
+    ],
+    itemsCn: [
+      "\u5728\u95e8\u6237\u4efb\u610f\u9875\u9762\u6309 \u2318K\uff08Windows \u4e3a Ctrl K\uff09\u5373\u53ef\u6253\u5f00 Spotlight \u5feb\u641c\uff0c\u76f4\u63a5\u8df3\u8f6c\u5230\u67d0\u4f4d\u5408\u4f5c\u4f19\u4f34\u6216\u987e\u95ee\u3002\u9875\u9876\u4e5f\u65b0\u589e\u4e86\u641c\u7d22\u6309\u94ae\u3002",
+      "\u641c\u7d22\u73b0\u5728\u4f1a\u7406\u89e3\u8f93\u5165\u5185\u5bb9\uff1a\u591a\u4e2a\u8bcd\u5206\u5f00\u5339\u914d\u5e76\u6392\u5e8f\uff08\u5b8c\u5168\u547d\u4e2d\u540d\u79f0\u4f18\u5148\u4e8e\u90e8\u5206\u547d\u4e2d\uff09\uff1b\u82f1\u6587\u5173\u952e\u8bcd\u5fc5\u987b\u4f4d\u4e8e\u8bcd\u9996\uff0c\u56e0\u6b64\u641c\u300clab\u300d\u4e0d\u518d\u8fd4\u56de Alibaba\u3001Global \u6216 collaborate\u3002",
+      "\u5408\u4f5c\u4f19\u4f34\u4e0e\u987e\u95ee\u6863\u6848\u65b0\u589e\u300c\u53ef\u63d0\u4f9b\u8d44\u6e90\u300d\u6bb5\u843d\uff0c\u5199\u660e\u8be5\u673a\u6784\u6216\u4eba\u58eb\u80fd\u4e3a\u521b\u4e1a\u8005\u63d0\u4f9b\u7684\u5177\u4f53\u8d44\u6e90\u2014\u2014\u4e91\u8d44\u6e90\u62b5\u6263\u91d1\u3001\u7b97\u529b\u3001\u5b9e\u9a8c\u5ba4\u4e0e\u6d4b\u8bd5\u573a\u666f\u3001\u8d44\u52a9\u8ba1\u5212\u3001\u6e20\u9053\u4e0e\u4eba\u624d\u3002\u8be5\u6bb5\u843d\u53ef\u88ab\u641c\u7d22\uff0c\u56e0\u6b64\u641c\u300c\u4e91\u8d44\u6e90\u300d\u6216\u300cGPU\u300d\u73b0\u5728\u80fd\u627e\u5230\u771f\u6b63\u63d0\u4f9b\u8fd9\u4e9b\u8ba1\u5212\u7684\u4f19\u4f34\u3002",
+      "\u8fd9\u4e9b\u6bb5\u843d\u57fa\u4e8e\u516c\u5f00\u8d44\u6599\u7814\u7a76\u800c\u6210\uff0c\u9996\u5148\u4ee5\u8349\u7a3f\u5f62\u5f0f\u5b58\u5728\uff0c\u4ec5 Gobi \u56e2\u961f\u53ef\u89c1\uff0c\u5e76\u9644\u5e26\u4fe1\u606f\u6765\u6e90\u94fe\u63a5\u3002\u7ba1\u7406\u5458\u5728\u300c\u7ba1\u7406 \u2192 \u8d44\u6e90\u5ba1\u6838\u300d\u4e2d\u6821\u9605\u540e\uff0c\u9009\u62e9\u53d1\u5e03\u7ed9\u5168\u4f53\u7528\u6237\u6216\u4e22\u5f03\u3002\u672a\u7ecf\u4eba\u5de5\u786e\u8ba4\u7684\u673a\u5668\u751f\u6210\u5185\u5bb9\u4e0d\u4f1a\u5411\u666e\u901a\u7528\u6237\u5c55\u793a\u3002",
+      "\u65b0\u589e\u300c\u7ba1\u7406 \u2192 \u63cf\u8ff0\u8fc7\u77ed\u300d\u5217\u8868\uff0c\u6309\u5b57\u6570\u7531\u5c11\u5230\u591a\u5217\u51fa\u641c\u7d22\u96be\u4ee5\u89e6\u53ca\u7684\u4f19\u4f34\u4e0e\u987e\u95ee\uff0c\u4fbf\u4e8e\u4f18\u5148\u8865\u5145\u5185\u5bb9\u3002",
+      "\u6d4f\u89c8\u5668\u6807\u7b7e\u56fe\u6807\u73b0\u4e3a\u6df1\u84dd\u5e95\u91d1\u8272 Gobi \u53cc\u5c71\u6807\u5fd7\u3002",
+    ],
+  },
   {
     version: "7.16",
     date: "2026-08-07",

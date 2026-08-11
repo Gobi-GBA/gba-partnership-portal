@@ -214,6 +214,14 @@ export function createSqliteStorage(): IStorage {
   ensureColumn("advisors", "coi_details", "coi_details TEXT");
   ensureColumn("advisors", "coi_cleared_by", "coi_cleared_by TEXT");
   ensureColumn("advisors", "coi_cleared_at", "coi_cleared_at TEXT");
+  // ---- v7.17 resource paragraphs ("what can they provide") ----
+  for (const table of ["partnerships", "advisors"]) {
+    ensureColumn(table, "resources_en", "resources_en TEXT");
+    ensureColumn(table, "resources_cn", "resources_cn TEXT");
+    ensureColumn(table, "resources_status", "resources_status TEXT NOT NULL DEFAULT 'none'");
+    ensureColumn(table, "resources_sources", "resources_sources TEXT");
+    ensureColumn(table, "resources_updated_at", "resources_updated_at TEXT");
+  }
   ensureColumn("users", "google_linked_at", "google_linked_at TEXT");
   ensureColumn("users", "last_active_at", "last_active_at TEXT");
   try { sqlite.exec(`UPDATE advisors SET origin_staff = gobi_pics WHERE origin_staff IS NULL AND gobi_pics IS NOT NULL`); } catch {}

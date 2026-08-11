@@ -9,8 +9,9 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Moon, Sun, SunMoon, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download } from "lucide-react";
+import { Moon, Sun, SunMoon, Menu, X, Globe, ExternalLink, Mail, User, Star, Calendar, Tag, MapPin, Paperclip, Network, FlaskConical, Pencil, History, ChevronDown, ChevronLeft, ChevronRight, Search, Lock, Download, Sparkles } from "lucide-react";
 import { photoThumbSrc, photoHdDownloadHref, isAssetToken } from "@/lib/photos";
+import { openSpotlight } from "@/components/spotlight";
 import { Input } from "@/components/ui/input";
 import { GalaxyBackground, WarpOverlay, consumePendingWarp, setPresenceUsers, type PresenceUser } from "@/components/galaxy-bg";
 import {
@@ -548,6 +549,24 @@ export function Layout({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5">
+            {/* v7.17 — visible affordance for Spotlight, so the ⌘K shortcut is
+                discoverable rather than hidden knowledge. The shortcut chip is
+                hidden on small screens where there is no physical keyboard. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openSpotlight}
+              title={t("spotlightPlaceholder")}
+              aria-label={t("spotlightPlaceholder")}
+              data-testid="button-spotlight-open"
+              className="gap-1.5"
+            >
+              <Search className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs font-semibold">{t("spotlightHintOpen")}</span>
+              <kbd className="hidden md:inline rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K"}
+              </kbd>
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -1090,6 +1109,77 @@ export const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   category: true,
 };
 
+/**
+ * v7.17 — "What they can provide": the concrete resources a partner or advisor
+ * is known to offer (cloud credits, lab access, funding schemes, distribution).
+ *
+ * Rendered next to the description rather than merged into it, so the curated
+ * relationship narrative and the researched resource summary stay separable and
+ * each keeps its own provenance. A `draft` paragraph is machine-researched and
+ * not yet checked by a colleague: it is labelled as such and the server only
+ * ever sends it to staff accounts.
+ */
+export function ResourcesBlock({
+  en,
+  cn,
+  status,
+  sources,
+  testid,
+}: {
+  en?: string | null;
+  cn?: string | null;
+  status?: string | null;
+  sources?: string[] | null;
+  testid?: string;
+}) {
+  const { t, lang } = useLang();
+  const text = lang === "cn" ? cn || en : en || cn;
+  if (!text) return null;
+  const isDraft = status === "draft";
+  const urls = (sources ?? []).filter(Boolean);
+  return (
+    <div
+      className="rounded-lg border border-[hsl(var(--gold))]/30 bg-[hsl(var(--gold))]/[0.06] p-3 space-y-2"
+      data-testid={testid ?? "block-resources"}
+    >
+      <p className="text-xs font-semibold text-muted-foreground flex flex-wrap items-center gap-1.5">
+        <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold))]" />
+        {t("resourcesLabel")}
+        {isDraft && (
+          <Badge
+            variant="outline"
+            className="text-[10px] font-semibold border-[hsl(var(--gold))]/50 bg-transparent text-[hsl(var(--gold))]"
+            data-testid="badge-resources-draft"
+          >
+            {t("resourcesDraftBadge")}
+          </Badge>
+        )}
+      </p>
+      <p className="text-sm leading-relaxed break-words whitespace-pre-line">{text}</p>
+      {urls.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+          <span className="text-[11px] text-muted-foreground">{t("resourcesSourcesLabel")}</span>
+          {urls.map((u, i) => (
+            <a
+              key={u}
+              href={u}
+              target="_blank"
+              rel="noreferrer"
+              title={u}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline decoration-dotted hover:text-foreground"
+              data-testid={`link-resources-source-${i}`}
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              {(() => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } })()}
+            </a>
+          ))}
+        </div>
+      )}
+      {isDraft && <p className="text-[11px] text-muted-foreground">{t("resourcesDraftHint")}</p>}
+    </div>
+  );
+}
+
 export function PartnershipCard({ p, onClick, opts = DEFAULT_VIEW_OPTIONS }: { p: Partnership; onClick: () => void; opts?: ViewOptions }) {
   const { lang, t } = useLang();
   const name = lang === "cn" && p.nameCn ? p.nameCn : p.nameEn;
@@ -1257,6 +1347,14 @@ export function PartnershipDetailDialog({
 
           {desc && <p className="text-sm leading-relaxed break-words">{desc}</p>}
 
+          <ResourcesBlock
+            en={p.resourcesEn}
+            cn={p.resourcesCn}
+            status={p.resourcesStatus}
+            sources={p.resourcesSources}
+            testid={`block-resources-${p.id}`}
+          />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label={t("partnershipType")} value={p.partnershipType} />
             <DetailRow icon={<Calendar className="h-3.5 w-3.5" />} label={t("startDate")} value={p.startDate} />
@@ -1354,6 +1452,8 @@ export function PartnershipDetailDialog({
 export function auditDotClass(action: string): string {
   if (action === "coi_declared") return "bg-destructive";
   if (action === "coi_cleared") return "bg-emerald-500";
+  if (action === "resources_confirmed") return "bg-[hsl(var(--gold))]";
+  if (action === "resources_discarded") return "bg-muted-foreground";
   return "bg-[hsl(var(--aqua))]";
 }
 

@@ -328,6 +328,9 @@ export function EditPartnershipDialog({
           )}
           <EField label={t("descriptionEn")}><Textarea rows={2} value={form.descriptionEn ?? ""} onChange={(e) => set("descriptionEn", e.target.value)} data-testid="edit-desc-en" /></EField>
           <EField label={t("descriptionCn")}><Textarea rows={2} value={form.descriptionCn ?? ""} onChange={(e) => set("descriptionCn", e.target.value)} data-testid="edit-desc-cn" /></EField>
+          {/* v7.17 — the description is what search reads, so prompt for the
+              concrete offerings colleagues actually search for. */}
+          <p className="-mt-1 text-[11px] text-muted-foreground" data-testid="hint-desc-resources">{t("resourcesFieldHint")}</p>
           <EField label={t("contextLabel")}><Textarea rows={3} value={form.context ?? ""} onChange={(e) => set("context", e.target.value)} data-testid="edit-context" /></EField>
           <EField label={t("notes")}><Textarea rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} data-testid="edit-notes" /></EField>
           <EField label={t("photosLabel")}>

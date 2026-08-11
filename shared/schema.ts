@@ -209,6 +209,16 @@ export const partnerships = sqliteTable("partnerships", {
   picNames: text("pic_names", { mode: "json" }).$type<string[]>(), // Gobi relationship PICs (multiple)
   context: text("context"), // narrative background, e.g. from reports / docs
   partnershipType: text("partnership_type"), // free text, e.g. "Joint fund", "Deal flow MOU"
+  // ---- v7.17 "what can they provide" ----
+  // A short paragraph on the concrete resources this partner is known to offer
+  // (cloud credits, lab access, funding schemes, distribution...). Kept separate
+  // from description_* so the curated relationship narrative is never overwritten,
+  // and so an unreviewed draft can be told apart from a confirmed one.
+  resourcesEn: text("resources_en"),
+  resourcesCn: text("resources_cn"),
+  resourcesStatus: text("resources_status").notNull().default("none"), // see RESOURCES_STATUSES
+  resourcesSources: text("resources_sources", { mode: "json" }).$type<string[]>(), // URLs backing the paragraph
+  resourcesUpdatedAt: text("resources_updated_at"),
   startDate: text("start_date"), // ISO date string
   photos: text("photos", { mode: "json" }).$type<string[]>(), // gallery photo URLs (carousel)
   stage: text("stage").notNull().default("s1_new"),
@@ -247,6 +257,18 @@ export type Category = (typeof CATEGORIES)[number];
 export type Region = (typeof REGIONS)[number];
 export type MacroRegion = (typeof MACRO_REGIONS)[number];
 
+/**
+ * v7.17 — lifecycle of a resource paragraph.
+ *
+ *   none      no paragraph written yet
+ *   draft     researched but not yet checked by a human. Staff-only: draft text
+ *             is withheld from viewer accounts so an unverified claim can never
+ *             be repeated to an external party as if the firm had vetted it.
+ *   confirmed a colleague has read it and stands behind it. Visible to everyone.
+ */
+export const RESOURCES_STATUSES = ["none", "draft", "confirmed"] as const;
+export type ResourcesStatus = (typeof RESOURCES_STATUSES)[number];
+
 // ---------- Advisors (v5.0 — Gobi Advisory Network) ----------
 // People-only database. Organizations that act as advisors (e.g. Esri China (HK),
 // OASA) live in the partnerships table flagged with isDomainKnowledgePartner.
@@ -273,6 +295,12 @@ export const advisors = sqliteTable("advisors", {
   emails: text("emails", { mode: "json" }).$type<string[]>(), // staff-visible only
   domains: text("domains"), // expert domains, free text
   background: text("background"), // detailed background, multi-line
+  // ---- v7.17 "what can they open doors to" — see partnerships.resourcesEn ----
+  resourcesEn: text("resources_en"),
+  resourcesCn: text("resources_cn"),
+  resourcesStatus: text("resources_status").notNull().default("none"), // see RESOURCES_STATUSES
+  resourcesSources: text("resources_sources", { mode: "json" }).$type<string[]>(),
+  resourcesUpdatedAt: text("resources_updated_at"),
   photoUrl: text("photo_url"), // HD portrait (data URI or URL)
   photoThumbUrl: text("photo_thumb_url"), // small thumbnail for list views
   profileUrl: text("profile_url"), // official profile page
@@ -569,7 +597,12 @@ export type AuditAction =
   | "change_approved"
   | "change_rejected"
   | "coi_declared"
-  | "coi_cleared";
+  | "coi_cleared"
+  // v7.17 — who signed off on a researched resource paragraph, and who threw
+  // one away. Separate from `update` so the provenance of published resource
+  // text is auditable rather than buried in ordinary edit noise.
+  | "resources_confirmed"
+  | "resources_discarded";
 
 // ---------- Feedback / system requests ----------
 export const FEEDBACK_STATUSES = ["open", "in_progress", "solved", "declined"] as const;

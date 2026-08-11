@@ -9,6 +9,7 @@ import { LangProvider } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/components/shared";
 import { ThankYouHost } from "@/components/thank-you";
+import { Spotlight } from "@/components/spotlight";
 import Login from "@/pages/login";
 import Reset from "@/pages/reset";
 
@@ -58,6 +59,10 @@ function AppRouter() {
   if (!user) return location.startsWith("/reset") ? <Reset /> : <Login />;
   return (
     <Suspense fallback={<PageFallback />}>
+    {/* v7.17 — ⌘K search over partners and advisors. Mounted here, inside the
+        Router and after the signed-out early return, so it can navigate and is
+        never reachable before sign-in. */}
+    <Spotlight />
     <Switch>
       <Route path="/">{() => <Home />}</Route>
       <Route path="/partner/:id">{() => <Home />}</Route>

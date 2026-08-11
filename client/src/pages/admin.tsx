@@ -28,6 +28,7 @@ import { UserAvatar } from "@/components/user-panels";
 import type { Partnership, SafeUser, Stage, ChangeRequest, SectorTag } from "@shared/schema";
 import { ROLES } from "@shared/schema";
 import type { CoiBlockedRow } from "@shared/coi";
+import type { ResourceReviewRow, ThinRecordRow } from "@shared/resources";
 import { STAGES, CATEGORIES, REGIONS, STAGE_NUM, picsOf } from "@/lib/constants";
 import { ExportCsvButtons } from "@/pages/advisors";
 import { createDirtyRegistry, UnsavedDialog, type DirtyRegistry } from "@/components/unsaved-guard";
@@ -70,6 +71,8 @@ export default function Admin() {
             <TabsTrigger value="users" data-testid="tab-admin-users">{t("adminUsers")}</TabsTrigger>
             <TabsTrigger value="tags" data-testid="tab-admin-tags">{t("tabTags")}</TabsTrigger>
             <TabsTrigger value="coi" data-testid="tab-admin-coi">{t("adminCoi")}</TabsTrigger>
+            <TabsTrigger value="resources" data-testid="tab-admin-resources">{t("resourcesReviewTab")}</TabsTrigger>
+            <TabsTrigger value="thin" data-testid="tab-admin-thin">{t("thinDescTab")}</TabsTrigger>
             <TabsTrigger value="scoreboard" data-testid="tab-admin-scoreboard">{t("sbNavLabel")}</TabsTrigger>
             <TabsTrigger value="exports" data-testid="tab-admin-exports">{t("tabExports")}</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-admin-settings">{t("tabSettings")}</TabsTrigger>
@@ -79,6 +82,8 @@ export default function Admin() {
           <TabsContent value="users"><UserAdmin /></TabsContent>
           <TabsContent value="tags"><TagAdmin /></TabsContent>
           <TabsContent value="coi"><CoiAdmin /></TabsContent>
+          <TabsContent value="resources"><ResourcesAdmin /></TabsContent>
+          <TabsContent value="thin"><ThinRecordsAdmin /></TabsContent>
           <TabsContent value="scoreboard"><ScoreboardPanel /></TabsContent>
           <TabsContent value="exports">
             <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-exports">
@@ -1396,6 +1401,217 @@ function SettingsAdmin({ registry }: { registry?: DirtyRegistry }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * v7.17 — review queue for researched resource paragraphs.
+ *
+ * A `draft` paragraph is machine-researched and staff-only until someone signs
+ * off on it. This panel is that sign-off: the reviewer reads the paragraph,
+ * follows the sources if a claim looks surprising, edits the wording if needed,
+ * then confirms (publishes to all viewers) or discards (wipes it entirely).
+ */
+function ResourcesAdmin() {
+  const { t, lang } = useLang();
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<ResourceReviewRow[]>({
+    queryKey: ["/api/admin/resources/pending"],
+  });
+
+  // Local edits, keyed by "<kind>-<id>", so a reviewer can fix wording in place
+  // without a separate dialog. Absent key = untouched, send nothing.
+  const [edits, setEdits] = useState<Record<string, { en: string; cn: string }>>({});
+
+  const decide = useMutation({
+    mutationFn: async (v: { row: ResourceReviewRow; decision: "confirm" | "discard" }) => {
+      const key = `${v.row.kind}-${v.row.id}`;
+      const edit = edits[key];
+      const body =
+        v.decision === "confirm" && edit ? { resourcesEn: edit.en, resourcesCn: edit.cn } : {};
+      const res = await apiRequest("POST", `/api/admin/resources/${v.row.kind}/${v.row.id}/${v.decision}`, body);
+      return res.json();
+    },
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/resources/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/resources/thin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partnerships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/advisors"] });
+      setEdits((e) => {
+        const next = { ...e };
+        delete next[`${v.row.kind}-${v.row.id}`];
+        return next;
+      });
+      toast({ description: v.decision === "confirm" ? t("resourcesConfirmed") : t("resourcesDiscard") });
+    },
+    onError: (e: any) => toast({ description: String(e?.message ?? e), variant: "destructive" }),
+  });
+
+  const rows = data ?? [];
+
+  return (
+    <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-resources">
+      <h2 className="text-sm font-semibold">{t("resourcesReviewTitle")}</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-muted-foreground">{t("resourcesDraftHint")}</p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> …
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-sm text-muted-foreground" data-testid="text-admin-resources-empty">
+          {t("resourcesReviewEmpty")}
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {rows.map((r) => {
+            const key = `${r.kind}-${r.id}`;
+            const edit = edits[key] ?? { en: r.resourcesEn ?? "", cn: r.resourcesCn ?? "" };
+            const busy = decide.isPending && decide.variables?.row.kind === r.kind && decide.variables?.row.id === r.id;
+            return (
+              <li
+                key={key}
+                className="space-y-2 rounded-lg border border-[hsl(var(--gold))]/30 bg-[hsl(var(--gold))]/[0.05] p-3"
+                data-testid={`row-admin-resources-${r.kind}-${r.id}`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="text-[10px] font-semibold">
+                    {r.kind === "partner" ? t("spotlightPartners") : t("spotlightAdvisors")}
+                  </Badge>
+                  <p className="truncate text-sm font-semibold">
+                    {lang === "cn" && r.nameCn ? r.nameCn : r.name}
+                    {r.nameCn && lang !== "cn" ? ` · ${r.nameCn}` : ""}
+                  </p>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Textarea
+                    rows={4}
+                    value={edit.en}
+                    onChange={(e) => setEdits((s) => ({ ...s, [key]: { ...edit, en: e.target.value } }))}
+                    className="text-xs"
+                    data-testid={`input-resources-en-${r.kind}-${r.id}`}
+                  />
+                  <Textarea
+                    rows={4}
+                    value={edit.cn}
+                    onChange={(e) => setEdits((s) => ({ ...s, [key]: { ...edit, cn: e.target.value } }))}
+                    className="text-xs"
+                    data-testid={`input-resources-cn-${r.kind}-${r.id}`}
+                  />
+                </div>
+
+                {(r.resourcesSources ?? []).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-[11px] text-muted-foreground">{t("resourcesSourcesLabel")}</span>
+                    {(r.resourcesSources ?? []).map((u, i) => (
+                      <a
+                        key={u}
+                        href={u}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={u}
+                        className="text-[11px] text-muted-foreground underline decoration-dotted hover:text-foreground"
+                        data-testid={`link-admin-resources-source-${r.kind}-${r.id}-${i}`}
+                      >
+                        {(() => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } })()}
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => decide.mutate({ row: r, decision: "confirm" })}
+                    data-testid={`button-resources-confirm-${r.kind}-${r.id}`}
+                  >
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    <span className="ml-1.5">{t("resourcesConfirm")}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => decide.mutate({ row: r, decision: "discard" })}
+                    data-testid={`button-resources-discard-${r.kind}-${r.id}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">{t("resourcesDiscard")}</span>
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * v7.17 — records with too little searchable prose.
+ *
+ * Search can only match text that exists. This list names the records that are
+ * effectively invisible to search and puts the shortest first, so the team can
+ * see where writing one sentence has the biggest payoff.
+ */
+function ThinRecordsAdmin() {
+  const { t, lang } = useLang();
+  const { data, isLoading } = useQuery<ThinRecordRow[]>({
+    queryKey: ["/api/admin/resources/thin"],
+  });
+  const rows = data ?? [];
+
+  return (
+    <div className="rounded-xl border border-border bg-card/80 p-4 backdrop-blur" data-testid="section-admin-thin">
+      <h2 className="text-sm font-semibold">{t("thinDescTitle")}</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-muted-foreground">{t("thinDescHint")}</p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> …
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-sm text-muted-foreground" data-testid="text-admin-thin-empty">
+          {t("thinDescEmpty")}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border" data-testid="list-admin-thin">
+          {rows.map((r) => (
+            <li
+              key={`${r.kind}-${r.id}`}
+              className="flex flex-wrap items-center gap-2 py-2"
+              data-testid={`row-admin-thin-${r.kind}-${r.id}`}
+            >
+              <Badge variant="outline" className="text-[10px] font-semibold">
+                {r.kind === "partner" ? t("spotlightPartners") : t("spotlightAdvisors")}
+              </Badge>
+              <a
+                href={r.kind === "partner" ? `#/partner/${r.id}` : `#/advisors/${r.id}`}
+                className="truncate text-sm font-medium hover:underline"
+              >
+                {lang === "cn" && r.nameCn ? r.nameCn : r.name}
+              </a>
+              {r.hasDraft && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-semibold border-[hsl(var(--gold))]/50 text-[hsl(var(--gold))]"
+                >
+                  {t("resourcesDraftBadge")}
+                </Badge>
+              )}
+              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                {r.chars} {t("thinDescChars")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

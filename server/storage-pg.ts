@@ -204,6 +204,17 @@ const BOOTSTRAP: string[] = [
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_details TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_cleared_by TEXT`,
   `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS coi_cleared_at TEXT`,
+  // ---- v7.17 resource paragraphs ("what can they provide") ----
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS resources_en TEXT`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS resources_cn TEXT`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS resources_status TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS resources_sources JSONB`,
+  `ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS resources_updated_at TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS resources_en TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS resources_cn TEXT`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS resources_status TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS resources_sources JSONB`,
+  `ALTER TABLE advisors ADD COLUMN IF NOT EXISTS resources_updated_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_linked_at TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TEXT`,
   `CREATE TABLE IF NOT EXISTS sector_tags (
