@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { Switch, Route, Router, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -84,6 +85,17 @@ function AppRouter() {
   );
 }
 
+function PortalAnalytics() {
+  const [location] = useLocation();
+  // Hash navigation needs explicit pageviews; omit query parameters from tracking.
+  const path = location.split("?")[0];
+  const route = path
+    .replace(/^\/partner\/[^/]+$/, "/partner/:id")
+    .replace(/^\/advisors\/[^/]+$/, "/advisors/:id");
+
+  return <Analytics route={route} path={path} />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -95,6 +107,7 @@ function App() {
               <ThankYouHost />
               <Router hook={useHashLocation}>
                 <AppRouter />
+                <PortalAnalytics />
               </Router>
             </TooltipProvider>
           </AuthProvider>
